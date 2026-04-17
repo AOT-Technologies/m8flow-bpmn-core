@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    targetNamespace="http://m8flow.example/bpmn"
+    exporter="m8flow-bpmn-core"
+    exporterVersion="0.1.0">
+  <bpmn:process id="invoice_approval_poc" name="Invoice Approval POC" isExecutable="true">
+    <bpmn:startEvent id="start_invoice" name="Start" />
+    <bpmn:userTask id="approve_invoice" name="Approve Invoice" />
+    <bpmn:exclusiveGateway id="approval_decision_gateway" name="Decision" default="flow_rejected_to_end" />
+    <bpmn:endEvent id="approved_end" name="Approved" />
+    <bpmn:endEvent id="rejected_end" name="Rejected" />
+    <bpmn:sequenceFlow
+        id="flow_start_to_task"
+        sourceRef="start_invoice"
+        targetRef="approve_invoice" />
+    <bpmn:sequenceFlow
+        id="flow_task_to_gateway"
+        sourceRef="approve_invoice"
+        targetRef="approval_decision_gateway" />
+    <bpmn:sequenceFlow
+        id="flow_approved_to_end"
+        sourceRef="approval_decision_gateway"
+        targetRef="approved_end">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">
+        ${approval_state == 'approved'}
+      </bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow
+        id="flow_rejected_to_end"
+        sourceRef="approval_decision_gateway"
+        targetRef="rejected_end" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_invoice_approval_poc">
+    <bpmndi:BPMNPlane id="BPMNPlane_invoice_approval_poc" bpmnElement="invoice_approval_poc">
+      <bpmndi:BPMNShape id="Shape_start_invoice" bpmnElement="start_invoice">
+        <dc:Bounds x="100" y="112" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_approve_invoice" bpmnElement="approve_invoice">
+        <dc:Bounds x="180" y="90" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_approval_decision_gateway" bpmnElement="approval_decision_gateway">
+        <dc:Bounds x="330" y="105" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_approved_end" bpmnElement="approved_end">
+        <dc:Bounds x="470" y="50" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_rejected_end" bpmnElement="rejected_end">
+        <dc:Bounds x="470" y="170" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_flow_start_to_task" bpmnElement="flow_start_to_task">
+        <di:waypoint x="136" y="130" />
+        <di:waypoint x="180" y="130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_task_to_gateway" bpmnElement="flow_task_to_gateway">
+        <di:waypoint x="290" y="130" />
+        <di:waypoint x="330" y="130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_approved_to_end" bpmnElement="flow_approved_to_end">
+        <di:waypoint x="380" y="130" />
+        <di:waypoint x="420" y="90" />
+        <di:waypoint x="470" y="68" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_flow_rejected_to_end" bpmnElement="flow_rejected_to_end">
+        <di:waypoint x="380" y="130" />
+        <di:waypoint x="420" y="190" />
+        <di:waypoint x="470" y="188" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

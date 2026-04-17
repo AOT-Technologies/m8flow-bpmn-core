@@ -6,7 +6,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="M8FLOW_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_prefix="M8FLOW_", extra="ignore"
+    )
 
     database_url: str = "sqlite+pysqlite:///./m8flow.db"
     database_echo: bool = False

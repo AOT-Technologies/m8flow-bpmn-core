@@ -1,10 +1,31 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
+import pytest
+from sqlalchemy.orm import Session
 
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+from m8flow_bpmn_core.db import build_engine, build_session_factory, create_schema
+
+
+@pytest.fixture()
+def engine(tmp_path: Path):
+    db_path = tmp_path / "test.db"
+    engine = build_engine(f"sqlite+pysqlite:///{db_path}")
+    create_schema(engine)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture()
+def session(engine) -> Session:
+    session_factory = build_session_factory(engine)
+    session = session_factory()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()

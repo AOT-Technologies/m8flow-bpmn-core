@@ -15,3 +15,4 @@ dist/
 *.sqlite3
 *.db
 *.sqlite
+reference/
