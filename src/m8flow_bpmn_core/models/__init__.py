@@ -5,7 +5,10 @@ from m8flow_bpmn_core.models.bpmn_process_definition import (
 )
 from m8flow_bpmn_core.models.future_task import FutureTaskModel
 from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
+from m8flow_bpmn_core.models.human_task_user import (
+    HumanTaskUserAddedBy,
+    HumanTaskUserModel,
+)
 from m8flow_bpmn_core.models.process_instance import (
     ProcessInstanceModel,
     ProcessInstanceStatus,
@@ -29,6 +32,7 @@ __all__ = [
     "BpmnProcessModel",
     "FutureTaskModel",
     "HumanTaskModel",
+    "HumanTaskUserAddedBy",
     "HumanTaskUserModel",
     "M8fTenantScopedMixin",
     "M8flowTenantModel",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, ForeignKey, String
+from sqlalchemy import JSON, BigInteger, Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -19,7 +19,10 @@ class HumanTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
         nullable=False,
     )
     task_guid: Mapped[str | None] = mapped_column(ForeignKey("task.guid"), index=True)
-    lane_assignment_id: Mapped[int | None] = mapped_column(index=True)
+    lane_assignment_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        index=True,
+    )
     completed_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("user.id"), index=True
     )

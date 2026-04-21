@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from m8flow_bpmn_core.models.base import Base
@@ -51,6 +51,7 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
     end_in_seconds: Mapped[int | None] = mapped_column(Integer, index=True)
     updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
     created_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
+    workflow_state_json: Mapped[str | None] = mapped_column(Text)
 
     process_initiator = relationship("UserModel")
     bpmn_process_definition = relationship("BpmnProcessDefinitionModel")

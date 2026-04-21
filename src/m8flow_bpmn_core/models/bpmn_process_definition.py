@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import JSON, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -33,6 +33,8 @@ class BpmnProcessDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
     )
     bpmn_name: Mapped[str | None] = mapped_column(String(255), index=True)
     properties_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    source_bpmn_xml: Mapped[str | None] = mapped_column(Text)
+    source_dmn_xml: Mapped[str | None] = mapped_column(Text)
     bpmn_version_control_type: Mapped[str | None] = mapped_column(String(50))
     bpmn_version_control_identifier: Mapped[str | None] = mapped_column(String(255))
     updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)

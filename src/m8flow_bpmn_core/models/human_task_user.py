@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+from enum import StrEnum
+from typing import Any
+
 from sqlalchemy import ForeignKey, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from m8flow_bpmn_core.models.base import Base
 from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantScoped
+
+
+class HumanTaskUserAddedBy(StrEnum):
+    guest = "guest"
+    lane_assignment = "lane_assignment"
+    lane_owner = "lane_owner"
+    manual = "manual"
+    process_initiator = "process_initiator"
 
 
 class HumanTaskUserModel(M8fTenantScopedMixin, TenantScoped, Base):
@@ -24,3 +35,9 @@ class HumanTaskUserModel(M8fTenantScopedMixin, TenantScoped, Base):
 
     human_task = relationship("HumanTaskModel", back_populates="human_task_users")
     user = relationship("UserModel")
+
+    @validates("added_by")
+    def validate_added_by(self, key: str, value: Any) -> Any:
+        if value is None:
+            return None
+        return HumanTaskUserAddedBy(value).value

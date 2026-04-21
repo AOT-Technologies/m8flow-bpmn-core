@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import hashlib
+
+import pytest
 from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core.application import (
     ClaimTaskCommand,
     CompleteTaskCommand,
     ErrorProcessInstanceCommand,
+    GetPendingTasksCommand,
     GetPendingTasksQuery,
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
+    ImportBpmnProcessDefinitionCommand,
     ListErrorProcessInstancesQuery,
     ListSuspendedProcessInstancesQuery,
     ListTerminatedProcessInstancesQuery,
@@ -133,6 +138,82 @@ def test_application_layer_handles_tasks_events_and_metadata(
     assert execute_query(
         session, GetPendingTasksQuery(tenant_id=tenant.id, user_id=user.id)
     ) == []
+
+
+def test_application_layer_supports_connection_transaction_control(
+    engine,
+) -> None:
+    tenant_id = ""
+    process_instance_id = 0
+
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        session = Session(
+            bind=connection,
+            autoflush=False,
+            expire_on_commit=False,
+        )
+        try:
+            tenant, user, process_instance, _task, human_task = _seed_process_instance(
+                session
+            )
+            tenant_id = tenant.id
+            process_instance_id = process_instance.id
+
+            pending_tasks = execute_command(
+                connection,
+                GetPendingTasksCommand(
+                    tenant_id=tenant.id,
+                    user_id=user.id,
+                ),
+            )
+            assert [task.id for task in pending_tasks] == [human_task.id]
+
+            current_process_instance = execute_query(
+                connection,
+                GetProcessInstanceQuery(
+                    tenant_id=tenant.id,
+                    process_instance_id=process_instance.id,
+                ),
+            )
+            assert current_process_instance.status == "running"
+
+            claimed_task = execute_command(
+                connection,
+                ClaimTaskCommand(
+                    tenant_id=tenant.id,
+                    human_task_id=human_task.id,
+                    user_id=user.id,
+                ),
+            )
+            assert claimed_task.actual_owner_id == user.id
+            assert claimed_task.task_status == "CLAIMED"
+
+            completed_task = execute_command(
+                connection,
+                CompleteTaskCommand(
+                    tenant_id=tenant.id,
+                    human_task_id=human_task.id,
+                    user_id=user.id,
+                ),
+            )
+            assert completed_task.completed is True
+            assert completed_task.task_status == "COMPLETED"
+        finally:
+            try:
+                transaction.rollback()
+            finally:
+                session.close()
+
+    with Session(bind=engine) as verify_session:
+        with pytest.raises(LookupError):
+            execute_query(
+                verify_session,
+                GetProcessInstanceQuery(
+                    tenant_id=tenant_id,
+                    process_instance_id=process_instance_id,
+                ),
+            )
 
 
 def test_process_lifecycle_commands_and_queries(session: Session) -> None:
@@ -323,6 +404,66 @@ def test_error_and_retry_lifecycle_commands(session: Session) -> None:
             ),
         )
     ] == ["process_instance_error", "process_instance_retried"]
+
+
+def test_application_layer_imports_bpmn_process_definition(session: Session) -> None:
+    tenant = M8flowTenantModel(
+        id="tenant-definition",
+        name="Tenant Definition",
+        slug="tenant-definition",
+    )
+    session.add(tenant)
+    session.flush()
+
+    bpmn_xml = "<definitions><process id='Process_import_1'/></definitions>"
+    dmn_xml = "<definitions><decision id='Decision_import_1'/></definitions>"
+    definition = execute_command(
+        session,
+        ImportBpmnProcessDefinitionCommand(
+            tenant_id=tenant.id,
+            bpmn_identifier="imported-process",
+            bpmn_name="Imported Process",
+            source_bpmn_xml=bpmn_xml,
+            source_dmn_xml=dmn_xml,
+            properties_json={"source": "application-layer-test", "version": 1},
+            bpmn_version_control_type="git",
+            bpmn_version_control_identifier="main",
+            created_at_in_seconds=10,
+            updated_at_in_seconds=20,
+        ),
+    )
+    assert definition.id is not None
+    assert definition.bpmn_identifier == "imported-process"
+    assert definition.bpmn_name == "Imported Process"
+    assert definition.source_bpmn_xml == bpmn_xml
+    assert definition.source_dmn_xml == dmn_xml
+    assert definition.full_process_model_hash == hashlib.sha256(
+        bpmn_xml.encode("utf-8")
+    ).hexdigest()
+    assert definition.single_process_hash == hashlib.sha256(
+        f"single::{bpmn_xml}".encode()
+    ).hexdigest()
+    assert definition.properties_json == {
+        "source": "application-layer-test",
+        "version": 1,
+    }
+
+    imported_definition = execute_command(
+        session,
+        ImportBpmnProcessDefinitionCommand(
+            tenant_id=tenant.id,
+            bpmn_identifier="imported-process",
+            bpmn_name="Imported Process",
+            source_bpmn_xml=bpmn_xml,
+            source_dmn_xml=dmn_xml,
+            properties_json={"source": "application-layer-test", "version": 1},
+            bpmn_version_control_type="git",
+            bpmn_version_control_identifier="main",
+            created_at_in_seconds=10,
+            updated_at_in_seconds=20,
+        ),
+    )
+    assert imported_definition.id == definition.id
 
 
 def _seed_process_instance(

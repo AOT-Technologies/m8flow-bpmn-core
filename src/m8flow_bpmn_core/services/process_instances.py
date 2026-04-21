@@ -18,6 +18,43 @@ from m8flow_bpmn_core.models.process_instance_metadata import (
 )
 
 
+def create_process_instance(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_model_identifier: str,
+    process_model_display_name: str,
+    process_initiator_id: int,
+    bpmn_process_definition_id: int,
+    bpmn_process_id: int,
+    summary: str | None = None,
+    process_version: int = 1,
+    created_at_in_seconds: int | None = None,
+    updated_at_in_seconds: int | None = None,
+) -> ProcessInstanceModel:
+    occurred_at = _resolve_timestamp(created_at_in_seconds)
+    process_instance = ProcessInstanceModel(
+        m8f_tenant_id=tenant_id,
+        process_model_identifier=process_model_identifier,
+        process_model_display_name=process_model_display_name,
+        summary=summary,
+        process_initiator_id=process_initiator_id,
+        bpmn_process_definition_id=bpmn_process_definition_id,
+        bpmn_process_id=bpmn_process_id,
+        process_version=process_version,
+        status=ProcessInstanceStatus.not_started.value,
+        created_at_in_seconds=occurred_at,
+        updated_at_in_seconds=(
+            updated_at_in_seconds
+            if updated_at_in_seconds is not None
+            else occurred_at
+        ),
+    )
+    session.add(process_instance)
+    session.flush()
+    return process_instance
+
+
 def get_process_instance(
     session: Session, *, tenant_id: str, process_instance_id: int
 ) -> ProcessInstanceModel:

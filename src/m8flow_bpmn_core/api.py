@@ -8,11 +8,19 @@ from __future__ import annotations
 from m8flow_bpmn_core.application import (
     ClaimTaskCommand,
     CompleteTaskCommand,
+    CreateProcessInstanceCommand,
     ErrorProcessInstanceCommand,
+    GetPendingTasksCommand,
     GetPendingTasksQuery,
+    GetProcessInstanceCommand,
+    GetProcessInstanceEventsCommand,
     GetProcessInstanceEventsQuery,
+    GetProcessInstanceMetadataCommand,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
+    ImportBpmnProcessDefinitionCommand,
+    InitializeProcessInstanceFromDefinitionCommand,
+    InitializeProcessInstanceWorkflowCommand,
     ListErrorProcessInstancesQuery,
     ListProcessInstancesQuery,
     ListSuspendedProcessInstancesQuery,
@@ -29,6 +37,7 @@ from m8flow_bpmn_core.application import (
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceStatus
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
 from m8flow_bpmn_core.services.process_instances import (
+    create_process_instance,
     error_process_instance,
     get_process_instance,
     get_process_instance_events,
@@ -49,11 +58,23 @@ from m8flow_bpmn_core.services.tasks import (
     complete_task,
     get_pending_tasks,
 )
+from m8flow_bpmn_core.services.workflow_runtime import (
+    advance_process_instance_workflow,
+    resolve_lane_assignment_id,
+)
 
 __all__ = [
     "ClaimTaskCommand",
     "CompleteTaskCommand",
+    "CreateProcessInstanceCommand",
     "ErrorProcessInstanceCommand",
+    "GetProcessInstanceCommand",
+    "GetPendingTasksCommand",
+    "GetProcessInstanceEventsCommand",
+    "GetProcessInstanceMetadataCommand",
+    "ImportBpmnProcessDefinitionCommand",
+    "InitializeProcessInstanceFromDefinitionCommand",
+    "InitializeProcessInstanceWorkflowCommand",
     "GetProcessInstanceQuery",
     "GetPendingTasksQuery",
     "GetProcessInstanceEventsQuery",
@@ -70,8 +91,10 @@ __all__ = [
     "SuspendProcessInstanceCommand",
     "TerminateProcessInstanceCommand",
     "UpsertProcessInstanceMetadataCommand",
+    "advance_process_instance_workflow",
     "claim_task",
     "complete_task",
+    "create_process_instance",
     "error_process_instance",
     "execute_command",
     "execute_query",
@@ -89,4 +112,5 @@ __all__ = [
     "suspend_process_instance",
     "terminate_process_instance",
     "upsert_process_instance_metadata",
+    "resolve_lane_assignment_id",
 ]

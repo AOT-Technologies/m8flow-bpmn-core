@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" id="Definitions_eligibility" name="Eligibility Check" namespace="http://camunda.org/schema/1.0/dmn" exporter="Camunda Modeler" exporterVersion="4.11.1">
+  <decision id="check_eligibility" name="Check Eligibility">
+    <decisionTable id="DecisionTable_eligibility">
+      <input id="Input_1">
+        <inputExpression id="InputExpression_1" typeRef="integer" expressionLanguage="python">
+          <text>amount</text>
+        </inputExpression>
+      </input>
+      <output id="Output_1" name="is_eligible" typeRef="boolean" />
+      <rule id="DecisionRule_1">
+        <description>Less than or equal to 500</description>
+        <inputEntry id="UnaryTests_1">
+          <text>&lt;= 500</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_1">
+          <text>True</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_2">
+        <description>Greater than 500</description>
+        <inputEntry id="UnaryTests_2">
+          <text>&gt; 500</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_2">
+          <text>False</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram>
+      <dmndi:DMNShape dmnElementRef="check_eligibility">
+        <dc:Bounds height="80" width="180" x="160" y="100" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

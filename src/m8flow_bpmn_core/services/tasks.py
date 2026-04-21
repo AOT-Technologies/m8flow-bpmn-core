@@ -2,12 +2,21 @@ from __future__ import annotations
 
 import time
 
-from sqlalchemy import Select, and_, select
+from sqlalchemy import Select, exists, select
 from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core.models.future_task import FutureTaskModel
 from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
+from m8flow_bpmn_core.models.process_instance import (
+    ProcessInstanceModel,
+    ProcessInstanceStatus,
+)
+from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.services.process_instances import record_process_instance_event
+from m8flow_bpmn_core.services.workflow_runtime import (
+    advance_process_instance_workflow,
+)
 
 
 def get_pending_tasks(
@@ -19,16 +28,14 @@ def get_pending_tasks(
     )
 
     if user_id is not None:
-        stmt = (
-            stmt.join(
-                HumanTaskUserModel,
-                and_(
-                    HumanTaskUserModel.human_task_id == HumanTaskModel.id,
+        stmt = stmt.where(
+            exists(
+                select(1).where(
                     HumanTaskUserModel.m8f_tenant_id == tenant_id,
-                ),
+                    HumanTaskUserModel.human_task_id == HumanTaskModel.id,
+                    HumanTaskUserModel.user_id == user_id,
+                )
             )
-            .where(HumanTaskUserModel.user_id == user_id)
-            .distinct()
         )
 
     stmt = stmt.order_by(HumanTaskModel.id)
@@ -110,6 +117,43 @@ def complete_task(
         future_task = session.get(FutureTaskModel, human_task.task_guid)
         if future_task is not None:
             future_task.completed = True
+
+    process_instance = session.get(ProcessInstanceModel, human_task.process_instance_id)
+    if (
+        process_instance is not None
+        and process_instance.workflow_state_json is not None
+    ):
+        process_instance = advance_process_instance_workflow(
+            session,
+            tenant_id=tenant_id,
+            process_instance_id=human_task.process_instance_id,
+            completed_task_guid=human_task.task_guid or human_task.task_model.guid,
+            completed_at_in_seconds=completed_at_in_seconds,
+        )
+        completed_at = float(
+            completed_at_in_seconds
+            if completed_at_in_seconds is not None
+            else round(time.time())
+        )
+        record_process_instance_event(
+            session,
+            tenant_id=tenant_id,
+            process_instance_id=human_task.process_instance_id,
+            event_type=ProcessInstanceEventType.task_completed,
+            task_guid=human_task.task_guid,
+            user_id=user_id,
+            timestamp=completed_at,
+        )
+        if process_instance.status == ProcessInstanceStatus.complete.value:
+            record_process_instance_event(
+                session,
+                tenant_id=tenant_id,
+                process_instance_id=human_task.process_instance_id,
+                event_type=ProcessInstanceEventType.process_instance_completed,
+                task_guid=human_task.task_guid,
+                user_id=user_id,
+                timestamp=completed_at,
+            )
 
     session.flush()
     return human_task
