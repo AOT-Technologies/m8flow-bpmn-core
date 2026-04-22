@@ -105,6 +105,7 @@ def execute_command(
                 human_task_id=command.human_task_id,
                 user_id=command.user_id,
                 completed_at_in_seconds=command.completed_at_in_seconds,
+                task_payload=command.task_payload,
             )
         if isinstance(command, RecordProcessInstanceEventCommand):
             return record_process_instance_event(

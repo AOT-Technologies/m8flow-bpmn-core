@@ -44,6 +44,7 @@ CONDITIONAL_APPROVAL_TASK_IDS = {
 SCENARIO_AMOUNT = 1_500
 MANAGER_DECISION = "Approved"
 FINANCE_DECISION = "Approved"
+SECTION_SEPARATOR = "=" * 88
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +68,7 @@ def main() -> None:
     )
     print(_describe_workflow_mode())
     print()
-    print("=" * 88)
+    print(SECTION_SEPARATOR)
     print("Database connection details")
     print(
         "Open DBeaver or another PostgreSQL client with the settings below "
@@ -81,7 +82,7 @@ def main() -> None:
     _pause("Press Enter to start the example.")
 
     print()
-    print("=" * 88)
+    print(SECTION_SEPARATOR)
     print("Database setup")
     print("Connecting to Postgres and creating the schema...")
     print(
@@ -207,7 +208,7 @@ def _clear_spinner(message: str) -> None:
 
 def _seed_demo_context(session: Session) -> ExampleContext:
     print()
-    print("=" * 88)
+    print(SECTION_SEPARATOR)
     print("Setup: create the demo tenant and users")
     print(
         "The workflow commands below use only the public API. The tenant and "
@@ -338,7 +339,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
     bpmn_xml = _render_conditional_approval_bpmn_xml(context.lane_owners)
     dmn_xml = EXAMPLE_DMN_PATH.read_text(encoding="utf-8")
 
-    submission_metadata = {
+    submission_payload = {
         "expense_date": "2026-04-01",
         "expense_type": "Travel",
         "amount": str(SCENARIO_AMOUNT),
@@ -381,22 +382,19 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         step_number=2,
         title="Initialize the process instance from the definition",
         context_text=(
-            "The requester submits an expense claim. The runtime creates the "
-            "process instance, stores the submission payload, and materializes "
-            "the first pending user task."
+            "The requester starts the workflow. The runtime creates the "
+            "process instance and materializes the first pending user task."
         ),
         command=api.InitializeProcessInstanceFromDefinitionCommand(
             tenant_id=context.tenant_id,
             bpmn_process_definition_id=definition.id,
             process_initiator_id=context.user_ids["requester"],
-            submission_metadata=submission_metadata,
             summary=f"Scenario: {context.scenario_name}",
             process_version=1,
             started_at_in_seconds=100,
             bpmn_process_id=CONDITIONAL_APPROVAL_PROCESS_ID,
         ),
     )
-    _print_payload_values("Submission payload", submission_metadata)
     _print_note(
         f"Process instance {process_instance.id} is now "
         f"{process_instance.status}."
@@ -432,19 +430,23 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         ),
     )
 
+    _print_payload_values("Submission payload", submission_payload)
+
     _run_command_step(
         engine,
         step_number=5,
         title="Complete the submit task",
         context_text=(
             "The requester completes the task to submit the expense claim "
-            "into the workflow."
+            "into the workflow. The payload is attached to this task "
+            "completion so it is persisted with the claimed task."
         ),
         command=api.CompleteTaskCommand(
             tenant_id=context.tenant_id,
             human_task_id=submit_task.id,
             user_id=context.user_ids["requester"],
             completed_at_in_seconds=110,
+            task_payload=submission_payload,
         ),
     )
 
@@ -498,30 +500,14 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         f"Manager and reviewer both see task id {manager_task.id} in the Manager lane."
     )
 
-    _run_command_step(
-        engine,
-        step_number=9,
-        title="Record the manager decision metadata",
-        context_text=(
-            "Before the manager completes the task, the workflow stores the "
-            "decision value that will drive the next branch."
-        ),
-        command=api.UpsertProcessInstanceMetadataCommand(
-            tenant_id=context.tenant_id,
-            process_instance_id=process_instance.id,
-            key="decision",
-            value=MANAGER_DECISION,
-            updated_at_in_seconds=112,
-        ),
-    )
     _print_payload_values(
         "Manager decision payload",
-        {"key": "decision", "value": MANAGER_DECISION},
+        {"decision": MANAGER_DECISION},
     )
 
     _run_command_step(
         engine,
-        step_number=10,
+        step_number=9,
         title="Claim the manager task",
         context_text="The manager claims the review task.",
         command=api.ClaimTaskCommand(
@@ -533,7 +519,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
 
     _run_command_step(
         engine,
-        step_number=11,
+        step_number=10,
         title="Complete the manager task",
         context_text=_manager_completion_context(),
         command=api.CompleteTaskCommand(
@@ -541,12 +527,13 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             human_task_id=manager_task.id,
             user_id=context.user_ids["manager"],
             completed_at_in_seconds=120,
+            task_payload={"decision": MANAGER_DECISION},
         ),
     )
 
     process_instance = _run_command_step(
         engine,
-        step_number=12,
+        step_number=11,
         title="Refresh the process instance after the manager decision",
         context_text=(
             "This read confirms whether the workflow stopped at the manager "
@@ -562,7 +549,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
     if MANAGER_DECISION == "Approved" and SCENARIO_AMOUNT > 500:
         finance_tasks = _run_command_step(
             engine,
-            step_number=13,
+            step_number=12,
             title="List the finance pending tasks",
             context_text=(
                 "The amount is above the auto-approval threshold, so the "
@@ -575,30 +562,14 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         )
         finance_task = _require_single_task(finance_tasks, "finance task")
 
-        _run_command_step(
-            engine,
-            step_number=14,
-            title="Record the finance decision metadata",
-            context_text=(
-                "The finance reviewer sets the final approval decision before "
-                "completing the task."
-            ),
-            command=api.UpsertProcessInstanceMetadataCommand(
-                tenant_id=context.tenant_id,
-                process_instance_id=process_instance.id,
-                key="finance_decision",
-                value=FINANCE_DECISION,
-                updated_at_in_seconds=123,
-            ),
-        )
         _print_payload_values(
             "Finance decision payload",
-            {"key": "finance_decision", "value": FINANCE_DECISION},
+            {"finance_decision": FINANCE_DECISION},
         )
 
         _run_command_step(
             engine,
-            step_number=15,
+            step_number=13,
             title="Claim the finance task",
             context_text="The finance reviewer claims the task.",
             command=api.ClaimTaskCommand(
@@ -610,7 +581,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
 
         _run_command_step(
             engine,
-            step_number=16,
+            step_number=14,
             title="Complete the finance task",
             context_text=(
                 f"The finance reviewer {_decision_verb(FINANCE_DECISION)} "
@@ -621,12 +592,13 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
                 human_task_id=finance_task.id,
                 user_id=context.user_ids["finance"],
                 completed_at_in_seconds=130,
+                task_payload={"finance_decision": FINANCE_DECISION},
             ),
         )
 
         process_instance = _run_command_step(
             engine,
-            step_number=17,
+            step_number=15,
             title="Refresh the process instance after the finance decision",
             context_text=(
                 "The final read should show the workflow has reached the "
@@ -640,7 +612,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
     else:
         finance_tasks = _run_command_step(
             engine,
-            step_number=13,
+            step_number=12,
             title="Confirm that Finance has no pending task",
             context_text=_finance_not_reached_context(),
             command=api.GetPendingTasksCommand(
@@ -652,7 +624,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             raise RuntimeError("Finance worklist should be empty for this branch")
 
     print()
-    print("=" * 88)
+    print(SECTION_SEPARATOR)
     print("Final reads")
     print(
         "These commands verify the persisted metadata and event history using "
@@ -661,7 +633,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
 
     metadata_rows = _run_command_step(
         engine,
-        step_number=18,
+        step_number=16,
         title="Read back the process metadata",
         context_text="This confirms the submission and decision metadata persisted.",
         command=api.GetProcessInstanceMetadataCommand(
@@ -675,7 +647,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
 
     events = _run_command_step(
         engine,
-        step_number=19,
+        step_number=17,
         title="Read back the process event history",
         context_text=(
             "This confirms the workflow created task and completion events "
@@ -704,11 +676,13 @@ def _run_command_step(
     command: object,
 ) -> Any:
     print()
-    print("=" * 88)
+    print(SECTION_SEPARATOR)
     print(f"Step {step_number}: {title}")
     print(context_text)
+    print(SECTION_SEPARATOR)
     print("Command:")
     print(_format_command(command))
+    print(SECTION_SEPARATOR)
     _pause("Press Enter to execute this command.")
     print("Status: executing command...")
     with engine.begin() as connection:
@@ -849,7 +823,7 @@ def _print_note(message: str) -> None:
 
 
 def _print_payload_values(label: str, payload: Any) -> None:
-    print("=" * 88)
+    print(SECTION_SEPARATOR)
     print(f"****** {label} ******")
     print(pformat(payload, sort_dicts=False, width=100))
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 
 from sqlalchemy import Select, exists, select
 from sqlalchemy.orm import Session
@@ -13,7 +14,10 @@ from m8flow_bpmn_core.models.process_instance import (
     ProcessInstanceStatus,
 )
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
-from m8flow_bpmn_core.services.process_instances import record_process_instance_event
+from m8flow_bpmn_core.services.process_instances import (
+    record_process_instance_event,
+    upsert_process_instance_metadata,
+)
 from m8flow_bpmn_core.services.tenant_users import (
     ensure_user_belongs_to_tenant,
 )
@@ -103,6 +107,7 @@ def complete_task(
     human_task_id: int,
     user_id: int,
     completed_at_in_seconds: int | None = None,
+    task_payload: Mapping[str, object] | None = None,
 ) -> HumanTaskModel:
     ensure_user_belongs_to_tenant(
         session,
@@ -120,6 +125,19 @@ def complete_task(
     ):
         raise PermissionError("User is not assigned to this task")
 
+    completed_at = (
+        completed_at_in_seconds
+        if completed_at_in_seconds is not None
+        else round(time.time())
+    )
+    _persist_task_payload(
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=human_task.process_instance_id,
+        task_payload=task_payload,
+        completed_at_in_seconds=completed_at,
+    )
+
     human_task.completed = True
     human_task.completed_by_user_id = user_id
     human_task.actual_owner_id = user_id
@@ -127,11 +145,7 @@ def complete_task(
 
     if human_task.task_model is not None:
         human_task.task_model.state = "COMPLETED"
-        human_task.task_model.end_in_seconds = (
-            completed_at_in_seconds
-            if completed_at_in_seconds is not None
-            else round(time.time())
-        )
+        human_task.task_model.end_in_seconds = completed_at
 
     if human_task.task_guid is not None:
         future_task = session.get(FutureTaskModel, human_task.task_guid)
@@ -148,12 +162,7 @@ def complete_task(
             tenant_id=tenant_id,
             process_instance_id=human_task.process_instance_id,
             completed_task_guid=human_task.task_guid or human_task.task_model.guid,
-            completed_at_in_seconds=completed_at_in_seconds,
-        )
-        completed_at = float(
-            completed_at_in_seconds
-            if completed_at_in_seconds is not None
-            else round(time.time())
+            completed_at_in_seconds=completed_at,
         )
         record_process_instance_event(
             session,
@@ -162,7 +171,7 @@ def complete_task(
             event_type=ProcessInstanceEventType.task_completed,
             task_guid=human_task.task_guid,
             user_id=user_id,
-            timestamp=completed_at,
+            timestamp=float(completed_at),
         )
         if process_instance.status == ProcessInstanceStatus.complete.value:
             record_process_instance_event(
@@ -172,7 +181,7 @@ def complete_task(
                 event_type=ProcessInstanceEventType.process_instance_completed,
                 task_guid=human_task.task_guid,
                 user_id=user_id,
-                timestamp=completed_at,
+                timestamp=float(completed_at),
             )
 
     session.flush()
@@ -216,3 +225,26 @@ def _user_can_complete_task(
         )
     )
     return human_task is not None
+
+
+def _persist_task_payload(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_instance_id: int,
+    task_payload: Mapping[str, object] | None,
+    completed_at_in_seconds: int,
+) -> None:
+    if not task_payload:
+        return
+
+    for key, value in task_payload.items():
+        upsert_process_instance_metadata(
+            session,
+            tenant_id=tenant_id,
+            process_instance_id=process_instance_id,
+            key=str(key),
+            value=str(value),
+            updated_at_in_seconds=completed_at_in_seconds,
+            created_at_in_seconds=completed_at_in_seconds,
+        )

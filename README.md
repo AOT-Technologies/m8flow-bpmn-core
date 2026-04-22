@@ -18,6 +18,10 @@ Initial scaffold for the M8Flow BPMN core library.
 This package is a library, not an HTTP service.
 It is meant to be called directly by the platform or app layer through Python imports.
 
+## Documentation
+
+Detailed API and usage notes live in [doc/README.md](doc/README.md).
+
 ## Local Setup
 
 1. Create or refresh the local virtual environment with `python -m venv .venv`.
@@ -29,6 +33,20 @@ It is meant to be called directly by the platform or app layer through Python im
 ## Development Commands
 
 Use `uv run` so the commands always execute inside the synced project environment.
+
+### Packaging
+
+- Build the distributable wheel and source archive:
+
+  `make package`
+
+- Build only the wheel artifact:
+
+  `make package-wheel`
+
+The package artifacts are written to `dist/`. Use the wheel from that directory
+as the dependency artifact in another project or publish it to your internal
+artifact storage.
 
 ### Ruff
 
@@ -92,9 +110,10 @@ the scenario test changes variables such as `approval_state`, `approval_amount`,
 The BPMN fixture used for this demo lives in [tests/fixtures/conditional-approval.bpmn](tests/fixtures/conditional-approval.bpmn).
 The demo now uses the public `ImportBpmnProcessDefinitionCommand` to create the
 process definition from the BPMN and DMN source, then uses
-`InitializeProcessInstanceFromDefinitionCommand` to create the process instance,
-store the submission payload, initialize the SpiffWorkflow-backed runtime, and
-materialize the first pending task.
+`InitializeProcessInstanceFromDefinitionCommand` to create the process instance
+and initialize the SpiffWorkflow-backed runtime. The submit form payload is
+then attached to the submit task completion, and the manager and finance
+decision payloads are attached the same way.
 The fixture includes lane-based assignment for Manager and Finance, a script task
 that declares the `lane_owners` mapping, and conditional branches for manager
 approval, auto-approval, and finance escalation driven by the `amount` DMN.

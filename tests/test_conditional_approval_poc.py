@@ -148,7 +148,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert submit_task.json_metadata is not None
     assert submit_task.json_metadata["lane_owners"] == lane_owners
     assert _assignment_summary(submit_task) == [
-        ("requester@m8flow", HumanTaskUserAddedBy.process_initiator.value),
+        ("requester", HumanTaskUserAddedBy.process_initiator.value),
     ]
 
     submit_claimed_task = api.execute_command(
@@ -168,6 +168,12 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
             human_task_id=submit_task.id,
             user_id=context.users["requester"].id,
             completed_at_in_seconds=110,
+            task_payload={
+                "expense_date": "2026-04-01",
+                "expense_type": "Travel",
+                "amount": str(scenario.amount),
+                "description": "Trip to LA",
+            },
         ),
     )
     assert submit_completed_task.task_model.future_task is not None
@@ -213,8 +219,8 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert manager_task.json_metadata is not None
     assert manager_task.json_metadata["lane_owners"] == lane_owners
     assert _assignment_summary(manager_task) == [
-        ("manager@m8flow", HumanTaskUserAddedBy.lane_owner.value),
-        ("reviewer@m8flow", HumanTaskUserAddedBy.lane_owner.value),
+        ("manager", HumanTaskUserAddedBy.lane_owner.value),
+        ("reviewer", HumanTaskUserAddedBy.lane_owner.value),
     ]
     for username in ("manager", "reviewer"):
         assert [
@@ -227,17 +233,6 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
                 ),
             )
         ] == [manager_task.id]
-
-    api.execute_command(
-        session,
-        api.UpsertProcessInstanceMetadataCommand(
-            tenant_id=context.tenant.id,
-            process_instance_id=context.process_instance.id,
-            key="decision",
-            value=scenario.manager_decision,
-            updated_at_in_seconds=112,
-        ),
-    )
 
     manager_claimed_task = api.execute_command(
         session,
@@ -256,6 +251,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
             human_task_id=manager_task.id,
             user_id=context.users["manager"].id,
             completed_at_in_seconds=120,
+            task_payload={"decision": scenario.manager_decision},
         ),
     )
     assert manager_completed_task.task_model.future_task is not None
@@ -305,7 +301,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         assert finance_task.json_metadata is not None
         assert finance_task.json_metadata["lane_owners"] == lane_owners
         assert _assignment_summary(finance_task) == [
-            ("james@m8flow", HumanTaskUserAddedBy.lane_owner.value),
+            ("james", HumanTaskUserAddedBy.lane_owner.value),
         ]
         assert [
             item.id
@@ -319,17 +315,6 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         ] == [finance_task.id]
 
         # Step 6: Finance claims the task and decides whether it is approved.
-        api.execute_command(
-            session,
-            api.UpsertProcessInstanceMetadataCommand(
-                tenant_id=context.tenant.id,
-                process_instance_id=context.process_instance.id,
-                key="finance_decision",
-                value=scenario.finance_decision or "Approved",
-                updated_at_in_seconds=123,
-            ),
-        )
-
         finance_claimed_task = api.execute_command(
             session,
             api.ClaimTaskCommand(
@@ -347,6 +332,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
                 human_task_id=finance_task.id,
                 user_id=context.users["finance"].id,
                 completed_at_in_seconds=130,
+                task_payload={
+                    "finance_decision": scenario.finance_decision or "Approved"
+                },
             ),
         )
         assert finance_completed_task.task_model.future_task is not None
@@ -424,7 +412,7 @@ def _seed_conditional_approval_workflow(
 
     users = {
         "manager": UserModel(
-            username="manager@m8flow",
+            username="manager",
             email="manager@example.com",
             service=service_url,
             service_id="manager-keycloak",
@@ -433,7 +421,7 @@ def _seed_conditional_approval_workflow(
             updated_at_in_seconds=1,
         ),
         "reviewer": UserModel(
-            username="reviewer@m8flow",
+            username="reviewer",
             email="reviewer@example.com",
             service=service_url,
             service_id="reviewer-keycloak",
@@ -442,7 +430,7 @@ def _seed_conditional_approval_workflow(
             updated_at_in_seconds=1,
         ),
         "finance": UserModel(
-            username="james@m8flow",
+            username="james",
             email="james@example.com",
             service=service_url,
             service_id="finance-keycloak",
@@ -451,7 +439,7 @@ def _seed_conditional_approval_workflow(
             updated_at_in_seconds=1,
         ),
         "requester": UserModel(
-            username="requester@m8flow",
+            username="requester",
             email="requester@example.com",
             service=service_url,
             service_id="requester-keycloak",
@@ -502,12 +490,6 @@ def _seed_conditional_approval_workflow(
             tenant_id=tenant.id,
             bpmn_process_definition_id=definition.id,
             process_initiator_id=users["requester"].id,
-            submission_metadata={
-                "expense_date": "2026-04-01",
-                "expense_type": "Travel",
-                "amount": str(scenario.amount),
-                "description": "Trip to LA",
-            },
             summary=f"Scenario: {scenario.name}",
             process_version=1,
             started_at_in_seconds=100,
@@ -616,8 +598,8 @@ def _assert_conditional_approval_bpmn_shape() -> dict[str, list[str]]:
     assert script_task.get("name") == "Determine Expense Approvers"
     lane_owners = _extract_lane_owners(script_task)
     assert lane_owners == {
-        "Manager": ["manager@m8flow", "reviewer@m8flow"],
-        "Finance": ["james@m8flow"],
+        "Manager": ["manager", "reviewer"],
+        "Finance": ["james"],
     }
 
     assert _extract_spiff_properties(root, "userTask", "Activity_0qoxmh9") == {

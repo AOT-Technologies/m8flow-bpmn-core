@@ -20,6 +20,7 @@ class CompleteTaskCommand:
     human_task_id: int
     user_id: int
     completed_at_in_seconds: int | None = None
+    task_payload: dict[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)

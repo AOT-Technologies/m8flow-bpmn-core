@@ -176,7 +176,10 @@ function Test-DatabaseUrlReachable {
         [string]$PythonExe
     )
 
-    $checkScript = @'
+    $checkScriptPath = Join-Path ([System.IO.Path]::GetTempPath()) (
+        "m8flow-db-check-$([Guid]::NewGuid().ToString('N')).py"
+    )
+$checkScript = @'
 import sys
 
 from sqlalchemy import create_engine, text
@@ -187,12 +190,20 @@ engine = create_engine(url)
 try:
     with engine.connect() as connection:
         connection.execute(text("select 1"))
+except Exception:
+    sys.exit(1)
 finally:
     engine.dispose()
 '@
 
-    & $PythonExe -c $checkScript $DatabaseUrl | Out-Null
-    return $LASTEXITCODE -eq 0
+    try {
+        Set-Content -LiteralPath $checkScriptPath -Value $checkScript -Encoding UTF8
+        & $PythonExe $checkScriptPath $DatabaseUrl | Out-Null
+        return $LASTEXITCODE -eq 0
+    }
+    finally {
+        Remove-Item -LiteralPath $checkScriptPath -ErrorAction SilentlyContinue
+    }
 }
 
 Main @PSBoundParameters

@@ -64,8 +64,8 @@
     </bpmn:startEvent>
     <bpmn:scriptTask id="Activity_09regp6" name="Determine Expense Approvers">
       <bpmn:script>lane_owners = {
-    "Manager" : ["manager@m8flow", "reviewer@m8flow"],
-    "Finance" : ["james@m8flow"]
+    "Manager" : ["manager", "reviewer"],
+    "Finance" : ["james"]
 }</bpmn:script>
       <bpmn:incoming>Flow_1lyxtr6</bpmn:incoming>
       <bpmn:outgoing>Flow_1rkv9pi</bpmn:outgoing>

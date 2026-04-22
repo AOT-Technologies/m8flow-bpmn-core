@@ -130,10 +130,23 @@ def test_application_layer_handles_tasks_events_and_metadata(
             human_task_id=human_task.id,
             user_id=user.id,
             completed_at_in_seconds=130,
+            task_payload={"routing_hint": "manual"},
         ),
     )
     assert completed_task.completed is True
     assert completed_task.task_status == "COMPLETED"
+
+    metadata_rows = execute_query(
+        session,
+        GetProcessInstanceMetadataQuery(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+        ),
+    )
+    assert {item.key: item.value for item in metadata_rows} == {
+        "approval_state": "approved",
+        "routing_hint": "manual",
+    }
 
     assert execute_query(
         session, GetPendingTasksQuery(tenant_id=tenant.id, user_id=user.id)
