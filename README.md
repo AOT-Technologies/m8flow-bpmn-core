@@ -99,6 +99,55 @@ The fixture includes lane-based assignment for Manager and Finance, a script tas
 that declares the `lane_owners` mapping, and conditional branches for manager
 approval, auto-approval, and finance escalation driven by the `amount` DMN.
 
+### Interactive Usage Example
+
+- Run the step-by-step Postgres walkthrough:
+
+  `uv run python examples/conditional_approval_poc.py`
+
+- Run the manager-rejection variant:
+
+  `uv run python examples/conditional_approval_rejection_poc.py`
+
+The script seeds a demo tenant and users, imports the conditional approval BPMN
+and DMN fixtures, and then drives the workflow through the public
+`m8flow-bpmn-core` API using a caller-owned Postgres connection.
+It pauses before and after each command so you can read the context and result
+for every step.
+The rejection variant follows the same setup but stops before the Finance lane
+by setting the manager decision to `Rejected`.
+
+If you want a launcher that will use your local Postgres instance when it is
+reachable and otherwise start a temporary Docker container, run:
+
+`.\examples\conditional_approval_poc.ps1`
+
+For the rejection variant, run:
+
+`.\examples\conditional_approval_rejection_poc.ps1`
+
+Add `-UseDocker` to force a temporary container even when a local database is
+available. Add `-KeepContainer` if you want the temporary container to stay up
+after the example exits.
+
+For Bash or Unix-like shells, use:
+
+`bash examples/conditional_approval_poc.sh`
+
+For the rejection variant, use:
+
+`bash examples/conditional_approval_rejection_poc.sh`
+
+Use `--docker` to force the temporary container and `--keep-container` to leave
+it running after the example exits.
+
+Install the Postgres extra first with:
+
+`uv sync --extra postgresql`
+
+Set `M8FLOW_EXAMPLE_DATABASE_URL` to point at the database you want the script
+to use. If it is unset, the script uses a local Postgres example database URL.
+
 ## Python
 
 This project targets Python 3.12.

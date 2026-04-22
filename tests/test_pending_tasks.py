@@ -19,7 +19,16 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
 ) -> None:
     tenant_a = M8flowTenantModel(id="tenant-a", name="Tenant A", slug="tenant-a")
     tenant_b = M8flowTenantModel(id="tenant-b", name="Tenant B", slug="tenant-b")
-    user = UserModel(username="alice", email="alice@example.com")
+    service_url = f"http://localhost:7002/realms/{tenant_a.slug}"
+    user = UserModel(
+        username="alice",
+        email="alice@example.com",
+        service=service_url,
+        service_id="alice-keycloak",
+        display_name="Alice",
+        created_at_in_seconds=1,
+        updated_at_in_seconds=1,
+    )
 
     session.add_all([tenant_a, tenant_b, user])
     session.flush()

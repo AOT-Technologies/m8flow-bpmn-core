@@ -16,7 +16,16 @@ from m8flow_bpmn_core.services.tasks import claim_task, complete_task, get_pendi
 
 def test_task_claim_complete_and_future_task_upsert(session) -> None:
     tenant = M8flowTenantModel(id="tenant-a", name="Tenant A", slug="tenant-a")
-    user = UserModel(username="alice", email="alice@example.com")
+    service_url = f"http://localhost:7002/realms/{tenant.slug}"
+    user = UserModel(
+        username="alice",
+        email="alice@example.com",
+        service=service_url,
+        service_id="alice-keycloak",
+        display_name="Alice",
+        created_at_in_seconds=1,
+        updated_at_in_seconds=1,
+    )
 
     session.add_all([tenant, user])
     session.flush()

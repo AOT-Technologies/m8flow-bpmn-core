@@ -420,23 +420,44 @@ def _seed_conditional_approval_workflow(
 ) -> ConditionalApprovalContext:
     bpmn_xml = EXAMPLE_BPMN_PATH.read_text(encoding="utf-8")
     dmn_xml = EXAMPLE_DMN_PATH.read_text(encoding="utf-8")
+    service_url = "http://localhost:7002/realms/conditional-approval"
 
     users = {
         "manager": UserModel(
             username="manager@m8flow",
             email="manager@example.com",
+            service=service_url,
+            service_id="manager-keycloak",
+            display_name="Manager",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
         ),
         "reviewer": UserModel(
             username="reviewer@m8flow",
             email="reviewer@example.com",
+            service=service_url,
+            service_id="reviewer-keycloak",
+            display_name="Reviewer",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
         ),
         "finance": UserModel(
             username="james@m8flow",
             email="james@example.com",
+            service=service_url,
+            service_id="finance-keycloak",
+            display_name="Finance",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
         ),
         "requester": UserModel(
             username="requester@m8flow",
             email="requester@example.com",
+            service=service_url,
+            service_id="requester-keycloak",
+            display_name="Requester",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
         ),
     }
 

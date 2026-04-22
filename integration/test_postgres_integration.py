@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
@@ -30,11 +31,22 @@ from m8flow_bpmn_core.models import (
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 CONDITIONAL_APPROVAL_BPMN_PATH = FIXTURE_DIR / "conditional-approval.bpmn"
 CONDITIONAL_APPROVAL_DMN_PATH = FIXTURE_DIR / "check_eligibility.dmn"
+VALIDATION_BPMN_PATH = FIXTURE_DIR / "invoice_approval_poc.bpmn"
 CONDITIONAL_APPROVAL_PROCESS_ID = "Process_conditional_approval_8qpy9gh"
 CONDITIONAL_APPROVAL_LANE_OWNERS = {
     "Manager": ["manager@m8flow", "reviewer@m8flow"],
     "Finance": ["james@m8flow"],
 }
+
+
+@dataclass(frozen=True, slots=True)
+class TenantValidationContext:
+    tenant: M8flowTenantModel
+    foreign_tenant: M8flowTenantModel
+    tenant_user: UserModel
+    foreign_user: UserModel
+    process_instance: ProcessInstanceModel
+    human_task: HumanTaskModel
 
 
 def test_postgres_supports_transaction_control_and_pending_tasks(
@@ -394,6 +406,109 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             )
 
 
+def test_postgres_rejects_cross_tenant_workflow_and_task_actions(
+    postgres_engine,
+) -> None:
+    with postgres_engine.connect() as connection:
+        transaction = connection.begin()
+        session = Session(
+            bind=connection,
+            autoflush=False,
+            expire_on_commit=False,
+        )
+        try:
+            context = _seed_tenant_validation_context(session)
+
+            with pytest.raises(PermissionError, match="does not belong to tenant"):
+                api.execute_command(
+                    connection,
+                    api.InitializeProcessInstanceFromDefinitionCommand(
+                        tenant_id=context.tenant.id,
+                        bpmn_process_definition_id=(
+                            context.process_instance.bpmn_process_definition_id
+                        ),
+                        process_initiator_id=context.foreign_user.id,
+                        submission_metadata={
+                            "expense_date": "2026-04-01",
+                            "expense_type": "Travel",
+                            "amount": "1500",
+                            "description": "Trip to LA",
+                        },
+                        summary="Cross-tenant workflow start should fail",
+                        process_version=1,
+                        started_at_in_seconds=100,
+                        bpmn_process_id="invoice_approval_poc",
+                    ),
+                )
+
+            pending_tasks = api.execute_command(
+                connection,
+                api.GetPendingTasksCommand(
+                    tenant_id=context.tenant.id,
+                    user_id=context.tenant_user.id,
+                ),
+            )
+            assert [task.id for task in pending_tasks] == [context.human_task.id]
+
+            with pytest.raises(PermissionError, match="does not belong to tenant"):
+                api.execute_command(
+                    connection,
+                    api.GetPendingTasksCommand(
+                        tenant_id=context.tenant.id,
+                        user_id=context.foreign_user.id,
+                    ),
+                )
+
+            with pytest.raises(PermissionError, match="does not belong to tenant"):
+                api.execute_command(
+                    connection,
+                    api.ClaimTaskCommand(
+                        tenant_id=context.tenant.id,
+                        human_task_id=context.human_task.id,
+                        user_id=context.foreign_user.id,
+                    ),
+                )
+
+            claimed_task = api.execute_command(
+                connection,
+                api.ClaimTaskCommand(
+                    tenant_id=context.tenant.id,
+                    human_task_id=context.human_task.id,
+                    user_id=context.tenant_user.id,
+                ),
+            )
+            assert claimed_task.actual_owner_id == context.tenant_user.id
+            assert claimed_task.task_status == "CLAIMED"
+
+            with pytest.raises(PermissionError, match="does not belong to tenant"):
+                api.execute_command(
+                    connection,
+                    api.CompleteTaskCommand(
+                        tenant_id=context.tenant.id,
+                        human_task_id=context.human_task.id,
+                        user_id=context.foreign_user.id,
+                        completed_at_in_seconds=120,
+                    ),
+                )
+
+            completed_task = api.execute_command(
+                connection,
+                api.CompleteTaskCommand(
+                    tenant_id=context.tenant.id,
+                    human_task_id=context.human_task.id,
+                    user_id=context.tenant_user.id,
+                    completed_at_in_seconds=130,
+                ),
+            )
+            assert completed_task.completed is True
+            assert completed_task.task_status == "COMPLETED"
+        finally:
+            try:
+                transaction.rollback()
+            finally:
+                session.close()
+
+
 def _seed_runtime_rows(
     session: Session,
 ) -> tuple[M8flowTenantModel, UserModel, ProcessInstanceModel, HumanTaskModel]:
@@ -402,9 +517,15 @@ def _seed_runtime_rows(
         name="Postgres Tenant",
         slug=f"postgres-tenant-{uuid4().hex[:8]}",
     )
+    service_url = f"http://localhost:7002/realms/{tenant.slug}"
     user = UserModel(
         username=f"alice-{uuid4().hex[:8]}",
         email=f"alice-{uuid4().hex[:8]}@example.com",
+        service=service_url,
+        service_id="alice-keycloak",
+        display_name="Alice",
+        created_at_in_seconds=1,
+        updated_at_in_seconds=1,
     )
     session.add_all([tenant, user])
     session.flush()
@@ -529,25 +650,193 @@ def _seed_conditional_approval_users(
         name="Conditional Approval Postgres",
         slug="conditional-approval-postgres",
     )
+    service_url = f"http://localhost:7002/realms/{tenant.slug}"
     users = {
         "manager": UserModel(
             username="manager@m8flow",
             email="manager@example.com",
+            service=service_url,
+            service_id="manager-keycloak",
+            display_name="Manager",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
         ),
         "reviewer": UserModel(
             username="reviewer@m8flow",
             email="reviewer@example.com",
+            service=service_url,
+            service_id="reviewer-keycloak",
+            display_name="Reviewer",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
         ),
         "finance": UserModel(
             username="james@m8flow",
             email="james@example.com",
+            service=service_url,
+            service_id="finance-keycloak",
+            display_name="Finance",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
         ),
         "requester": UserModel(
             username="requester@m8flow",
             email="requester@example.com",
+            service=service_url,
+            service_id="requester-keycloak",
+            display_name="Requester",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
         ),
     }
     session.add(tenant)
     session.add_all(users.values())
     session.flush()
     return tenant, users
+
+
+def _seed_tenant_validation_context(
+    session: Session,
+) -> TenantValidationContext:
+    tenant = M8flowTenantModel(
+        id=f"tenant-validation-postgres-{uuid4().hex[:8]}",
+        name="Tenant Validation Postgres",
+        slug=f"tenant-validation-postgres-{uuid4().hex[:8]}",
+    )
+    foreign_tenant = M8flowTenantModel(
+        id=f"tenant-validation-foreign-postgres-{uuid4().hex[:8]}",
+        name="Tenant Validation Foreign Postgres",
+        slug=f"tenant-validation-foreign-postgres-{uuid4().hex[:8]}",
+    )
+    tenant_service = f"http://localhost:7002/realms/{tenant.slug}"
+    foreign_service = f"http://localhost:7002/realms/{foreign_tenant.slug}"
+    tenant_user = UserModel(
+        username=f"tenant-user-{uuid4().hex[:8]}",
+        email=f"tenant-user-{uuid4().hex[:8]}@example.com",
+        service=tenant_service,
+        service_id=f"tenant-user-{uuid4().hex[:8]}-keycloak",
+        display_name="Tenant User",
+        created_at_in_seconds=1,
+        updated_at_in_seconds=1,
+    )
+    foreign_user = UserModel(
+        username=f"foreign-user-{uuid4().hex[:8]}",
+        email=f"foreign-user-{uuid4().hex[:8]}@example.com",
+        service=foreign_service,
+        service_id=f"foreign-user-{uuid4().hex[:8]}-keycloak",
+        display_name="Foreign User",
+        created_at_in_seconds=1,
+        updated_at_in_seconds=1,
+    )
+    session.add_all([tenant, foreign_tenant, tenant_user, foreign_user])
+    session.flush()
+
+    definition = BpmnProcessDefinitionModel(
+        m8f_tenant_id=tenant.id,
+        single_process_hash="validation-single",
+        full_process_model_hash="validation-full",
+        bpmn_identifier="tenant-validation-process",
+        bpmn_name="Tenant Validation Process",
+        source_bpmn_xml=VALIDATION_BPMN_PATH.read_text(encoding="utf-8"),
+        source_dmn_xml=None,
+        properties_json={"version": 1},
+        bpmn_version_control_type="git",
+        bpmn_version_control_identifier="main",
+        created_at_in_seconds=900,
+        updated_at_in_seconds=900,
+    )
+    session.add(definition)
+    session.flush()
+
+    bpmn_process = BpmnProcessModel(
+        m8f_tenant_id=tenant.id,
+        guid=f"validation-process-{uuid4().hex[:8]}",
+        bpmn_process_definition_id=definition.id,
+        top_level_process_id=None,
+        direct_parent_process_id=None,
+        properties_json={"root": "approve_invoice"},
+        json_data_hash=f"validation-process-json-{uuid4().hex[:8]}",
+    )
+    session.add(bpmn_process)
+    session.flush()
+
+    task_definition = TaskDefinitionModel(
+        m8f_tenant_id=tenant.id,
+        bpmn_process_definition_id=definition.id,
+        bpmn_identifier="approve_invoice",
+        bpmn_name="Approve Invoice",
+        typename="UserTask",
+        properties_json={"allowGuest": False},
+        created_at_in_seconds=950,
+        updated_at_in_seconds=950,
+    )
+    session.add(task_definition)
+    session.flush()
+
+    process_instance = ProcessInstanceModel(
+        m8f_tenant_id=tenant.id,
+        process_model_identifier="tenant-validation-process",
+        process_model_display_name="Tenant Validation Process",
+        process_initiator_id=tenant_user.id,
+        bpmn_process_definition_id=definition.id,
+        bpmn_process_id=bpmn_process.id,
+        status="running",
+        process_version=1,
+        created_at_in_seconds=1_000,
+        updated_at_in_seconds=1_000,
+    )
+    session.add(process_instance)
+    session.flush()
+
+    task = TaskModel(
+        m8f_tenant_id=tenant.id,
+        guid=f"validation-task-{uuid4().hex[:8]}",
+        bpmn_process_id=bpmn_process.id,
+        process_instance_id=process_instance.id,
+        task_definition_id=task_definition.id,
+        state="READY",
+        properties_json={"task_spec": "Approve Invoice"},
+        json_data_hash=f"validation-json-{uuid4().hex[:8]}",
+        python_env_data_hash=f"validation-env-{uuid4().hex[:8]}",
+    )
+    session.add(task)
+    session.flush()
+
+    human_task = HumanTaskModel(
+        m8f_tenant_id=tenant.id,
+        process_instance_id=process_instance.id,
+        task_guid=task.guid,
+        lane_assignment_id=None,
+        completed_by_user_id=None,
+        actual_owner_id=None,
+        task_name="approve_invoice",
+        task_title="Approve Invoice",
+        task_type="UserTask",
+        task_status="READY",
+        process_model_display_name=process_instance.process_model_display_name,
+        bpmn_process_identifier=process_instance.process_model_identifier,
+        lane_name="process initiator",
+        json_metadata={"priority": "high"},
+        completed=False,
+    )
+    session.add(human_task)
+    session.flush()
+
+    session.add(
+        HumanTaskUserModel(
+            m8f_tenant_id=tenant.id,
+            human_task_id=human_task.id,
+            user_id=tenant_user.id,
+            added_by="process_initiator",
+        )
+    )
+    session.flush()
+
+    return TenantValidationContext(
+        tenant=tenant,
+        foreign_tenant=foreign_tenant,
+        tenant_user=tenant_user,
+        foreign_user=foreign_user,
+        process_instance=process_instance,
+        human_task=human_task,
+    )

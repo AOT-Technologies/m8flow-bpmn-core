@@ -42,6 +42,10 @@ from m8flow_bpmn_core.services.process_instances import (
     record_process_instance_event,
     upsert_process_instance_metadata,
 )
+from m8flow_bpmn_core.services.tenant_users import (
+    tenant_identifiers_for,
+    user_belongs_to_tenant,
+)
 
 _WORKFLOW_SERIALIZER = BpmnWorkflowSerializer(
     registry=BpmnWorkflowSerializer.configure(SPIFF_CONFIG)
@@ -805,16 +809,28 @@ def _find_users_by_identifier(
     normalized = identifier.strip()
     candidates: list[UserModel] = []
     stmt = select(UserModel).where(
-        or_(UserModel.username == normalized, UserModel.email == normalized)
+        or_(
+            UserModel.username == normalized,
+            UserModel.email == normalized,
+            UserModel.service_id == normalized,
+        )
     )
     candidates.extend(session.scalars(stmt).all())
-    if candidates:
-        return candidates
 
     if "@" in normalized:
         username, _tenant_suffix = normalized.split("@", 1)
         stmt = select(UserModel).where(UserModel.username == username)
         candidates.extend(session.scalars(stmt).all())
+
+    if tenant_id:
+        tenant_identifiers = tenant_identifiers_for(session, tenant_id)
+        if tenant_identifiers:
+            candidates = [
+                user
+                for user in candidates
+                if user_belongs_to_tenant(user, tenant_identifiers)
+            ]
+
     return candidates
 
 

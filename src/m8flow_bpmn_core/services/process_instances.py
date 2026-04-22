@@ -16,6 +16,9 @@ from m8flow_bpmn_core.models.process_instance_event import (
 from m8flow_bpmn_core.models.process_instance_metadata import (
     ProcessInstanceMetadataModel,
 )
+from m8flow_bpmn_core.services.tenant_users import (
+    ensure_user_belongs_to_tenant,
+)
 
 
 def create_process_instance(
@@ -32,6 +35,11 @@ def create_process_instance(
     created_at_in_seconds: int | None = None,
     updated_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=process_initiator_id,
+    )
     occurred_at = _resolve_timestamp(created_at_in_seconds)
     process_instance = ProcessInstanceModel(
         m8f_tenant_id=tenant_id,
@@ -124,6 +132,12 @@ def record_process_instance_event(
     task_guid: str | None = None,
     user_id: int | None = None,
 ) -> ProcessInstanceEventModel:
+    if user_id is not None:
+        ensure_user_belongs_to_tenant(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
     _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
     )
@@ -215,6 +229,12 @@ def suspend_process_instance(
     user_id: int | None = None,
     suspended_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
+    if user_id is not None:
+        ensure_user_belongs_to_tenant(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
     )
@@ -246,6 +266,12 @@ def error_process_instance(
     user_id: int | None = None,
     errored_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
+    if user_id is not None:
+        ensure_user_belongs_to_tenant(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
     )
@@ -285,6 +311,12 @@ def resume_process_instance(
     user_id: int | None = None,
     resumed_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
+    if user_id is not None:
+        ensure_user_belongs_to_tenant(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
     )
@@ -318,6 +350,12 @@ def retry_process_instance(
     user_id: int | None = None,
     retried_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
+    if user_id is not None:
+        ensure_user_belongs_to_tenant(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
     )
@@ -352,6 +390,12 @@ def terminate_process_instance(
     user_id: int | None = None,
     terminated_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
+    if user_id is not None:
+        ensure_user_belongs_to_tenant(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
     )

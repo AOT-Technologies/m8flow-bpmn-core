@@ -14,6 +14,9 @@ from m8flow_bpmn_core.models.process_instance import (
 )
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
 from m8flow_bpmn_core.services.process_instances import record_process_instance_event
+from m8flow_bpmn_core.services.tenant_users import (
+    ensure_user_belongs_to_tenant,
+)
 from m8flow_bpmn_core.services.workflow_runtime import (
     advance_process_instance_workflow,
 )
@@ -22,6 +25,13 @@ from m8flow_bpmn_core.services.workflow_runtime import (
 def get_pending_tasks(
     session: Session, *, tenant_id: str, user_id: int | None = None
 ) -> list[HumanTaskModel]:
+    if user_id is not None:
+        ensure_user_belongs_to_tenant(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
+
     stmt: Select[tuple[HumanTaskModel]] = select(HumanTaskModel).where(
         HumanTaskModel.m8f_tenant_id == tenant_id,
         HumanTaskModel.completed.is_(False),
@@ -50,6 +60,11 @@ def claim_task(
     user_id: int,
     added_by: str = "manual",
 ) -> HumanTaskModel:
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
     human_task = _load_human_task(
         session, tenant_id=tenant_id, human_task_id=human_task_id
     )
@@ -89,6 +104,11 @@ def complete_task(
     user_id: int,
     completed_at_in_seconds: int | None = None,
 ) -> HumanTaskModel:
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
     human_task = _load_human_task(
         session, tenant_id=tenant_id, human_task_id=human_task_id
     )
