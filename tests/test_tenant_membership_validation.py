@@ -14,6 +14,7 @@ from m8flow_bpmn_core.models.bpmn_process_definition import (
 from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
+from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
@@ -212,10 +213,24 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
     session.add(process_instance)
     session.flush()
 
+    task = TaskModel(
+        m8f_tenant_id=tenant.id,
+        guid="validation-task-a",
+        bpmn_process_id=bpmn_process.id,
+        process_instance_id=process_instance.id,
+        task_definition_id=task_definition.id,
+        state="READY",
+        properties_json={"task_spec": "Approve Expense"},
+        json_data_hash="validation-json-a",
+        python_env_data_hash="validation-env-a",
+    )
+    session.add(task)
+    session.flush()
+
     human_task = HumanTaskModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
-        task_guid="validation-task-a",
+        task_guid=task.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
