@@ -16,10 +16,12 @@ from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core import api
 from m8flow_bpmn_core.db import build_engine, create_schema
+from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
 from m8flow_bpmn_core.models.human_task import HumanTaskModel
+from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.process_instance_event import (
     ProcessInstanceEventModel,
@@ -27,12 +29,15 @@ from m8flow_bpmn_core.models.process_instance_event import (
 from m8flow_bpmn_core.models.process_instance_metadata import (
     ProcessInstanceMetadataModel,
 )
+from m8flow_bpmn_core.models.task import TaskModel
+from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_BPMN_PATH = REPO_ROOT / "tests" / "fixtures" / "conditional-approval.bpmn"
 EXAMPLE_DMN_PATH = REPO_ROOT / "tests" / "fixtures" / "check_eligibility.dmn"
+NOISE_BPMN_PATH = REPO_ROOT / "tests" / "fixtures" / "invoice_approval_poc.bpmn"
 
 CONDITIONAL_APPROVAL_PROCESS_ID = "Process_conditional_approval_8qpy9gh"
 CONDITIONAL_APPROVAL_TASK_IDS = {
@@ -55,6 +60,10 @@ class ExampleContext:
     user_ids: dict[str, int]
     user_names: dict[str, str]
     lane_owners: dict[str, list[str]]
+    noise_user_ids: dict[str, int]
+    noise_tenant_ids: dict[str, str]
+    noise_process_instance_ids: dict[str, int]
+    noise_task_ids: dict[str, int]
     scenario_name: str
 
 
@@ -120,6 +129,7 @@ def main() -> None:
                 session.close()
         print("Status: seed data committed and visible in the database.")
 
+        _run_isolation_checks(engine, context)
         _run_workflow(engine, context)
     except KeyboardInterrupt:
         print("\nInterrupted. The current step was rolled back.")
@@ -191,8 +201,7 @@ def _wait_for_database(
     _clear_spinner(status_message)
 
     raise RuntimeError(
-        "the database did not become available within "
-        f"{timeout_seconds} seconds"
+        f"the database did not become available within {timeout_seconds} seconds"
     ) from last_error
 
 
@@ -219,6 +228,11 @@ def _seed_demo_context(session: Session) -> ExampleContext:
         "The example also seeds a couple of unrelated tenant rows so it is "
         "clear the task routing depends on user identifiers, not tenant "
         "membership."
+    )
+    print(
+        "It also seeds a same-tenant noise task and a foreign-tenant noise "
+        "task so the next verification steps can show that user worklists "
+        "stay isolated and lane assignments are respected."
     )
     _pause("Press Enter to seed the demo data.")
 
@@ -279,12 +293,53 @@ def _seed_demo_context(session: Session) -> ExampleContext:
             created_at_in_seconds=1,
             updated_at_in_seconds=1,
         ),
+        "observer": UserModel(
+            username=f"observer-{suffix}",
+            email=f"observer-{suffix}@example.com",
+            service=tenant_service,
+            service_id=f"observer-{suffix}-keycloak",
+            display_name="Observer",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
+        ),
     }
+    foreign_noise_tenant = other_tenants[0]
+    foreign_noise_service = f"http://localhost:7002/realms/{foreign_noise_tenant.slug}"
+    foreign_noise_user = UserModel(
+        username=f"foreign-noise-{suffix}",
+        email=f"foreign-noise-{suffix}@example.com",
+        service=foreign_noise_service,
+        service_id=f"foreign-noise-{suffix}-keycloak",
+        display_name="Foreign Noise",
+        created_at_in_seconds=1,
+        updated_at_in_seconds=1,
+    )
 
     session.add(tenant)
     session.add_all(other_tenants)
-    session.add_all(users.values())
+    session.add_all([*users.values(), foreign_noise_user])
     session.flush()
+
+    observer_noise_process_instance, observer_noise_task = _seed_noise_work_item(
+        session,
+        tenant=tenant,
+        user=users["observer"],
+        label=f"observer-noise-{suffix}",
+        process_display_name="Observer Noise Example",
+        task_title="Observer Noise Task",
+        lane_name="Noise Lane",
+        created_at_in_seconds=1_010,
+    )
+    foreign_noise_process_instance, foreign_noise_task = _seed_noise_work_item(
+        session,
+        tenant=foreign_noise_tenant,
+        user=foreign_noise_user,
+        label=f"foreign-noise-{suffix}",
+        process_display_name="Foreign Noise Example",
+        task_title="Foreign Noise Task",
+        lane_name="Noise Lane",
+        created_at_in_seconds=1_020,
+    )
     print("Status: seed data is ready.")
 
     context = ExampleContext(
@@ -303,6 +358,20 @@ def _seed_demo_context(session: Session) -> ExampleContext:
         lane_owners={
             "Manager": [users["manager"].username, users["reviewer"].username],
             "Finance": [users["finance"].username],
+        },
+        noise_user_ids={
+            "foreign_noise": foreign_noise_user.id,
+        },
+        noise_tenant_ids={
+            "foreign_noise": foreign_noise_tenant.id,
+        },
+        noise_process_instance_ids={
+            "observer": observer_noise_process_instance.id,
+            "foreign_noise": foreign_noise_process_instance.id,
+        },
+        noise_task_ids={
+            "observer": observer_noise_task.id,
+            "foreign_noise": foreign_noise_task.id,
         },
         scenario_name=f"interactive-{suffix}",
     )
@@ -324,8 +393,29 @@ def _seed_demo_context(session: Session) -> ExampleContext:
                         "display_name": user.display_name,
                     }
                     for role, user in users.items()
+                }
+                | {
+                    "foreign_noise": {
+                        "username": foreign_noise_user.username,
+                        "service": foreign_noise_user.service,
+                        "service_id": foreign_noise_user.service_id,
+                        "display_name": foreign_noise_user.display_name,
+                    }
                 },
                 "lane_owners": context.lane_owners,
+                "noise_tasks": {
+                    "observer": {
+                        "process_instance_id": observer_noise_process_instance.id,
+                        "task_id": observer_noise_task.id,
+                        "owner_username": users["observer"].username,
+                    },
+                    "foreign_noise": {
+                        "tenant_id": foreign_noise_tenant.id,
+                        "process_instance_id": foreign_noise_process_instance.id,
+                        "task_id": foreign_noise_task.id,
+                        "owner_username": foreign_noise_user.username,
+                    },
+                },
             },
             sort_dicts=False,
             width=100,
@@ -333,6 +423,125 @@ def _seed_demo_context(session: Session) -> ExampleContext:
     )
     _pause("Press Enter to start the workflow commands.")
     return context
+
+
+def _seed_noise_work_item(
+    session: Session,
+    *,
+    tenant: M8flowTenantModel,
+    user: UserModel,
+    label: str,
+    process_display_name: str,
+    task_title: str,
+    lane_name: str,
+    created_at_in_seconds: int,
+) -> tuple[ProcessInstanceModel, HumanTaskModel]:
+    source_bpmn_xml = NOISE_BPMN_PATH.read_text(encoding="utf-8")
+    bpmn_identifier = f"{label}-process"
+    task_identifier = f"{label.replace('-', '_')}_task"
+
+    definition = BpmnProcessDefinitionModel(
+        m8f_tenant_id=tenant.id,
+        single_process_hash=f"{label}-single",
+        full_process_model_hash=f"{label}-full",
+        bpmn_identifier=bpmn_identifier,
+        bpmn_name=process_display_name,
+        source_bpmn_xml=source_bpmn_xml,
+        source_dmn_xml=None,
+        properties_json={"version": 1, "noise": True, "label": label},
+        bpmn_version_control_type="git",
+        bpmn_version_control_identifier="main",
+        created_at_in_seconds=created_at_in_seconds - 10,
+        updated_at_in_seconds=created_at_in_seconds - 10,
+    )
+    session.add(definition)
+    session.flush()
+
+    bpmn_process = BpmnProcessModel(
+        m8f_tenant_id=tenant.id,
+        guid=f"{label}-bpmn-process",
+        bpmn_process_definition_id=definition.id,
+        top_level_process_id=None,
+        direct_parent_process_id=None,
+        properties_json={"root": task_identifier},
+        json_data_hash=f"{label}-process-json",
+    )
+    session.add(bpmn_process)
+    session.flush()
+
+    task_definition = TaskDefinitionModel(
+        m8f_tenant_id=tenant.id,
+        bpmn_process_definition_id=definition.id,
+        bpmn_identifier=task_identifier,
+        bpmn_name=task_title,
+        typename="UserTask",
+        properties_json={"allowGuest": False, "noise": True},
+        created_at_in_seconds=created_at_in_seconds - 5,
+        updated_at_in_seconds=created_at_in_seconds - 5,
+    )
+    session.add(task_definition)
+    session.flush()
+
+    process_instance = ProcessInstanceModel(
+        m8f_tenant_id=tenant.id,
+        process_model_identifier=bpmn_identifier,
+        process_model_display_name=process_display_name,
+        process_initiator_id=user.id,
+        bpmn_process_definition_id=definition.id,
+        bpmn_process_id=bpmn_process.id,
+        status="running",
+        process_version=1,
+        created_at_in_seconds=created_at_in_seconds,
+        updated_at_in_seconds=created_at_in_seconds,
+    )
+    session.add(process_instance)
+    session.flush()
+
+    task = TaskModel(
+        m8f_tenant_id=tenant.id,
+        guid=f"{label}-task",
+        bpmn_process_id=bpmn_process.id,
+        process_instance_id=process_instance.id,
+        task_definition_id=task_definition.id,
+        state="READY",
+        properties_json={"task_spec": task_title, "noise": True},
+        json_data_hash=f"{label}-task-json",
+        python_env_data_hash=f"{label}-task-env",
+    )
+    session.add(task)
+    session.flush()
+
+    human_task = HumanTaskModel(
+        m8f_tenant_id=tenant.id,
+        process_instance_id=process_instance.id,
+        task_guid=task.guid,
+        lane_assignment_id=None,
+        completed_by_user_id=None,
+        actual_owner_id=None,
+        task_name=task_identifier,
+        task_title=task_title,
+        task_type="UserTask",
+        task_status="READY",
+        process_model_display_name=process_display_name,
+        bpmn_process_identifier=bpmn_identifier,
+        lane_name=lane_name,
+        json_metadata={"noise": True, "label": label},
+        completed=False,
+    )
+    session.add(human_task)
+    session.flush()
+
+    session.add(
+        HumanTaskUserModel(
+            m8f_tenant_id=tenant.id,
+            human_task_id=human_task.id,
+            user_id=user.id,
+            added_by="manual",
+        )
+    )
+    session.flush()
+
+    return process_instance, human_task
 
 
 def _run_workflow(engine: Engine, context: ExampleContext) -> None:
@@ -396,8 +605,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         ),
     )
     _print_note(
-        f"Process instance {process_instance.id} is now "
-        f"{process_instance.status}."
+        f"Process instance {process_instance.id} is now {process_instance.status}."
     )
 
     submit_tasks = _run_command_step(
@@ -420,8 +628,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         step_number=4,
         title="Claim the submit task",
         context_text=(
-            "The requester claims the task before completing the expense "
-            "submission."
+            "The requester claims the task before completing the expense submission."
         ),
         command=api.ClaimTaskCommand(
             tenant_id=context.tenant_id,
@@ -449,6 +656,26 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             task_payload=submission_payload,
         ),
     )
+    _print_note(
+        "Negative check: once the submit task is completed, it should not "
+        "appear in any main workflow worklist."
+    )
+    for username in (
+        "requester",
+        "manager",
+        "reviewer",
+        "finance",
+        "observer",
+    ):
+        other_tasks = api.execute_command(
+            engine,
+            api.GetPendingTasksCommand(
+                tenant_id=context.tenant_id,
+                user_id=context.user_ids[username],
+            ),
+        )
+        if submit_task.id in [task.id for task in other_tasks]:
+            raise RuntimeError(f"Submit task leaked into the {username} worklist")
 
     process_instance = _run_command_step(
         engine,
@@ -469,8 +696,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         step_number=7,
         title="List the manager pending tasks",
         context_text=(
-            "The manager lane should now see the review task waiting to be "
-            "claimed."
+            "The manager lane should now see the review task waiting to be claimed."
         ),
         command=api.GetPendingTasksCommand(
             tenant_id=context.tenant_id,
@@ -530,6 +756,26 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             task_payload={"decision": MANAGER_DECISION},
         ),
     )
+    _print_note(
+        "Negative check: the manager task should stay out of the Requester, "
+        "Manager, Reviewer, Finance, and Observer worklists."
+    )
+    for username in (
+        "requester",
+        "manager",
+        "reviewer",
+        "finance",
+        "observer",
+    ):
+        other_tasks = api.execute_command(
+            engine,
+            api.GetPendingTasksCommand(
+                tenant_id=context.tenant_id,
+                user_id=context.user_ids[username],
+            ),
+        )
+        if manager_task.id in [task.id for task in other_tasks]:
+            raise RuntimeError(f"Manager task leaked into the {username} worklist")
 
     process_instance = _run_command_step(
         engine,
@@ -595,6 +841,26 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
                 task_payload={"finance_decision": FINANCE_DECISION},
             ),
         )
+        _print_note(
+            "Negative check: the finance task should stay out of the "
+            "Requester, Manager, Reviewer, Finance, and Observer worklists."
+        )
+        for username in (
+            "requester",
+            "manager",
+            "reviewer",
+            "finance",
+            "observer",
+        ):
+            other_tasks = api.execute_command(
+                engine,
+                api.GetPendingTasksCommand(
+                    tenant_id=context.tenant_id,
+                    user_id=context.user_ids[username],
+                ),
+            )
+            if finance_task.id in [task.id for task in other_tasks]:
+                raise RuntimeError(f"Finance task leaked into the {username} worklist")
 
         process_instance = _run_command_step(
             engine,
@@ -662,8 +928,110 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
     print([event.event_type for event in events])
 
     _print_note(
-        "The example is complete. Each command was committed immediately "
-        "after it ran."
+        "The example is complete. Each command was committed immediately after it ran."
+    )
+
+
+def _run_isolation_checks(engine: Engine, context: ExampleContext) -> None:
+    print()
+    print(SECTION_SEPARATOR)
+    print("Verification: noise users, tasks, and tenant isolation")
+    print(
+        "These checks are intentionally noisy. They prove that extra users "
+        "and tasks in the database do not leak across tenants and that "
+        "pending-task visibility still depends on assignment."
+    )
+    _pause("Press Enter to run the isolation checks.")
+
+    observer_tasks = _run_command_step(
+        engine,
+        step_number=1,
+        title="Show the observer noise task",
+        context_text=(
+            "The observer belongs to the main tenant and has a dedicated "
+            "noise task assigned to them. This proves a user can see their "
+            "own worklist items without affecting the approval workflow."
+        ),
+        command=api.GetPendingTasksCommand(
+            tenant_id=context.tenant_id,
+            user_id=context.user_ids["observer"],
+        ),
+        prefix="Verification",
+    )
+    observer_task = _require_single_task(observer_tasks, "observer noise task")
+    if observer_task.id != context.noise_task_ids["observer"]:
+        raise RuntimeError("Observer noise task id did not match the seeded row")
+
+    manager_tasks = _run_command_step(
+        engine,
+        step_number=2,
+        title="Show that the manager has no noise task yet",
+        context_text=(
+            "The manager belongs to the same tenant but should not see the "
+            "observer's unrelated noise task. This is the negative case "
+            "that shows assignment still matters."
+        ),
+        command=api.GetPendingTasksCommand(
+            tenant_id=context.tenant_id,
+            user_id=context.user_ids["manager"],
+        ),
+        prefix="Verification",
+    )
+    if manager_tasks:
+        raise RuntimeError("Manager should not see the observer noise task")
+
+    _run_command_step(
+        engine,
+        step_number=3,
+        title="Reject cross-tenant worklist access",
+        context_text=(
+            "A user from the foreign noise tenant should not be able to "
+            "read the main tenant worklist. This is expected to fail with "
+            "a PermissionError."
+        ),
+        command=api.GetPendingTasksCommand(
+            tenant_id=context.tenant_id,
+            user_id=context.noise_user_ids["foreign_noise"],
+        ),
+        prefix="Verification",
+        expected_failure=PermissionError,
+        expected_failure_contains="does not belong to tenant",
+    )
+
+    foreign_tasks = _run_command_step(
+        engine,
+        step_number=4,
+        title="Show the foreign tenant noise task",
+        context_text=(
+            "The foreign tenant has its own noise task. Seeing it here shows "
+            "that tenant-scoped data stays visible to the correct tenant and "
+            "user only."
+        ),
+        command=api.GetPendingTasksCommand(
+            tenant_id=context.noise_tenant_ids["foreign_noise"],
+            user_id=context.noise_user_ids["foreign_noise"],
+        ),
+        prefix="Verification",
+    )
+    foreign_task = _require_single_task(foreign_tasks, "foreign noise task")
+    if foreign_task.id != context.noise_task_ids["foreign_noise"]:
+        raise RuntimeError("Foreign noise task id did not match the seeded tenant row")
+
+    _run_command_step(
+        engine,
+        step_number=5,
+        title="Reject cross-tenant process-instance access",
+        context_text=(
+            "The foreign tenant must not be able to read the main tenant "
+            "process instance. This is expected to fail with a LookupError."
+        ),
+        command=api.GetProcessInstanceCommand(
+            tenant_id=context.noise_tenant_ids["foreign_noise"],
+            process_instance_id=context.noise_process_instance_ids["observer"],
+        ),
+        prefix="Verification",
+        expected_failure=LookupError,
+        expected_failure_contains="was not found for tenant",
     )
 
 
@@ -674,10 +1042,13 @@ def _run_command_step(
     title: str,
     context_text: str,
     command: object,
-) -> Any:
+    prefix: str = "Step",
+    expected_failure: type[Exception] | tuple[type[Exception], ...] | None = None,
+    expected_failure_contains: str | None = None,
+) -> Any | None:
     print()
     print(SECTION_SEPARATOR)
-    print(f"Step {step_number}: {title}")
+    print(f"{prefix} {step_number}: {title}")
     print(context_text)
     print(SECTION_SEPARATOR)
     print("Command:")
@@ -685,8 +1056,31 @@ def _run_command_step(
     print(SECTION_SEPARATOR)
     _pause("Press Enter to execute this command.")
     print("Status: executing command...")
-    with engine.begin() as connection:
-        result = api.execute_command(connection, command)
+    try:
+        with engine.begin() as connection:
+            result = api.execute_command(connection, command)
+    except Exception as exc:
+        if expected_failure is None or not isinstance(exc, expected_failure):
+            raise
+        if (
+            expected_failure_contains is not None
+            and expected_failure_contains not in str(exc)
+        ):
+            raise RuntimeError(
+                f"The command failed, but not with the expected message: {exc}"
+            ) from exc
+        print(f"Status: expected {type(exc).__name__} was raised.")
+        print("Result:")
+        print(f"{type(exc).__name__}: {exc}")
+        _pause("Press Enter to continue.")
+        return None
+
+    if expected_failure is not None:
+        raise RuntimeError(
+            "The command succeeded, but a failure was expected: "
+            f"{_format_command(command)}"
+        )
+
     print("Status: command complete and committed.")
     print("Result:")
     print(_format_result(result))
@@ -895,8 +1289,8 @@ def _render_conditional_approval_bpmn_xml(
     bpmn_xml = EXAMPLE_BPMN_PATH.read_text(encoding="utf-8")
     lane_owners_script = (
         "<bpmn:script>lane_owners = {\n"
-        f"    \"Manager\" : {lane_owners['Manager']!r},\n"
-        f"    \"Finance\" : {lane_owners['Finance']!r}\n"
+        f'    "Manager" : {lane_owners["Manager"]!r},\n'
+        f'    "Finance" : {lane_owners["Finance"]!r}\n'
         "}</bpmn:script>"
     )
     return re.sub(
