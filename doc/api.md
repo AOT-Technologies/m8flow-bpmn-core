@@ -321,6 +321,10 @@ BpmnCoreError
 
 Catch by either the domain class or the matching builtin — both work.
 
+See [`examples.md`](examples.md#errors-demo) for a runnable walkthrough
+(`examples/errors_demo.py`) that triggers each class through the public
+API and asserts the contract above.
+
 ---
 
 ## Tenant and identity model
