@@ -43,7 +43,7 @@ def test_initialize_process_instance_rejects_initiator_from_other_tenant(
 ) -> None:
     context = _seed_validation_context(session)
 
-    with pytest.raises(PermissionError, match="does not belong to tenant"):
+    with pytest.raises(api.AuthorizationError, match="does not belong to tenant"):
         api.execute_command(
             session,
             api.InitializeProcessInstanceFromDefinitionCommand(
@@ -77,36 +77,36 @@ def test_get_pending_tasks_rejects_user_from_other_tenant(
 ) -> None:
     context = _seed_validation_context(session)
 
-    with pytest.raises(PermissionError, match="does not belong to tenant"):
-        api.execute_command(
+    with pytest.raises(api.AuthorizationError, match="does not belong to tenant"):
+        api.execute_query(
             session,
-            api.GetPendingTasksCommand(
+            api.GetPendingTasksQuery(
                 tenant_id=context.tenant.id,
                 user_id=context.foreign_user.id,
             ),
         )
 
-    pending_tasks = api.execute_command(
+    pending_tasks = api.execute_query(
         session,
-        api.GetPendingTasksCommand(
+        api.GetPendingTasksQuery(
             tenant_id=context.tenant.id,
             user_id=context.tenant_user.id,
         ),
     )
     assert [item.id for item in pending_tasks] == [context.human_task.id]
 
-    observer_pending_tasks = api.execute_command(
+    observer_pending_tasks = api.execute_query(
         session,
-        api.GetPendingTasksCommand(
+        api.GetPendingTasksQuery(
             tenant_id=context.tenant.id,
             user_id=context.tenant_observer.id,
         ),
     )
     assert observer_pending_tasks == []
 
-    foreign_pending_tasks = api.execute_command(
+    foreign_pending_tasks = api.execute_query(
         session,
-        api.GetPendingTasksCommand(
+        api.GetPendingTasksQuery(
             tenant_id=context.foreign_tenant.id,
             user_id=context.foreign_user.id,
         ),
@@ -121,7 +121,7 @@ def test_claim_and_complete_task_reject_cross_tenant_users(
 ) -> None:
     context = _seed_validation_context(session)
 
-    with pytest.raises(PermissionError, match="does not belong to tenant"):
+    with pytest.raises(api.AuthorizationError, match="does not belong to tenant"):
         api.execute_command(
             session,
             api.ClaimTaskCommand(
@@ -131,7 +131,7 @@ def test_claim_and_complete_task_reject_cross_tenant_users(
             ),
         )
 
-    with pytest.raises(PermissionError, match="does not belong to tenant"):
+    with pytest.raises(api.AuthorizationError, match="does not belong to tenant"):
         api.execute_command(
             session,
             api.CompleteTaskCommand(

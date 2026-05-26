@@ -1,14 +1,18 @@
 # Usage Guide
 
 This guide shows the typical shape of an integration with `m8flow_bpmn_core`.
+For the full contract — every command, query, return type, and error —
+see [`api.md`](api.md).
 
 ## Use A Caller-Owned Transaction
 
 If you already control a SQLAlchemy `Connection`, pass it directly to
-`execute_command(...)` or `execute_query(...)`.
+`execute_command(...)` or `execute_query(...)`. The library opens a
+temporary session bound to the connection and does not commit or roll
+back; the caller owns the transaction boundary.
 
-The snippet below is illustrative. Replace the placeholder XML, tenant id, and
-user ids with real values from your own workflow.
+The snippet below is illustrative. Replace the placeholder XML, tenant id,
+and user ids with real values from your own workflow.
 
 ```python
 from sqlalchemy import create_engine
@@ -42,9 +46,9 @@ with engine.begin() as connection:
         ),
     )
 
-    pending_tasks = api.execute_command(
+    pending_tasks = api.execute_query(
         connection,
-        api.GetPendingTasksCommand(
+        api.GetPendingTasksQuery(
             tenant_id="tenant-conditional-approval",
             user_id=requester_user_id,
         ),
@@ -80,12 +84,30 @@ with engine.begin() as connection:
 
 ## Read Back State
 
-After the command completes, use read operations to inspect the workflow state:
+After the command completes, use queries (with `execute_query`) to
+inspect the workflow state:
 
-- `GetProcessInstanceCommand` for the process snapshot
-- `GetProcessInstanceMetadataCommand` for persisted payload values
-- `GetProcessInstanceEventsCommand` for the event history
-- `GetPendingTasksCommand` for the current worklist
+- `GetProcessInstanceQuery` — process instance snapshot.
+- `GetProcessInstanceMetadataQuery` — persisted payload values.
+- `GetProcessInstanceEventsQuery` — event history.
+- `GetPendingTasksQuery` — current worklist for a tenant or user.
+
+## Error Handling
+
+Every public failure is a subclass of `api.BpmnCoreError`:
+
+```python
+try:
+    api.execute_command(connection, api.ClaimTaskCommand(...))
+except api.NotFoundError:
+    ...
+except api.AuthorizationError:
+    ...
+except api.InvalidStateError:
+    ...
+```
+
+See [`api.md`](api.md) for which errors each command and query can raise.
 
 ## Practical Notes
 

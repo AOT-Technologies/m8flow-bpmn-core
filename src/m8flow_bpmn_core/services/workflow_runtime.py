@@ -18,6 +18,11 @@ from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from m8flow_bpmn_core.errors import (
+    InvalidStateError,
+    NotFoundError,
+    ValidationError,
+)
 from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
@@ -98,9 +103,9 @@ def initialize_process_instance_workflow(
         process_instance_id=process_instance_id,
     )
     if process_instance.has_terminal_status():
-        raise ValueError("Cannot initialize a terminal process instance")
+        raise InvalidStateError("Cannot initialize a terminal process instance")
     if process_instance.workflow_state_json is not None:
-        raise ValueError("Process instance workflow already initialized")
+        raise InvalidStateError("Process instance workflow already initialized")
 
     occurred_at = _resolve_timestamp(started_at_in_seconds)
     workflow = _build_workflow(
@@ -174,7 +179,7 @@ def initialize_process_instance_from_definition(
         bpmn_process_definition_id=bpmn_process_definition_id,
     )
     if process_definition.source_bpmn_xml is None:
-        raise ValueError(
+        raise ValidationError(
             "Process definition does not include stored BPMN XML"
         )
 
@@ -291,7 +296,7 @@ def _load_process_definition(
         )
     )
     if process_definition is None:
-        raise LookupError(
+        raise NotFoundError(
             "BPMN process definition "
             f"{bpmn_process_definition_id} was not found for tenant {tenant_id}"
         )
@@ -341,13 +346,13 @@ def _select_process_identifier(
     process_ids = parser.get_process_ids()
     if bpmn_process_id is None:
         if len(process_ids) != 1:
-            raise ValueError(
+            raise ValidationError(
                 "A BPMN process id must be supplied when the definition contains "
                 "multiple executable processes"
             )
         return process_ids[0]
     if bpmn_process_id not in process_ids:
-        raise ValueError(
+        raise NotFoundError(
             f"BPMN process id {bpmn_process_id!r} was not found in the definition"
         )
     return bpmn_process_id
@@ -375,7 +380,7 @@ def _build_workflow(
     process_ids = parser.get_process_ids()
     if bpmn_process_id is None:
         if len(process_ids) != 1:
-            raise ValueError(
+            raise ValidationError(
                 "A BPMN process id must be supplied when the file contains "
                 "multiple executable processes"
             )
@@ -408,7 +413,9 @@ def _seed_runtime_definitions(
     occurred_at: int,
 ) -> None:
     if process_instance.bpmn_process_definition_id is None:
-        raise ValueError("Process instance is missing a BPMN process definition")
+        raise ValidationError(
+            "Process instance is missing a BPMN process definition"
+        )
 
     for task_spec in workflow.spec.task_specs.values():
         bpmn_identifier = getattr(task_spec, "bpmn_id", None)
@@ -433,7 +440,7 @@ def _upsert_task_definition(
 ) -> TaskDefinitionModel:
     bpmn_identifier = getattr(task_spec, "bpmn_id", None)
     if not bpmn_identifier:
-        raise ValueError("Task spec is missing a BPMN identifier")
+        raise ValidationError("Task spec is missing a BPMN identifier")
 
     task_definition = session.scalar(
         select(TaskDefinitionModel).where(
@@ -511,11 +518,13 @@ def _materialize_single_manual_task(
 ) -> HumanTaskModel:
     task_id = str(task.id)
     if process_instance.bpmn_process is None:
-        raise ValueError("Process instance is missing a BPMN process")
+        raise ValidationError("Process instance is missing a BPMN process")
     if process_instance.bpmn_process_definition_id is None:
-        raise ValueError("Process instance is missing a BPMN process definition")
+        raise ValidationError(
+            "Process instance is missing a BPMN process definition"
+        )
     if process_instance.process_initiator_id is None:
-        raise ValueError("Process instance is missing a process initiator")
+        raise ValidationError("Process instance is missing a process initiator")
 
     task_definition = _upsert_task_definition(
         session,
@@ -765,7 +774,7 @@ def _resolve_human_task_assignments(
     if not lane_name or re.match(r"(process.?)initiator", lane_name, re.IGNORECASE):
         initiator = session.get(UserModel, process_instance.process_initiator_id)
         if initiator is None:
-            raise LookupError(
+            raise NotFoundError(
                 "Process initiator was not found for process instance "
                 f"{process_instance.id}"
             )
@@ -773,7 +782,7 @@ def _resolve_human_task_assignments(
 
     lane_owners = getattr(task, "data", {}).get("lane_owners", {})
     if not isinstance(lane_owners, dict) or lane_name not in lane_owners:
-        raise LookupError(
+        raise NotFoundError(
             f"Task {task.task_spec.name} does not define lane owners for "
             f"lane {lane_name!r}"
         )
@@ -792,7 +801,7 @@ def _resolve_human_task_assignments(
             resolved_users.append((user, HumanTaskUserAddedBy.lane_owner))
 
     if not resolved_users:
-        raise LookupError(
+        raise NotFoundError(
             f"No users were resolved for lane {lane_name!r} on task "
             f"{task.task_spec.name}"
         )
@@ -970,7 +979,7 @@ def _load_process_instance(
         )
     )
     if process_instance is None:
-        raise LookupError(
+        raise NotFoundError(
             "Process instance "
             f"{process_instance_id} was not found for tenant {tenant_id}"
         )
@@ -984,4 +993,4 @@ def _resolve_timestamp(timestamp_in_seconds: int | None) -> int:
 
 
 def _raise_value_error(message: str) -> None:
-    raise ValueError(message)
+    raise ValidationError(message)

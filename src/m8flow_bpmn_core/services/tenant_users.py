@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from m8flow_bpmn_core.errors import AuthorizationError, NotFoundError
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
 
@@ -15,11 +16,11 @@ def ensure_user_belongs_to_tenant(
 ) -> UserModel:
     user = session.get(UserModel, user_id)
     if user is None:
-        raise LookupError(f"User {user_id} was not found")
+        raise NotFoundError(f"User {user_id} was not found")
 
     tenant_identifiers = tenant_identifiers_for(session, tenant_id)
     if not user_belongs_to_tenant(user, tenant_identifiers):
-        raise PermissionError(
+        raise AuthorizationError(
             f"User {user_id} does not belong to tenant {tenant_id}"
         )
     return user

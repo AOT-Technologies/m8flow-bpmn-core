@@ -9,7 +9,6 @@ from m8flow_bpmn_core.application import (
     ClaimTaskCommand,
     CompleteTaskCommand,
     ErrorProcessInstanceCommand,
-    GetPendingTasksCommand,
     GetPendingTasksQuery,
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
@@ -173,9 +172,9 @@ def test_application_layer_supports_connection_transaction_control(
             tenant_id = tenant.id
             process_instance_id = process_instance.id
 
-            pending_tasks = execute_command(
+            pending_tasks = execute_query(
                 connection,
-                GetPendingTasksCommand(
+                GetPendingTasksQuery(
                     tenant_id=tenant.id,
                     user_id=user.id,
                 ),
