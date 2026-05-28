@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:spiffworkflow="http://spiffworkflow.org/bpmn/schema/1.0/core" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_parallel_review_poc" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="3.0.0-dev">
+  <bpmn:collaboration id="Collaboration_parallel_review_poc">
+    <bpmn:participant id="Participant_parallel_review" processRef="Process_parallel_review_poc" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_parallel_review_poc" name="Purchase Order Parallel Review POC" isExecutable="true">
+    <bpmn:laneSet id="LaneSet_parallel_review_poc">
+      <bpmn:lane id="Lane_Requester">
+        <bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_submit_order</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_notify_approved</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_notify_rejected</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Event_approved</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Event_rejected</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Finance" name="Finance">
+        <bpmn:flowNodeRef>Activity_finance_review</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Compliance" name="Compliance">
+        <bpmn:flowNodeRef>Activity_compliance_review</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_System" name="System">
+        <bpmn:flowNodeRef>Activity_set_lane_owners</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_compute_total</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_parallel_split</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_parallel_join</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_determine_outcome</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_final_decision</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="StartEvent_1" name="Purchase Order Submitted">
+      <bpmn:outgoing>Flow_start_to_setup</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:scriptTask id="Activity_set_lane_owners" name="Set Lane Owners">
+      <bpmn:incoming>Flow_start_to_setup</bpmn:incoming>
+      <bpmn:outgoing>Flow_setup_to_submit</bpmn:outgoing>
+      <bpmn:script>lane_owners = {
+    "Finance": ["finance_user"],
+    "Compliance": ["compliance_user"],
+}</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:userTask id="Activity_submit_order" name="Submit Purchase Order">
+      <bpmn:incoming>Flow_setup_to_submit</bpmn:incoming>
+      <bpmn:outgoing>Flow_submit_to_compute</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:scriptTask id="Activity_compute_total" name="Compute Total With Tax">
+      <bpmn:incoming>Flow_submit_to_compute</bpmn:incoming>
+      <bpmn:outgoing>Flow_compute_to_split</bpmn:outgoing>
+      <bpmn:script>order_amount = float(order_amount)
+tax_rate = 0.08
+tax_amount = round(order_amount * tax_rate, 2)
+order_total = round(order_amount + tax_amount, 2)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:parallelGateway id="Gateway_parallel_split" name="Fan out reviews">
+      <bpmn:incoming>Flow_compute_to_split</bpmn:incoming>
+      <bpmn:outgoing>Flow_split_to_finance</bpmn:outgoing>
+      <bpmn:outgoing>Flow_split_to_compliance</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="Activity_finance_review" name="Finance Review">
+      <bpmn:incoming>Flow_split_to_finance</bpmn:incoming>
+      <bpmn:outgoing>Flow_finance_to_join</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Activity_compliance_review" name="Compliance Review">
+      <bpmn:incoming>Flow_split_to_compliance</bpmn:incoming>
+      <bpmn:outgoing>Flow_compliance_to_join</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:parallelGateway id="Gateway_parallel_join" name="Wait for both reviews">
+      <bpmn:incoming>Flow_finance_to_join</bpmn:incoming>
+      <bpmn:incoming>Flow_compliance_to_join</bpmn:incoming>
+      <bpmn:outgoing>Flow_join_to_determine</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:scriptTask id="Activity_determine_outcome" name="Determine Outcome">
+      <bpmn:incoming>Flow_join_to_determine</bpmn:incoming>
+      <bpmn:outgoing>Flow_determine_to_gateway</bpmn:outgoing>
+      <bpmn:script>final_decision = (
+    "Approved"
+    if finance_decision == "Approved" and compliance_decision == "Approved"
+    else "Rejected"
+)</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:exclusiveGateway id="Gateway_final_decision" name="Final Decision">
+      <bpmn:incoming>Flow_determine_to_gateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_gateway_to_approved</bpmn:outgoing>
+      <bpmn:outgoing>Flow_gateway_to_rejected</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Activity_notify_approved" name="Notify Requester of Approval">
+      <bpmn:incoming>Flow_gateway_to_approved</bpmn:incoming>
+      <bpmn:outgoing>Flow_approved_to_end</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Activity_notify_rejected" name="Notify Requester of Rejection">
+      <bpmn:incoming>Flow_gateway_to_rejected</bpmn:incoming>
+      <bpmn:outgoing>Flow_rejected_to_end</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="Event_approved" name="Purchase Order Approved">
+      <bpmn:incoming>Flow_approved_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="Event_rejected" name="Purchase Order Rejected">
+      <bpmn:incoming>Flow_rejected_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_start_to_setup" sourceRef="StartEvent_1" targetRef="Activity_set_lane_owners" />
+    <bpmn:sequenceFlow id="Flow_setup_to_submit" sourceRef="Activity_set_lane_owners" targetRef="Activity_submit_order" />
+    <bpmn:sequenceFlow id="Flow_submit_to_compute" sourceRef="Activity_submit_order" targetRef="Activity_compute_total" />
+    <bpmn:sequenceFlow id="Flow_compute_to_split" sourceRef="Activity_compute_total" targetRef="Gateway_parallel_split" />
+    <bpmn:sequenceFlow id="Flow_split_to_finance" sourceRef="Gateway_parallel_split" targetRef="Activity_finance_review" />
+    <bpmn:sequenceFlow id="Flow_split_to_compliance" sourceRef="Gateway_parallel_split" targetRef="Activity_compliance_review" />
+    <bpmn:sequenceFlow id="Flow_finance_to_join" sourceRef="Activity_finance_review" targetRef="Gateway_parallel_join" />
+    <bpmn:sequenceFlow id="Flow_compliance_to_join" sourceRef="Activity_compliance_review" targetRef="Gateway_parallel_join" />
+    <bpmn:sequenceFlow id="Flow_join_to_determine" sourceRef="Gateway_parallel_join" targetRef="Activity_determine_outcome" />
+    <bpmn:sequenceFlow id="Flow_determine_to_gateway" sourceRef="Activity_determine_outcome" targetRef="Gateway_final_decision" />
+    <bpmn:sequenceFlow id="Flow_gateway_to_approved" name="Approved" sourceRef="Gateway_final_decision" targetRef="Activity_notify_approved">
+      <bpmn:conditionExpression>final_decision == "Approved"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_gateway_to_rejected" name="Rejected" sourceRef="Gateway_final_decision" targetRef="Activity_notify_rejected">
+      <bpmn:conditionExpression>final_decision == "Rejected"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_approved_to_end" sourceRef="Activity_notify_approved" targetRef="Event_approved" />
+    <bpmn:sequenceFlow id="Flow_rejected_to_end" sourceRef="Activity_notify_rejected" targetRef="Event_rejected" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_parallel_review_poc">
+      <bpmndi:BPMNShape id="Participant_parallel_review_di" bpmnElement="Participant_parallel_review" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="1620" height="780" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Requester_di" bpmnElement="Lane_Requester" isHorizontal="true">
+        <dc:Bounds x="190" y="80" width="1590" height="220" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Finance_di" bpmnElement="Lane_Finance" isHorizontal="true">
+        <dc:Bounds x="190" y="300" width="1590" height="160" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Compliance_di" bpmnElement="Lane_Compliance" isHorizontal="true">
+        <dc:Bounds x="190" y="460" width="1590" height="160" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_System_di" bpmnElement="Lane_System" isHorizontal="true">
+        <dc:Bounds x="190" y="620" width="1590" height="240" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="252" y="172" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="227" y="215" width="86" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_set_lane_owners_di" bpmnElement="Activity_set_lane_owners">
+        <dc:Bounds x="330" y="700" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_submit_order_di" bpmnElement="Activity_submit_order">
+        <dc:Bounds x="500" y="150" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_compute_total_di" bpmnElement="Activity_compute_total">
+        <dc:Bounds x="660" y="700" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_parallel_split_di" bpmnElement="Gateway_parallel_split">
+        <dc:Bounds x="820" y="715" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="810" y="775" width="71" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_finance_review_di" bpmnElement="Activity_finance_review">
+        <dc:Bounds x="900" y="340" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_compliance_review_di" bpmnElement="Activity_compliance_review">
+        <dc:Bounds x="900" y="500" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_parallel_join_di" bpmnElement="Gateway_parallel_join">
+        <dc:Bounds x="1055" y="715" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1035" y="775" width="91" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_determine_outcome_di" bpmnElement="Activity_determine_outcome">
+        <dc:Bounds x="1140" y="700" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_final_decision_di" bpmnElement="Gateway_final_decision" isMarkerVisible="true">
+        <dc:Bounds x="1295" y="715" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1287" y="775" width="69" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_notify_approved_di" bpmnElement="Activity_notify_approved">
+        <dc:Bounds x="1400" y="120" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_notify_rejected_di" bpmnElement="Activity_notify_rejected">
+        <dc:Bounds x="1400" y="220" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_approved_di" bpmnElement="Event_approved">
+        <dc:Bounds x="1582" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1556" y="185" width="88" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_rejected_di" bpmnElement="Event_rejected">
+        <dc:Bounds x="1582" y="242" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1558" y="285" width="84" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_to_setup_di" bpmnElement="Flow_start_to_setup">
+        <di:waypoint x="270" y="208" />
+        <di:waypoint x="270" y="740" />
+        <di:waypoint x="330" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_setup_to_submit_di" bpmnElement="Flow_setup_to_submit">
+        <di:waypoint x="430" y="740" />
+        <di:waypoint x="465" y="740" />
+        <di:waypoint x="465" y="190" />
+        <di:waypoint x="500" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_submit_to_compute_di" bpmnElement="Flow_submit_to_compute">
+        <di:waypoint x="600" y="190" />
+        <di:waypoint x="630" y="190" />
+        <di:waypoint x="630" y="740" />
+        <di:waypoint x="660" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_compute_to_split_di" bpmnElement="Flow_compute_to_split">
+        <di:waypoint x="760" y="740" />
+        <di:waypoint x="820" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_finance_di" bpmnElement="Flow_split_to_finance">
+        <di:waypoint x="845" y="715" />
+        <di:waypoint x="845" y="380" />
+        <di:waypoint x="900" y="380" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_split_to_compliance_di" bpmnElement="Flow_split_to_compliance">
+        <di:waypoint x="845" y="715" />
+        <di:waypoint x="845" y="540" />
+        <di:waypoint x="900" y="540" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_finance_to_join_di" bpmnElement="Flow_finance_to_join">
+        <di:waypoint x="1000" y="380" />
+        <di:waypoint x="1080" y="380" />
+        <di:waypoint x="1080" y="715" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_compliance_to_join_di" bpmnElement="Flow_compliance_to_join">
+        <di:waypoint x="1000" y="540" />
+        <di:waypoint x="1080" y="540" />
+        <di:waypoint x="1080" y="715" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_join_to_determine_di" bpmnElement="Flow_join_to_determine">
+        <di:waypoint x="1105" y="740" />
+        <di:waypoint x="1140" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_determine_to_gateway_di" bpmnElement="Flow_determine_to_gateway">
+        <di:waypoint x="1240" y="740" />
+        <di:waypoint x="1295" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_gateway_to_approved_di" bpmnElement="Flow_gateway_to_approved">
+        <di:waypoint x="1320" y="715" />
+        <di:waypoint x="1320" y="160" />
+        <di:waypoint x="1400" y="160" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1328" y="430" width="50" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_gateway_to_rejected_di" bpmnElement="Flow_gateway_to_rejected">
+        <di:waypoint x="1320" y="715" />
+        <di:waypoint x="1320" y="260" />
+        <di:waypoint x="1400" y="260" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1330" y="490" width="49" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_approved_to_end_di" bpmnElement="Flow_approved_to_end">
+        <di:waypoint x="1500" y="160" />
+        <di:waypoint x="1582" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_rejected_to_end_di" bpmnElement="Flow_rejected_to_end">
+        <di:waypoint x="1500" y="260" />
+        <di:waypoint x="1582" y="260" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

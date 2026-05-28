@@ -81,6 +81,11 @@ Persist BPMN (and optional DMN) XML as a process definition.
 
 **Returns**: `BpmnProcessDefinitionModel`.
 
+**Raises**: `ValidationError` when `source_bpmn_xml` (or `source_dmn_xml`,
+if supplied) is not parseable or does not contain at least one executable
+process. Validation runs before anything is persisted, so a rejected
+import never leaves a partial row behind.
+
 ### `InitializeProcessInstanceFromDefinitionCommand`
 
 Create a process instance from a stored definition and start the workflow.

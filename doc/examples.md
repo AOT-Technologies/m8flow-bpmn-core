@@ -1,16 +1,20 @@
 # Example Workflows
 
-The repository ships three runnable examples:
+The repository ships four runnable examples:
 
 | File | Purpose | Database |
 | --- | --- | --- |
-| `examples/conditional_approval_poc.py` | Interactive full approval flow. | PostgreSQL |
+| `examples/conditional_approval_poc.py` | Interactive full approval flow (XOR gateway, DMN). | PostgreSQL |
 | `examples/conditional_approval_rejection_poc.py` | Manager-rejection variant of the flow above. | PostgreSQL |
+| `examples/parallel_review_poc.py` | Non-interactive purchase-order flow that exercises a parallel gateway and script tasks. | In-memory SQLite |
 | `examples/errors_demo.py` | Non-interactive walk through every public error class. | In-memory SQLite |
 
-The conditional-approval examples are interactive walkthroughs that exercise
-the public API end to end. The errors demo is a quick, dependency-free way to
-see each `BpmnCoreError` subclass being raised by the services.
+The two conditional-approval examples are interactive walkthroughs that
+exercise an exclusive gateway with a DMN-driven branch. The parallel-review
+example covers the BPMN shapes the conditional-approval flow does not —
+parallel gateway (AND-split + AND-join) and Python script tasks. The errors
+demo is a quick, dependency-free way to see each `BpmnCoreError` subclass
+being raised by the services.
 
 ## Conditional Approval
 
@@ -65,6 +69,51 @@ running after the example exits.
   mapping.
 - User membership is validated against the tenant before user-scoped actions
   run.
+
+## Parallel Review
+
+`examples/parallel_review_poc.py` is a non-interactive walkthrough of a
+purchase-order approval flow that exercises BPMN shapes the
+conditional-approval POC does not cover:
+
+- a **parallel gateway** (AND-split followed by AND-join),
+- two **script tasks** (one before the split, one after the join),
+- an **exclusive gateway** routed by a value the second script computes,
+- three lanes (Requester, Finance, Compliance).
+
+Run it with:
+
+```bash
+uv run python examples/parallel_review_poc.py
+```
+
+Flow shape:
+
+```
+Start
+  -> ScriptTask:  set lane owners
+  -> UserTask:    Submit Purchase Order   (Requester lane)
+  -> ScriptTask:  Compute Total With Tax
+  -> ParallelGateway (split)
+        -> UserTask: Finance Review       (Finance lane)
+        -> UserTask: Compliance Review    (Compliance lane)
+  -> ParallelGateway (join)
+  -> ScriptTask:  Determine Outcome
+  -> ExclusiveGateway (final decision)
+        -> UserTask: Notify Approved      -> End
+        -> UserTask: Notify Rejected      -> End
+```
+
+The walkthrough prints what is pending after each step. The interesting
+moment is right after Finance completes its review: the Compliance branch
+is still pending and the requester sees no notification yet — the workflow
+is correctly blocked at the join.
+
+Change `SCENARIO` near the top of the file to try the rejection paths
+(`finance_rejects`, `compliance_rejects`). The flow is also covered
+end-to-end by `tests/test_parallel_review_poc.py` with all three scenarios
+plus an explicit assertion that completing only one branch does **not**
+release the join.
 
 ## Errors Demo
 
