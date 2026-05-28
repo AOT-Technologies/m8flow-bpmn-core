@@ -48,30 +48,6 @@ class CreateProcessInstanceCommand:
 
 
 @dataclass(frozen=True, slots=True)
-class GetProcessInstanceCommand:
-    tenant_id: str
-    process_instance_id: int
-
-
-@dataclass(frozen=True, slots=True)
-class GetPendingTasksCommand:
-    tenant_id: str
-    user_id: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class GetProcessInstanceEventsCommand:
-    tenant_id: str
-    process_instance_id: int
-
-
-@dataclass(frozen=True, slots=True)
-class GetProcessInstanceMetadataCommand:
-    tenant_id: str
-    process_instance_id: int
-
-
-@dataclass(frozen=True, slots=True)
 class ImportBpmnProcessDefinitionCommand:
     tenant_id: str
     bpmn_identifier: str

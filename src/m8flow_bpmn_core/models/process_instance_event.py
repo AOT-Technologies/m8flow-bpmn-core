@@ -56,13 +56,15 @@ class ProcessInstanceEventModel(M8fTenantScopedMixin, TenantScoped, Base):
 
     @validates("event_type")
     def validate_event_type(self, key: str, value: Any) -> Any:
+        from m8flow_bpmn_core.errors import ValidationError
+
         try:
             return ProcessInstanceEventType(value).value
         except ValueError as exc:  # pragma: no cover - defensive guard
             allowed_values = ", ".join(
                 event_type.value for event_type in ProcessInstanceEventType
             )
-            raise ValueError(
+            raise ValidationError(
                 f"Invalid process instance event type: {value!r}. "
                 f"Expected one of: {allowed_values}"
             ) from exc

@@ -113,9 +113,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert context.task_definitions["decision"].is_human_task() is False
 
     session.expire_all()
-    process_instance = api.execute_command(
+    process_instance = api.execute_query(
         session,
-        api.GetProcessInstanceCommand(
+        api.GetProcessInstanceQuery(
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
         ),
@@ -125,9 +125,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert process_instance.workflow_state_json is not None
 
     # Step 1 continued: the submit task should be pending for the requester.
-    submit_pending_tasks = api.execute_command(
+    submit_pending_tasks = api.execute_query(
         session,
-        api.GetPendingTasksCommand(
+        api.GetPendingTasksQuery(
             tenant_id=context.tenant.id,
             user_id=context.users["requester"].id,
         ),
@@ -181,9 +181,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert submit_completed_task.completed is True
     assert submit_completed_task.task_status == "COMPLETED"
     session.expire_all()
-    process_instance = api.execute_command(
+    process_instance = api.execute_query(
         session,
-        api.GetProcessInstanceCommand(
+        api.GetProcessInstanceQuery(
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
         ),
@@ -196,9 +196,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert process_instance.end_in_seconds is None
 
     # Step 3: the manager claims and completes the review task.
-    manager_pending_tasks = api.execute_command(
+    manager_pending_tasks = api.execute_query(
         session,
-        api.GetPendingTasksCommand(
+        api.GetPendingTasksQuery(
             tenant_id=context.tenant.id,
             user_id=context.users["manager"].id,
         ),
@@ -225,9 +225,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     for username in ("manager", "reviewer"):
         assert [
             item.id
-            for item in api.execute_command(
+            for item in api.execute_query(
                 session,
-                api.GetPendingTasksCommand(
+                api.GetPendingTasksQuery(
                     tenant_id=context.tenant.id,
                     user_id=context.users[username].id,
                 ),
@@ -259,9 +259,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert manager_completed_task.task_model.end_in_seconds == 120
 
     session.expire_all()
-    process_instance = api.execute_command(
+    process_instance = api.execute_query(
         session,
-        api.GetProcessInstanceCommand(
+        api.GetProcessInstanceQuery(
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
         ),
@@ -277,9 +277,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     finance_task: HumanTaskModel | None = None
     if scenario.manager_decision == "Approved" and scenario.amount > 500:
         # Step 5: non auto-approved claims should appear in the Finance lane.
-        finance_pending_tasks = api.execute_command(
+        finance_pending_tasks = api.execute_query(
             session,
-            api.GetPendingTasksCommand(
+            api.GetPendingTasksQuery(
                 tenant_id=context.tenant.id,
                 user_id=context.users["finance"].id,
             ),
@@ -305,9 +305,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         ]
         assert [
             item.id
-            for item in api.execute_command(
+            for item in api.execute_query(
                 session,
-                api.GetPendingTasksCommand(
+                api.GetPendingTasksQuery(
                     tenant_id=context.tenant.id,
                     user_id=context.users["finance"].id,
                 ),
@@ -341,18 +341,18 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         assert finance_completed_task.task_model.future_task.completed is True
         assert finance_completed_task.task_model.end_in_seconds == 130
         session.expire_all()
-        process_instance = api.execute_command(
+        process_instance = api.execute_query(
             session,
-            api.GetProcessInstanceCommand(
+            api.GetProcessInstanceQuery(
                 tenant_id=context.tenant.id,
                 process_instance_id=context.process_instance.id,
             ),
         )
     else:
         assert (
-            api.execute_command(
+            api.execute_query(
                 session,
-                api.GetPendingTasksCommand(
+                api.GetPendingTasksQuery(
                     tenant_id=context.tenant.id,
                     user_id=context.users["finance"].id,
                 ),
@@ -364,9 +364,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert process_instance.status == api.ProcessInstanceStatus.complete
     assert process_instance.end_in_seconds == (130 if finance_task else 120)
 
-    metadata_rows = api.execute_command(
+    metadata_rows = api.execute_query(
         session,
-        api.GetProcessInstanceMetadataCommand(
+        api.GetProcessInstanceMetadataQuery(
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
         ),
@@ -383,9 +383,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         expected_metadata["finance_decision"] = scenario.finance_decision
     assert metadata_map == expected_metadata
 
-    events = api.execute_command(
+    events = api.execute_query(
         session,
-        api.GetProcessInstanceEventsCommand(
+        api.GetProcessInstanceEventsQuery(
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
         ),

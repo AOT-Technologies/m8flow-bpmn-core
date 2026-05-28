@@ -4,9 +4,11 @@ import hashlib
 from collections.abc import Mapping
 from typing import Any
 
+from SpiffWorkflow.spiff.parser.process import SpiffBpmnParser
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from m8flow_bpmn_core.errors import ValidationError
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
@@ -31,6 +33,10 @@ def import_bpmn_process_definition(
     source_bpmn_xml_text = _coerce_xml_text(source_bpmn_xml)
     source_dmn_xml_text = (
         _coerce_xml_text(source_dmn_xml) if source_dmn_xml is not None else None
+    )
+    _validate_bpmn_source(
+        bpmn_xml_text=source_bpmn_xml_text,
+        dmn_xml_text=source_dmn_xml_text,
     )
     resolved_full_process_model_hash = (
         full_process_model_hash
@@ -107,3 +113,44 @@ def _coerce_xml_text(xml: str | bytes) -> str:
     if isinstance(xml, bytes):
         return xml.decode("utf-8")
     return xml
+
+
+def _validate_bpmn_source(
+    *,
+    bpmn_xml_text: str,
+    dmn_xml_text: str | None,
+) -> None:
+    """Parse the BPMN (and optional DMN) source to verify it is well-formed.
+
+    Catches malformed XML, missing executable processes, and DMN parse errors at
+    import time, instead of letting them surface during workflow execution.
+    """
+    parser = SpiffBpmnParser(validator=None)
+    try:
+        parser.add_bpmn_str(
+            bpmn_xml_text.encode("utf-8"),
+            filename="import-validation.bpmn",
+        )
+        if dmn_xml_text is not None:
+            parser.add_dmn_str(
+                dmn_xml_text.encode("utf-8"),
+                filename="import-validation.dmn",
+            )
+    except ValidationError:
+        raise
+    except Exception as exc:
+        raise ValidationError(
+            f"BPMN/DMN source is not parseable: {exc}"
+        ) from exc
+
+    try:
+        process_ids = parser.get_process_ids()
+    except Exception as exc:
+        raise ValidationError(
+            f"BPMN source does not declare any usable process: {exc}"
+        ) from exc
+
+    if not process_ids:
+        raise ValidationError(
+            "BPMN source does not contain any executable processes"
+        )

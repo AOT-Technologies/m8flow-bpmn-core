@@ -616,7 +616,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             "The submit task should now appear in the requester worklist. "
             "This is the first user-visible step in the workflow."
         ),
-        command=api.GetPendingTasksCommand(
+        command=api.GetPendingTasksQuery(
             tenant_id=context.tenant_id,
             user_id=context.user_ids["requester"],
         ),
@@ -667,9 +667,9 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         "finance",
         "observer",
     ):
-        other_tasks = api.execute_command(
+        other_tasks = api.execute_query(
             engine,
-            api.GetPendingTasksCommand(
+            api.GetPendingTasksQuery(
                 tenant_id=context.tenant_id,
                 user_id=context.user_ids[username],
             ),
@@ -685,7 +685,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             "After the submit task completes, the workflow should still be "
             "waiting for user input and the next review task should be ready."
         ),
-        command=api.GetProcessInstanceCommand(
+        command=api.GetProcessInstanceQuery(
             tenant_id=context.tenant_id,
             process_instance_id=process_instance.id,
         ),
@@ -698,7 +698,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         context_text=(
             "The manager lane should now see the review task waiting to be claimed."
         ),
-        command=api.GetPendingTasksCommand(
+        command=api.GetPendingTasksQuery(
             tenant_id=context.tenant_id,
             user_id=context.user_ids["manager"],
         ),
@@ -711,7 +711,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             "The reviewer is also in the Manager lane, so the same review task "
             "should appear in their worklist."
         ),
-        command=api.GetPendingTasksCommand(
+        command=api.GetPendingTasksQuery(
             tenant_id=context.tenant_id,
             user_id=context.user_ids["reviewer"],
         ),
@@ -767,9 +767,9 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         "finance",
         "observer",
     ):
-        other_tasks = api.execute_command(
+        other_tasks = api.execute_query(
             engine,
-            api.GetPendingTasksCommand(
+            api.GetPendingTasksQuery(
                 tenant_id=context.tenant_id,
                 user_id=context.user_ids[username],
             ),
@@ -785,7 +785,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             "This read confirms whether the workflow stopped at the manager "
             "branch or moved on to Finance."
         ),
-        command=api.GetProcessInstanceCommand(
+        command=api.GetProcessInstanceQuery(
             tenant_id=context.tenant_id,
             process_instance_id=process_instance.id,
         ),
@@ -801,7 +801,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
                 "The amount is above the auto-approval threshold, so the "
                 "Finance lane should receive the next task."
             ),
-            command=api.GetPendingTasksCommand(
+            command=api.GetPendingTasksQuery(
                 tenant_id=context.tenant_id,
                 user_id=context.user_ids["finance"],
             ),
@@ -852,9 +852,9 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             "finance",
             "observer",
         ):
-            other_tasks = api.execute_command(
+            other_tasks = api.execute_query(
                 engine,
-                api.GetPendingTasksCommand(
+                api.GetPendingTasksQuery(
                     tenant_id=context.tenant_id,
                     user_id=context.user_ids[username],
                 ),
@@ -870,7 +870,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
                 "The final read should show the workflow has reached the "
                 "terminal completed state."
             ),
-            command=api.GetProcessInstanceCommand(
+            command=api.GetProcessInstanceQuery(
                 tenant_id=context.tenant_id,
                 process_instance_id=process_instance.id,
             ),
@@ -881,7 +881,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             step_number=12,
             title="Confirm that Finance has no pending task",
             context_text=_finance_not_reached_context(),
-            command=api.GetPendingTasksCommand(
+            command=api.GetPendingTasksQuery(
                 tenant_id=context.tenant_id,
                 user_id=context.user_ids["finance"],
             ),
@@ -902,7 +902,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         step_number=16,
         title="Read back the process metadata",
         context_text="This confirms the submission and decision metadata persisted.",
-        command=api.GetProcessInstanceMetadataCommand(
+        command=api.GetProcessInstanceMetadataQuery(
             tenant_id=context.tenant_id,
             process_instance_id=process_instance.id,
         ),
@@ -919,7 +919,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             "This confirms the workflow created task and completion events "
             "for the whole run."
         ),
-        command=api.GetProcessInstanceEventsCommand(
+        command=api.GetProcessInstanceEventsQuery(
             tenant_id=context.tenant_id,
             process_instance_id=process_instance.id,
         ),
@@ -952,7 +952,7 @@ def _run_isolation_checks(engine: Engine, context: ExampleContext) -> None:
             "noise task assigned to them. This proves a user can see their "
             "own worklist items without affecting the approval workflow."
         ),
-        command=api.GetPendingTasksCommand(
+        command=api.GetPendingTasksQuery(
             tenant_id=context.tenant_id,
             user_id=context.user_ids["observer"],
         ),
@@ -971,7 +971,7 @@ def _run_isolation_checks(engine: Engine, context: ExampleContext) -> None:
             "observer's unrelated noise task. This is the negative case "
             "that shows assignment still matters."
         ),
-        command=api.GetPendingTasksCommand(
+        command=api.GetPendingTasksQuery(
             tenant_id=context.tenant_id,
             user_id=context.user_ids["manager"],
         ),
@@ -989,12 +989,12 @@ def _run_isolation_checks(engine: Engine, context: ExampleContext) -> None:
             "read the main tenant worklist. This is expected to fail with "
             "a PermissionError."
         ),
-        command=api.GetPendingTasksCommand(
+        command=api.GetPendingTasksQuery(
             tenant_id=context.tenant_id,
             user_id=context.noise_user_ids["foreign_noise"],
         ),
         prefix="Verification",
-        expected_failure=PermissionError,
+        expected_failure=api.AuthorizationError,
         expected_failure_contains="does not belong to tenant",
     )
 
@@ -1007,7 +1007,7 @@ def _run_isolation_checks(engine: Engine, context: ExampleContext) -> None:
             "that tenant-scoped data stays visible to the correct tenant and "
             "user only."
         ),
-        command=api.GetPendingTasksCommand(
+        command=api.GetPendingTasksQuery(
             tenant_id=context.noise_tenant_ids["foreign_noise"],
             user_id=context.noise_user_ids["foreign_noise"],
         ),
@@ -1023,14 +1023,14 @@ def _run_isolation_checks(engine: Engine, context: ExampleContext) -> None:
         title="Reject cross-tenant process-instance access",
         context_text=(
             "The foreign tenant must not be able to read the main tenant "
-            "process instance. This is expected to fail with a LookupError."
+            "process instance. This is expected to fail with a NotFoundError."
         ),
-        command=api.GetProcessInstanceCommand(
+        command=api.GetProcessInstanceQuery(
             tenant_id=context.noise_tenant_ids["foreign_noise"],
             process_instance_id=context.noise_process_instance_ids["observer"],
         ),
         prefix="Verification",
-        expected_failure=LookupError,
+        expected_failure=api.NotFoundError,
         expected_failure_contains="was not found for tenant",
     )
 
@@ -1056,9 +1056,13 @@ def _run_command_step(
     print(SECTION_SEPARATOR)
     _pause("Press Enter to execute this command.")
     print("Status: executing command...")
+    is_query = type(command).__name__.endswith("Query")
     try:
         with engine.begin() as connection:
-            result = api.execute_command(connection, command)
+            if is_query:
+                result = api.execute_query(connection, command)
+            else:
+                result = api.execute_command(connection, command)
     except Exception as exc:
         if expected_failure is None or not isinstance(exc, expected_failure):
             raise
