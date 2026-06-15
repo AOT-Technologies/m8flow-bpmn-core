@@ -16,3 +16,4 @@ dist/
 *.db
 *.sqlite
 reference/
+.*

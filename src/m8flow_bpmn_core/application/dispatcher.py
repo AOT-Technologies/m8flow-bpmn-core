@@ -11,10 +11,6 @@ from m8flow_bpmn_core.application.commands import (
     CompleteTaskCommand,
     CreateProcessInstanceCommand,
     ErrorProcessInstanceCommand,
-    GetPendingTasksCommand,
-    GetProcessInstanceCommand,
-    GetProcessInstanceEventsCommand,
-    GetProcessInstanceMetadataCommand,
     ImportBpmnProcessDefinitionCommand,
     InitializeProcessInstanceFromDefinitionCommand,
     InitializeProcessInstanceWorkflowCommand,
@@ -130,30 +126,6 @@ def execute_command(
                 process_version=command.process_version,
                 created_at_in_seconds=command.created_at_in_seconds,
                 updated_at_in_seconds=command.updated_at_in_seconds,
-            )
-        if isinstance(command, GetProcessInstanceCommand):
-            return get_process_instance(
-                session,
-                tenant_id=command.tenant_id,
-                process_instance_id=command.process_instance_id,
-            )
-        if isinstance(command, GetPendingTasksCommand):
-            return get_pending_tasks(
-                session,
-                tenant_id=command.tenant_id,
-                user_id=command.user_id,
-            )
-        if isinstance(command, GetProcessInstanceEventsCommand):
-            return get_process_instance_events(
-                session,
-                tenant_id=command.tenant_id,
-                process_instance_id=command.process_instance_id,
-            )
-        if isinstance(command, GetProcessInstanceMetadataCommand):
-            return get_process_instance_metadata(
-                session,
-                tenant_id=command.tenant_id,
-                process_instance_id=command.process_instance_id,
             )
         if isinstance(command, ImportBpmnProcessDefinitionCommand):
             return import_bpmn_process_definition(

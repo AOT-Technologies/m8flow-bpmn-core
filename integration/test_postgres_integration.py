@@ -11,9 +11,10 @@ from m8flow_bpmn_core import api
 from m8flow_bpmn_core.application import (
     ClaimTaskCommand,
     CompleteTaskCommand,
-    GetPendingTasksCommand,
-    GetProcessInstanceCommand,
+    GetPendingTasksQuery,
+    GetProcessInstanceQuery,
     execute_command,
+    execute_query,
 )
 from m8flow_bpmn_core.models import (
     BpmnProcessDefinitionModel,
@@ -67,9 +68,9 @@ def test_postgres_supports_transaction_control_and_pending_tasks(
                 session
             )
 
-            pending_tasks = execute_command(
+            pending_tasks = execute_query(
                 connection,
-                GetPendingTasksCommand(
+                GetPendingTasksQuery(
                     tenant_id=tenant.id,
                     user_id=user.id,
                 ),
@@ -98,9 +99,9 @@ def test_postgres_supports_transaction_control_and_pending_tasks(
             assert completed_task.completed is True
             assert completed_task.task_status == "COMPLETED"
 
-            current_process_instance = execute_command(
+            current_process_instance = execute_query(
                 connection,
-                GetProcessInstanceCommand(
+                GetProcessInstanceQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
                 ),
@@ -114,9 +115,9 @@ def test_postgres_supports_transaction_control_and_pending_tasks(
 
     with Session(bind=postgres_engine) as verify_session:
         with pytest.raises(LookupError):
-            execute_command(
+            execute_query(
                 verify_session,
-                GetProcessInstanceCommand(
+                GetProcessInstanceQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
                 ),
@@ -178,9 +179,9 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             )
             assert process_instance.workflow_state_json is not None
 
-            submit_tasks = api.execute_command(
+            submit_tasks = api.execute_query(
                 connection,
-                api.GetPendingTasksCommand(
+                api.GetPendingTasksQuery(
                     tenant_id=tenant.id,
                     user_id=users["requester"].id,
                 ),
@@ -221,9 +222,9 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
                 ),
             )
 
-            process_instance = api.execute_command(
+            process_instance = api.execute_query(
                 connection,
-                api.GetProcessInstanceCommand(
+                api.GetProcessInstanceQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
                 ),
@@ -233,16 +234,16 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             )
             assert process_instance.end_in_seconds is None
 
-            manager_tasks = api.execute_command(
+            manager_tasks = api.execute_query(
                 connection,
-                api.GetPendingTasksCommand(
+                api.GetPendingTasksQuery(
                     tenant_id=tenant.id,
                     user_id=users["manager"].id,
                 ),
             )
-            reviewer_tasks = api.execute_command(
+            reviewer_tasks = api.execute_query(
                 connection,
-                api.GetPendingTasksCommand(
+                api.GetPendingTasksQuery(
                     tenant_id=tenant.id,
                     user_id=users["reviewer"].id,
                 ),
@@ -281,9 +282,9 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
                 ),
             )
 
-            process_instance = api.execute_command(
+            process_instance = api.execute_query(
                 connection,
-                api.GetProcessInstanceCommand(
+                api.GetProcessInstanceQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
                 ),
@@ -293,9 +294,9 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             )
             assert process_instance.end_in_seconds is None
 
-            finance_tasks = api.execute_command(
+            finance_tasks = api.execute_query(
                 connection,
-                api.GetPendingTasksCommand(
+                api.GetPendingTasksQuery(
                     tenant_id=tenant.id,
                     user_id=users["finance"].id,
                 ),
@@ -332,9 +333,9 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
                 ),
             )
 
-            process_instance = api.execute_command(
+            process_instance = api.execute_query(
                 connection,
-                api.GetProcessInstanceCommand(
+                api.GetProcessInstanceQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
                 ),
@@ -342,9 +343,9 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             assert process_instance.status == api.ProcessInstanceStatus.complete
             assert process_instance.end_in_seconds == 130
 
-            metadata_rows = api.execute_command(
+            metadata_rows = api.execute_query(
                 connection,
-                api.GetProcessInstanceMetadataCommand(
+                api.GetProcessInstanceMetadataQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
                 ),
@@ -360,9 +361,9 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
                 "finance_decision": "Approved",
             }
 
-            events = api.execute_command(
+            events = api.execute_query(
                 connection,
-                api.GetProcessInstanceEventsCommand(
+                api.GetProcessInstanceEventsQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
                 ),
@@ -382,9 +383,9 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
 
     with Session(bind=postgres_engine) as verify_session:
         with pytest.raises(LookupError):
-            api.execute_command(
+            api.execute_query(
                 verify_session,
-                api.GetProcessInstanceCommand(
+                api.GetProcessInstanceQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
                 ),
@@ -436,27 +437,27 @@ def test_postgres_rejects_cross_tenant_workflow_and_task_actions(
                     ),
                 )
 
-            pending_tasks = api.execute_command(
+            pending_tasks = api.execute_query(
                 connection,
-                api.GetPendingTasksCommand(
+                api.GetPendingTasksQuery(
                     tenant_id=context.tenant.id,
                     user_id=context.tenant_user.id,
                 ),
             )
             assert [task.id for task in pending_tasks] == [context.human_task.id]
 
-            observer_pending_tasks = api.execute_command(
+            observer_pending_tasks = api.execute_query(
                 connection,
-                api.GetPendingTasksCommand(
+                api.GetPendingTasksQuery(
                     tenant_id=context.tenant.id,
                     user_id=context.tenant_observer.id,
                 ),
             )
             assert observer_pending_tasks == []
 
-            foreign_pending_tasks = api.execute_command(
+            foreign_pending_tasks = api.execute_query(
                 connection,
-                api.GetPendingTasksCommand(
+                api.GetPendingTasksQuery(
                     tenant_id=context.foreign_tenant.id,
                     user_id=context.foreign_user.id,
                 ),
@@ -466,9 +467,9 @@ def test_postgres_rejects_cross_tenant_workflow_and_task_actions(
             ]
 
             with pytest.raises(PermissionError, match="does not belong to tenant"):
-                api.execute_command(
+                api.execute_query(
                     connection,
-                    api.GetPendingTasksCommand(
+                    api.GetPendingTasksQuery(
                         tenant_id=context.tenant.id,
                         user_id=context.foreign_user.id,
                     ),

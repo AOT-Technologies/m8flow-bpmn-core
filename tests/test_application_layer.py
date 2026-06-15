@@ -9,7 +9,6 @@ from m8flow_bpmn_core.application import (
     ClaimTaskCommand,
     CompleteTaskCommand,
     ErrorProcessInstanceCommand,
-    GetPendingTasksCommand,
     GetPendingTasksQuery,
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
@@ -173,9 +172,9 @@ def test_application_layer_supports_connection_transaction_control(
             tenant_id = tenant.id
             process_instance_id = process_instance.id
 
-            pending_tasks = execute_command(
+            pending_tasks = execute_query(
                 connection,
-                GetPendingTasksCommand(
+                GetPendingTasksQuery(
                     tenant_id=tenant.id,
                     user_id=user.id,
                 ),
@@ -428,8 +427,17 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
     session.add(tenant)
     session.flush()
 
-    bpmn_xml = "<definitions><process id='Process_import_1'/></definitions>"
-    dmn_xml = "<definitions><decision id='Decision_import_1'/></definitions>"
+    bpmn_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<bpmn:definitions '
+        'xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" '
+        'targetNamespace="http://example.com/bpmn">'
+        '<bpmn:process id="Process_import_1" isExecutable="true">'
+        '<bpmn:startEvent id="Start_1"/>'
+        '</bpmn:process>'
+        '</bpmn:definitions>'
+    )
+    dmn_xml = None
     definition = execute_command(
         session,
         ImportBpmnProcessDefinitionCommand(

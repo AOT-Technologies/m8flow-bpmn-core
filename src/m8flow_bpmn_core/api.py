@@ -1,6 +1,10 @@
 """Public library API for the platform/app layer.
 
 This package is intended to be imported directly, not exposed over HTTP.
+
+Stability: every name re-exported here is part of the public contract.
+See ``doc/api.md`` for the full reference, including per-command input
+fields, return types, and the error classes each operation may raise.
 """
 
 from __future__ import annotations
@@ -10,12 +14,8 @@ from m8flow_bpmn_core.application import (
     CompleteTaskCommand,
     CreateProcessInstanceCommand,
     ErrorProcessInstanceCommand,
-    GetPendingTasksCommand,
     GetPendingTasksQuery,
-    GetProcessInstanceCommand,
-    GetProcessInstanceEventsCommand,
     GetProcessInstanceEventsQuery,
-    GetProcessInstanceMetadataCommand,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
     ImportBpmnProcessDefinitionCommand,
@@ -33,6 +33,13 @@ from m8flow_bpmn_core.application import (
     UpsertProcessInstanceMetadataCommand,
     execute_command,
     execute_query,
+)
+from m8flow_bpmn_core.errors import (
+    AuthorizationError,
+    BpmnCoreError,
+    InvalidStateError,
+    NotFoundError,
+    ValidationError,
 )
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceStatus
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
@@ -64,33 +71,34 @@ from m8flow_bpmn_core.services.workflow_runtime import (
 )
 
 __all__ = [
+    "AuthorizationError",
+    "BpmnCoreError",
     "ClaimTaskCommand",
     "CompleteTaskCommand",
     "CreateProcessInstanceCommand",
     "ErrorProcessInstanceCommand",
-    "GetProcessInstanceCommand",
-    "GetPendingTasksCommand",
-    "GetProcessInstanceEventsCommand",
-    "GetProcessInstanceMetadataCommand",
-    "ImportBpmnProcessDefinitionCommand",
-    "InitializeProcessInstanceFromDefinitionCommand",
-    "InitializeProcessInstanceWorkflowCommand",
-    "GetProcessInstanceQuery",
     "GetPendingTasksQuery",
     "GetProcessInstanceEventsQuery",
     "GetProcessInstanceMetadataQuery",
+    "GetProcessInstanceQuery",
+    "ImportBpmnProcessDefinitionCommand",
+    "InitializeProcessInstanceFromDefinitionCommand",
+    "InitializeProcessInstanceWorkflowCommand",
+    "InvalidStateError",
     "ListErrorProcessInstancesQuery",
     "ListProcessInstancesQuery",
     "ListSuspendedProcessInstancesQuery",
     "ListTerminatedProcessInstancesQuery",
-    "RetryProcessInstanceCommand",
+    "NotFoundError",
     "ProcessInstanceEventType",
     "ProcessInstanceStatus",
-    "ResumeProcessInstanceCommand",
     "RecordProcessInstanceEventCommand",
+    "ResumeProcessInstanceCommand",
+    "RetryProcessInstanceCommand",
     "SuspendProcessInstanceCommand",
     "TerminateProcessInstanceCommand",
     "UpsertProcessInstanceMetadataCommand",
+    "ValidationError",
     "advance_process_instance_workflow",
     "claim_task",
     "complete_task",
@@ -107,10 +115,10 @@ __all__ = [
     "list_suspended_process_instances",
     "list_terminated_process_instances",
     "record_process_instance_event",
-    "retry_process_instance",
+    "resolve_lane_assignment_id",
     "resume_process_instance",
+    "retry_process_instance",
     "suspend_process_instance",
     "terminate_process_instance",
     "upsert_process_instance_metadata",
-    "resolve_lane_assignment_id",
 ]

@@ -5,6 +5,7 @@ import time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from m8flow_bpmn_core.errors import InvalidStateError, NotFoundError
 from m8flow_bpmn_core.models.process_instance import (
     ProcessInstanceModel,
     ProcessInstanceStatus,
@@ -241,7 +242,7 @@ def suspend_process_instance(
     if process_instance.status == ProcessInstanceStatus.suspended.value:
         return process_instance
     if process_instance.has_terminal_status():
-        raise ValueError("Cannot suspend a terminal process instance")
+        raise InvalidStateError("Cannot suspend a terminal process instance")
 
     occurred_at = _resolve_timestamp(suspended_at_in_seconds)
     process_instance.status = ProcessInstanceStatus.suspended.value
@@ -278,9 +279,13 @@ def error_process_instance(
     if process_instance.status == ProcessInstanceStatus.error.value:
         return process_instance
     if process_instance.status == ProcessInstanceStatus.complete.value:
-        raise ValueError("Cannot mark a completed process instance as errored")
+        raise InvalidStateError(
+            "Cannot mark a completed process instance as errored"
+        )
     if process_instance.status == ProcessInstanceStatus.terminated.value:
-        raise ValueError("Cannot mark a terminated process instance as errored")
+        raise InvalidStateError(
+            "Cannot mark a terminated process instance as errored"
+        )
 
     occurred_at = _resolve_timestamp(errored_at_in_seconds)
     process_instance.status = ProcessInstanceStatus.error.value
@@ -323,9 +328,9 @@ def resume_process_instance(
     if process_instance.status == ProcessInstanceStatus.running.value:
         return process_instance
     if process_instance.has_terminal_status():
-        raise ValueError("Cannot resume a terminal process instance")
+        raise InvalidStateError("Cannot resume a terminal process instance")
     if process_instance.status != ProcessInstanceStatus.suspended.value:
-        raise ValueError("Only suspended process instances can be resumed")
+        raise InvalidStateError("Only suspended process instances can be resumed")
 
     occurred_at = _resolve_timestamp(resumed_at_in_seconds)
     process_instance.status = ProcessInstanceStatus.running.value
@@ -360,7 +365,7 @@ def retry_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
     )
     if process_instance.status != ProcessInstanceStatus.error.value:
-        raise ValueError("Only errored process instances can be retried")
+        raise InvalidStateError("Only errored process instances can be retried")
 
     occurred_at = _resolve_timestamp(retried_at_in_seconds)
     process_instance.status = ProcessInstanceStatus.running.value
@@ -405,7 +410,9 @@ def terminate_process_instance(
         ProcessInstanceStatus.complete.value,
         ProcessInstanceStatus.error.value,
     ):
-        raise ValueError("Cannot terminate a completed or errored process instance")
+        raise InvalidStateError(
+            "Cannot terminate a completed or errored process instance"
+        )
 
     occurred_at = _resolve_timestamp(terminated_at_in_seconds)
     process_instance.status = ProcessInstanceStatus.terminated.value
@@ -512,7 +519,7 @@ def _load_process_instance(
         )
     )
     if process_instance is None:
-        raise LookupError(
+        raise NotFoundError(
             "Process instance "
             f"{process_instance_id} was not found for tenant {tenant_id}"
         )

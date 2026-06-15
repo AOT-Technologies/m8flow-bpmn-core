@@ -6,6 +6,11 @@ from collections.abc import Mapping
 from sqlalchemy import Select, exists, select
 from sqlalchemy.orm import Session
 
+from m8flow_bpmn_core.errors import (
+    AuthorizationError,
+    InvalidStateError,
+    NotFoundError,
+)
 from m8flow_bpmn_core.models.future_task import FutureTaskModel
 from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
@@ -73,7 +78,7 @@ def claim_task(
         session, tenant_id=tenant_id, human_task_id=human_task_id
     )
     if human_task.completed:
-        raise ValueError("Cannot claim a completed task")
+        raise InvalidStateError("Cannot claim a completed task")
 
     assignment = session.scalar(
         select(HumanTaskUserModel).where(
@@ -118,12 +123,12 @@ def complete_task(
         session, tenant_id=tenant_id, human_task_id=human_task_id
     )
     if human_task.completed:
-        raise ValueError("Task is already completed")
+        raise InvalidStateError("Task is already completed")
 
     if not _user_can_complete_task(
         session, tenant_id=tenant_id, human_task_id=human_task_id, user_id=user_id
     ):
-        raise PermissionError("User is not assigned to this task")
+        raise AuthorizationError("User is not assigned to this task")
 
     completed_at = (
         completed_at_in_seconds
@@ -198,7 +203,7 @@ def _load_human_task(
         )
     )
     if human_task is None:
-        raise LookupError(
+        raise NotFoundError(
             f"Human task {human_task_id} was not found for tenant {tenant_id}"
         )
     return human_task
