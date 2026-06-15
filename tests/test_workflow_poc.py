@@ -630,7 +630,6 @@ def _seed_example_workflow(
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        process_version=1,
         summary=(
             f"Scenario: {scenario.name}"
             if scenario is not None

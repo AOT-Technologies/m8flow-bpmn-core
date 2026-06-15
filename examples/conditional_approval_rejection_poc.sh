@@ -17,7 +17,7 @@ main() {
   local repo_root
   repo_root="$(cd -- "$script_dir/.." && pwd -P)"
   local example_script="$script_dir/conditional_approval_rejection_poc.py"
-  local default_database_url="postgresql+psycopg://postgres:postgres@localhost:5432/m8flow_bpmn_core_example?connect_timeout=1"
+  local default_database_url="postgresql+psycopg://postgres:postgres@localhost:6843/postgres?connect_timeout=1"
 
   if [[ ! -f "$example_script" ]]; then
     echo "Could not find the Python example at $example_script" >&2
@@ -151,14 +151,14 @@ resolve_example_database_url() {
     return 0
   fi
 
-  printf '%s\n' 'Status: checking whether the default local Postgres database is reachable...' >&2
+  printf '%s\n' 'Status: checking whether the shared local Postgres database is reachable...' >&2
   if check_database_url "$default_database_url"; then
-    printf '%s\n' 'Status: default local Postgres database is reachable.' >&2
+    printf '%s\n' 'Status: found a reachable shared local Postgres database.' >&2
     printf '%s\n' "$default_database_url"
     return 0
   fi
 
-  printf '%s\n' 'Status: default local database is not reachable, starting Docker fallback...' >&2
+  printf '%s\n' 'Status: shared local Postgres database is not reachable, starting Docker fallback...' >&2
   start_temporary_postgres_container
 }
 

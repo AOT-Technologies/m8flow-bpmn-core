@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, String
+from sqlalchemy import JSON, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -28,6 +28,8 @@ class BpmnProcessModel(M8fTenantScopedMixin, TenantScoped, Base):
     )
     properties_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     json_data_hash: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    start_in_seconds: Mapped[float | None] = mapped_column(Numeric(17, 6))
+    end_in_seconds: Mapped[float | None] = mapped_column(Numeric(17, 6))
 
     bpmn_process_definition = relationship(
         "BpmnProcessDefinitionModel",
@@ -35,4 +37,9 @@ class BpmnProcessModel(M8fTenantScopedMixin, TenantScoped, Base):
     )
     tasks = relationship(
         "TaskModel", back_populates="bpmn_process", cascade="all, delete-orphan"
+    )
+    child_processes = relationship(
+        "BpmnProcessModel",
+        foreign_keys=[direct_parent_process_id],
+        cascade="all",
     )

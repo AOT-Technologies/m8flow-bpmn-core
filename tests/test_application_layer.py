@@ -464,7 +464,12 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
     assert definition.single_process_hash == hashlib.sha256(
         f"single::{bpmn_xml}".encode()
     ).hexdigest()
-    assert definition.properties_json == {
+    public_properties = {
+        key: value
+        for key, value in definition.properties_json.items()
+        if not key.startswith("__m8f_source_")
+    }
+    assert public_properties == {
         "source": "application-layer-test",
         "version": 1,
     }
@@ -558,7 +563,6 @@ def _seed_process_instance(
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        process_version=3,
         created_at_in_seconds=1_000,
         updated_at_in_seconds=1_000,
     )

@@ -22,5 +22,8 @@ class UserModel(Base):
         String(255), index=True, nullable=False
     )
     display_name: Mapped[str | None] = mapped_column(String(255))
+    tenant_specific_field_1: Mapped[str | None] = mapped_column(String(255))
+    tenant_specific_field_2: Mapped[str | None] = mapped_column(String(255))
+    tenant_specific_field_3: Mapped[str | None] = mapped_column(String(255))
     updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
     created_at_in_seconds: Mapped[int | None] = mapped_column(Integer)

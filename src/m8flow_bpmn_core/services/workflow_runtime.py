@@ -28,16 +28,22 @@ from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
 from m8flow_bpmn_core.models.future_task import FutureTaskModel
+from m8flow_bpmn_core.models.group import GroupModel
 from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.human_task_user import (
     HumanTaskUserAddedBy,
     HumanTaskUserModel,
 )
+from m8flow_bpmn_core.models.json_data import JsonDataModel
 from m8flow_bpmn_core.models.process_instance import (
+    WORKFLOW_STATE_JSON_DATA_KEY,
     ProcessInstanceModel,
     ProcessInstanceStatus,
 )
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.process_model_bpmn_version import (
+    ProcessModelBpmnVersionModel,
+)
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.user import UserModel
@@ -48,6 +54,7 @@ from m8flow_bpmn_core.services.process_instances import (
     upsert_process_instance_metadata,
 )
 from m8flow_bpmn_core.services.tenant_users import (
+    ensure_user_belongs_to_tenant,
     tenant_identifiers_for,
     user_belongs_to_tenant,
 )
@@ -55,6 +62,7 @@ from m8flow_bpmn_core.services.tenant_users import (
 _WORKFLOW_SERIALIZER = BpmnWorkflowSerializer(
     registry=BpmnWorkflowSerializer.configure(SPIFF_CONFIG)
 )
+_WORKFLOW_STATE_SERIALIZER_VERSION = "m8flow-bpmn-core-v1"
 
 
 class _NoopDMNEngine:
@@ -81,10 +89,11 @@ class _RuntimeSpiffBpmnParser(SpiffBpmnParser):
 
 
 def resolve_lane_assignment_id(lane_name: str) -> int:
-    """Return a stable lane identifier without a groups table."""
+    """Return a stable lane identifier that fits m8flow's integer group ids."""
     normalized_lane = lane_name.strip().lower()
     digest = hashlib.sha256(normalized_lane.encode("utf-8")).hexdigest()
-    return int(digest[:8], 16)
+    stable_int = int(digest[:8], 16) & 0x7FFFFFFF
+    return stable_int or 1
 
 
 def initialize_process_instance_workflow(
@@ -130,7 +139,7 @@ def initialize_process_instance_workflow(
     )
     workflow.run_all(halt_on_manual=True)
 
-    _persist_workflow_state(process_instance, workflow)
+    _persist_workflow_state(session, process_instance, workflow)
     _materialize_ready_manual_tasks(
         session,
         process_instance=process_instance,
@@ -173,6 +182,11 @@ def initialize_process_instance_from_definition(
     started_at_in_seconds: int | None = None,
     bpmn_process_id: str | None = None,
 ) -> ProcessInstanceModel:
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=process_initiator_id,
+    )
     process_definition = _load_process_definition(
         session,
         tenant_id=tenant_id,
@@ -209,8 +223,24 @@ def initialize_process_instance_from_definition(
         created_at_in_seconds=started_at_in_seconds,
         updated_at_in_seconds=started_at_in_seconds,
     )
+    process_instance.bpmn_version_control_type = (
+        process_definition.bpmn_version_control_type
+    )
+    process_instance.bpmn_version_control_identifier = (
+        process_definition.bpmn_version_control_identifier
+    )
+    process_instance.last_milestone_bpmn_name = (
+        process_definition.bpmn_name or process_definition.bpmn_identifier
+    )
 
     metadata_timestamp = _resolve_timestamp(started_at_in_seconds)
+    process_instance.bpmn_version_id = _ensure_bpmn_version_snapshot(
+        session,
+        tenant_id=tenant_id,
+        process_model_identifier=process_definition.bpmn_identifier,
+        bpmn_xml_text=process_definition.source_bpmn_xml,
+        occurred_at=metadata_timestamp,
+    ).id
     for key, value in (submission_metadata or {}).items():
         upsert_process_instance_metadata(
             session,
@@ -266,7 +296,7 @@ def advance_process_instance_workflow(
     completed_task.complete()
     workflow.run_all(halt_on_manual=True)
 
-    _persist_workflow_state(process_instance, workflow)
+    _persist_workflow_state(session, process_instance, workflow)
     _materialize_ready_manual_tasks(
         session,
         process_instance=process_instance,
@@ -310,10 +340,8 @@ def _resolve_or_create_bpmn_process(
     process_definition: BpmnProcessDefinitionModel,
     process_identifier: str,
 ) -> BpmnProcessModel:
-    for bpmn_process in process_definition.bpmn_processes:
-        if bpmn_process.properties_json.get("root") == process_identifier:
-            return bpmn_process
-
+    # A stored definition can be reused across many process instances, but each
+    # instance needs its own runtime BPMN process row and workflow-state blob.
     bpmn_process = BpmnProcessModel(
         m8f_tenant_id=tenant_id,
         guid=None,
@@ -321,16 +349,59 @@ def _resolve_or_create_bpmn_process(
         top_level_process_id=None,
         direct_parent_process_id=None,
         properties_json={"root": process_identifier},
-        json_data_hash=_hash_payload(
+        json_data_hash=JsonDataModel.create_or_update_from_payload(
+            session,
             {
                 "bpmn_process_definition_id": process_definition.id,
                 "process_identifier": process_identifier,
-            }
+            },
         ),
+        start_in_seconds=None,
+        end_in_seconds=None,
     )
     session.add(bpmn_process)
     session.flush()
     return bpmn_process
+
+
+def _ensure_bpmn_version_snapshot(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_model_identifier: str,
+    bpmn_xml_text: str | bytes | None,
+    occurred_at: int,
+) -> ProcessModelBpmnVersionModel:
+    if bpmn_xml_text is None:
+        raise ValidationError("Cannot create a BPMN version snapshot without BPMN XML")
+
+    normalized_bpmn_xml = (
+        bpmn_xml_text.decode("utf-8")
+        if isinstance(bpmn_xml_text, bytes)
+        else bpmn_xml_text
+    )
+    bpmn_xml_hash = hashlib.sha256(
+        normalized_bpmn_xml.encode("utf-8")
+    ).hexdigest()
+    snapshot = session.scalar(
+        select(ProcessModelBpmnVersionModel).where(
+            ProcessModelBpmnVersionModel.m8f_tenant_id == tenant_id,
+            ProcessModelBpmnVersionModel.process_model_identifier
+            == process_model_identifier,
+            ProcessModelBpmnVersionModel.bpmn_xml_hash == bpmn_xml_hash,
+        )
+    )
+    if snapshot is None:
+        snapshot = ProcessModelBpmnVersionModel(
+            m8f_tenant_id=tenant_id,
+            process_model_identifier=process_model_identifier,
+            bpmn_xml_hash=bpmn_xml_hash,
+            bpmn_xml_file_contents=normalized_bpmn_xml,
+            created_at_in_seconds=occurred_at,
+        )
+        session.add(snapshot)
+        session.flush()
+    return snapshot
 
 
 def _select_process_identifier(
@@ -398,10 +469,26 @@ def _restore_workflow(serialized_state: str) -> BpmnWorkflow:
 
 
 def _persist_workflow_state(
+    session: Session,
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
 ) -> None:
-    process_instance.workflow_state_json = _WORKFLOW_SERIALIZER.serialize_json(workflow)
+    serialized_state = _WORKFLOW_SERIALIZER.serialize_json(workflow)
+    process_instance.spiff_serializer_version = _WORKFLOW_STATE_SERIALIZER_VERSION
+    if process_instance.bpmn_process is not None:
+        workflow_data = getattr(workflow, "data", {})
+        persisted_workflow_data = (
+            dict(workflow_data)
+            if isinstance(workflow_data, Mapping)
+            else {}
+        )
+        persisted_workflow_data[WORKFLOW_STATE_JSON_DATA_KEY] = serialized_state
+        process_instance.bpmn_process.json_data_hash = (
+            JsonDataModel.create_or_update_from_payload(
+                session,
+                persisted_workflow_data,
+            )
+        )
 
 
 def _seed_runtime_definitions(
@@ -604,26 +691,15 @@ def _upsert_task_model(
 ) -> TaskModel:
     task_guid = str(task.id)
     task_model = session.get(TaskModel, task_guid)
-    properties_json = {
-        "task_spec": task.task_spec.name,
-        "task_spec_type": task.task_spec.__class__.__name__,
-        "lane": getattr(task.task_spec, "lane", None),
-        "extensions": getattr(task.task_spec, "extensions", {}),
-        "task_definition_properties": task_definition.properties_json,
-    }
-    json_data_hash = _hash_payload(
-        {
-            "task_guid": task_guid,
-            "task_spec": task.task_spec.name,
-            "task_data": getattr(task, "data", {}),
-        }
+    properties_json = _task_properties_json(task, task_definition)
+    task_data = getattr(task, "data", {})
+    json_data_hash = JsonDataModel.create_or_update_from_payload(
+        session,
+        task_data if isinstance(task_data, Mapping) else {},
     )
-    python_env_data_hash = _hash_payload(
-        {
-            "process_instance_id": process_instance.id,
-            "task_guid": task_guid,
-            "task_spec": task.task_spec.name,
-        }
+    python_env_data_hash = JsonDataModel.create_or_update_from_payload(
+        session,
+        {},
     )
     runtime_info = {
         "spiff_task_id": task_guid,
@@ -646,7 +722,7 @@ def _upsert_task_model(
             json_data_hash=json_data_hash,
             python_env_data_hash=python_env_data_hash,
             runtime_info=runtime_info,
-            start_in_seconds=occurred_at,
+            start_in_seconds=float(occurred_at),
             end_in_seconds=None,
         )
         session.add(task_model)
@@ -664,7 +740,7 @@ def _upsert_task_model(
         task_model.python_env_data_hash = python_env_data_hash
         task_model.runtime_info = runtime_info
         task_model.start_in_seconds = (
-            occurred_at
+            float(occurred_at)
             if task_model.start_in_seconds is None
             else task_model.start_in_seconds
         )
@@ -691,17 +767,21 @@ def _upsert_human_task(
         )
     )
     lane_name = getattr(task.task_spec, "lane", None)
+    lane_group_id = _lane_group_id(session, lane_name)
     human_task_payload = _human_task_payload(task, task_definition)
     if human_task is None:
         human_task = HumanTaskModel(
             m8f_tenant_id=process_instance.m8f_tenant_id,
             process_instance_id=process_instance.id,
+            task_id=task_model.guid,
             task_guid=task_model.guid,
-            lane_assignment_id=(
-                resolve_lane_assignment_id(lane_name) if lane_name else None
-            ),
+            lane_assignment_id=lane_group_id,
             completed_by_user_id=None,
             actual_owner_id=None,
+            form_file_name=None,
+            ui_form_file_name=None,
+            updated_at_in_seconds=occurred_at,
+            created_at_in_seconds=occurred_at,
             task_name=task.task_spec.name,
             task_title=getattr(task.task_spec, "bpmn_name", None),
             task_type=task_definition.typename,
@@ -714,10 +794,10 @@ def _upsert_human_task(
         )
         session.add(human_task)
     else:
+        human_task.task_id = task_model.guid
         human_task.task_guid = task_model.guid
-        human_task.lane_assignment_id = (
-            resolve_lane_assignment_id(lane_name) if lane_name else None
-        )
+        human_task.lane_assignment_id = lane_group_id
+        human_task.updated_at_in_seconds = occurred_at
         human_task.task_name = task.task_spec.name
         human_task.task_title = getattr(task.task_spec, "bpmn_name", None)
         human_task.task_type = task_definition.typename
@@ -732,8 +812,51 @@ def _upsert_human_task(
         human_task.completed_by_user_id = None
         human_task.actual_owner_id = None
 
+    process_instance.task_updated_at_in_seconds = occurred_at
     session.flush()
     return human_task
+
+
+def _lane_group_id(session: Session, lane_name: str | None) -> int | None:
+    if lane_name is None:
+        return None
+    if re.match(r"(process.?)initiator", lane_name, re.IGNORECASE):
+        return None
+
+    lane_group_id = resolve_lane_assignment_id(lane_name)
+    lane_group = session.get(GroupModel, lane_group_id)
+    if lane_group is None:
+        lane_group = GroupModel(
+            id=lane_group_id,
+            name=lane_name,
+            identifier=lane_name,
+            source_is_open_id=False,
+        )
+        session.add(lane_group)
+        session.flush()
+    return lane_group.id
+
+
+def _task_properties_json(
+    task: object, task_definition: TaskDefinitionModel
+) -> dict[str, Any]:
+    children = getattr(task, "children", []) or []
+    workflow_spec = getattr(task.task_spec, "_wf_spec", None)
+    return {
+        "id": str(task.id),
+        "parent": str(task.parent.id) if getattr(task, "parent", None) else None,
+        "children": [str(child.id) for child in children],
+        "last_state_change": float(getattr(task, "last_state_change", 0.0) or 0.0),
+        "state": task.state,
+        "task_spec": task.task_spec.name,
+        "task_spec_type": task.task_spec.__class__.__name__,
+        "triggered": bool(getattr(task, "triggered", False)),
+        "workflow_name": getattr(workflow_spec, "name", None),
+        "lane": getattr(task.task_spec, "lane", None),
+        "extensions": getattr(task.task_spec, "extensions", {}),
+        "task_definition_properties": task_definition.properties_json,
+        "internal_data": {},
+    }
 
 
 def _sync_human_task_assignments(
@@ -865,6 +988,8 @@ def _update_process_instance_status_from_workflow(
         process_instance.status = ProcessInstanceStatus.complete.value
         process_instance.end_in_seconds = occurred_at
         process_instance.updated_at_in_seconds = occurred_at
+        if process_instance.bpmn_process is not None:
+            process_instance.bpmn_process.end_in_seconds = float(occurred_at)
         _archive_completed_workflow_runtime_state(
             process_instance, occurred_at=occurred_at
         )
@@ -878,6 +1003,13 @@ def _update_process_instance_status_from_workflow(
         process_instance.status = ProcessInstanceStatus.running.value
     process_instance.end_in_seconds = None
     process_instance.updated_at_in_seconds = occurred_at
+    process_instance.task_updated_at_in_seconds = occurred_at
+    if process_instance.bpmn_process is not None:
+        if process_instance.bpmn_process.start_in_seconds is None:
+            process_instance.bpmn_process.start_in_seconds = float(
+                process_instance.start_in_seconds or occurred_at
+            )
+        process_instance.bpmn_process.end_in_seconds = None
 
 
 def _archive_completed_workflow_runtime_state(

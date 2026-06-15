@@ -50,7 +50,6 @@ def create_process_instance(
         process_initiator_id=process_initiator_id,
         bpmn_process_definition_id=bpmn_process_definition_id,
         bpmn_process_id=bpmn_process_id,
-        process_version=process_version,
         status=ProcessInstanceStatus.not_started.value,
         created_at_in_seconds=occurred_at,
         updated_at_in_seconds=(
@@ -442,6 +441,7 @@ def _close_process_instance_runtime_state(
     occurred_at: int,
     user_id: int | None,
 ) -> None:
+    process_instance.task_updated_at_in_seconds = occurred_at
     for task in process_instance.tasks:
         if task.state != "COMPLETED":
             task.state = "TERMINATED"
@@ -456,6 +456,7 @@ def _close_process_instance_runtime_state(
             continue
         human_task.completed = True
         human_task.task_status = "TERMINATED"
+        human_task.updated_at_in_seconds = occurred_at
         if user_id is not None:
             human_task.actual_owner_id = user_id
             human_task.completed_by_user_id = user_id
@@ -466,6 +467,7 @@ def _reopen_process_instance_runtime_state(
     *,
     occurred_at: int,
 ) -> None:
+    process_instance.task_updated_at_in_seconds = occurred_at
     for task in process_instance.tasks:
         if task.state != "TERMINATED":
             continue
@@ -484,6 +486,7 @@ def _reopen_process_instance_runtime_state(
         human_task.completed_by_user_id = None
         human_task.actual_owner_id = None
         human_task.task_status = "READY"
+        human_task.updated_at_in_seconds = occurred_at
 
 
 def get_process_instance_metadata(

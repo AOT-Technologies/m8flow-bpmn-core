@@ -4,12 +4,12 @@ import os
 import re
 import sys
 import time
-import uuid
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from pprint import pformat
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session
@@ -50,6 +50,66 @@ SCENARIO_AMOUNT = 1_500
 MANAGER_DECISION = "Approved"
 FINANCE_DECISION = "Approved"
 SECTION_SEPARATOR = "=" * 88
+DEFAULT_LOCAL_DATABASE_URL = (
+    "postgresql+psycopg://postgres:postgres@localhost:6843/postgres"
+)
+SHARED_POSTGRES_DATABASE_NAME = "postgres"
+
+DEMO_TENANT = {
+    "id": "tenant-conditional-approval-example",
+    "name": "Conditional Approval Example",
+    "slug": "conditional-approval-example",
+}
+OTHER_DEMO_TENANTS = [
+    {
+        "id": "tenant-conditional-approval-noise-a",
+        "name": "Conditional Approval Noise A",
+        "slug": "conditional-approval-noise-a",
+    },
+    {
+        "id": "tenant-conditional-approval-noise-b",
+        "name": "Conditional Approval Noise B",
+        "slug": "conditional-approval-noise-b",
+    },
+]
+DEMO_USERS = {
+    "manager": {
+        "username": "poc-manager",
+        "email": "poc-manager@example.com",
+        "service_id": "poc-manager-keycloak",
+        "display_name": "Manager",
+    },
+    "reviewer": {
+        "username": "poc-reviewer",
+        "email": "poc-reviewer@example.com",
+        "service_id": "poc-reviewer-keycloak",
+        "display_name": "Reviewer",
+    },
+    "finance": {
+        "username": "poc-finance",
+        "email": "poc-finance@example.com",
+        "service_id": "poc-finance-keycloak",
+        "display_name": "Finance",
+    },
+    "requester": {
+        "username": "poc-requester",
+        "email": "poc-requester@example.com",
+        "service_id": "poc-requester-keycloak",
+        "display_name": "Requester",
+    },
+    "observer": {
+        "username": "poc-observer",
+        "email": "poc-observer@example.com",
+        "service_id": "poc-observer-keycloak",
+        "display_name": "Observer",
+    },
+}
+FOREIGN_NOISE_USER = {
+    "username": "poc-foreign-noise",
+    "email": "poc-foreign-noise@example.com",
+    "service_id": "poc-foreign-noise-keycloak",
+    "display_name": "Foreign Noise",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +148,7 @@ def main() -> None:
         "Each workflow command runs in its own committed transaction, so "
         "you can watch the database change step by step."
     )
+    _confirm_shared_database_usage(database_url, display_database_url)
     _pause("Press Enter to start the example.")
 
     print()
@@ -138,11 +199,7 @@ def main() -> None:
 
 
 def _resolve_database_url() -> tuple[str, str]:
-    raw_url = (
-        os.getenv("M8FLOW_EXAMPLE_DATABASE_URL")
-        or "postgresql+psycopg://postgres:postgres@localhost:5432/"
-        "m8flow_bpmn_core_example"
-    )
+    raw_url = os.getenv("M8FLOW_EXAMPLE_DATABASE_URL") or DEFAULT_LOCAL_DATABASE_URL
     try:
         url = make_url(raw_url)
     except Exception:
@@ -153,7 +210,10 @@ def _resolve_database_url() -> tuple[str, str]:
         query.setdefault("connect_timeout", "1")
         url = url.set(query=query)
 
-    return str(url), url.render_as_string(hide_password=True)
+    return (
+        url.render_as_string(hide_password=False),
+        url.render_as_string(hide_password=True),
+    )
 
 
 def _describe_connection(database_url: str) -> dict[str, Any]:
@@ -172,6 +232,43 @@ def _describe_connection(database_url: str) -> dict[str, Any]:
         "username": username,
         "password": password or "(blank / trust auth)",
     }
+
+
+def _confirm_shared_database_usage(
+    database_url: str,
+    display_database_url: str,
+) -> None:
+    try:
+        url = make_url(database_url)
+    except Exception:
+        return
+
+    if (url.database or "").lower() != SHARED_POSTGRES_DATABASE_NAME:
+        return
+
+    print()
+    print(SECTION_SEPARATOR)
+    print("Shared database confirmation")
+    print(
+        "This run will use the existing Postgres database behind the local "
+        f"m8flow instance: {display_database_url}"
+    )
+    print(
+        "The example keeps the demo tenant, users, process definitions, "
+        "process instances, and tasks in place so you can inspect them in "
+        "the m8flow UI."
+    )
+    print(
+        "If the seed rows already exist, the example will reuse them and "
+        "print warnings instead of failing."
+    )
+    response = input("Continue with the shared database? [Y/n] ").strip().lower()
+    if response in {"", "y", "yes"}:
+        return
+    raise SystemExit(
+        "Cancelled. Set M8FLOW_EXAMPLE_DATABASE_URL to an isolated database if "
+        "you want a disposable run."
+    )
 
 
 def _wait_for_database(
@@ -237,110 +334,76 @@ def _seed_demo_context(session: Session) -> ExampleContext:
     _pause("Press Enter to seed the demo data.")
 
     print("Status: seeding tenant and users...")
-    suffix = uuid.uuid4().hex[:8]
-    tenant = M8flowTenantModel(
-        id=f"tenant-conditional-approval-{suffix}",
-        name="Conditional Approval Example",
-        slug=f"conditional-approval-example-{suffix}",
+    warnings: list[str] = []
+    tenant = _get_or_create_tenant(
+        session,
+        tenant_id=DEMO_TENANT["id"],
+        name=DEMO_TENANT["name"],
+        slug=DEMO_TENANT["slug"],
+        warnings=warnings,
     )
     tenant_service = f"http://localhost:7002/realms/{tenant.slug}"
     other_tenants = [
-        M8flowTenantModel(
-            id=f"tenant-conditional-approval-noise-a-{suffix}",
-            name="Conditional Approval Noise A",
-            slug=f"conditional-approval-noise-a-{suffix}",
-        ),
-        M8flowTenantModel(
-            id=f"tenant-conditional-approval-noise-b-{suffix}",
-            name="Conditional Approval Noise B",
-            slug=f"conditional-approval-noise-b-{suffix}",
-        ),
+        _get_or_create_tenant(
+            session,
+            tenant_id=tenant_spec["id"],
+            name=tenant_spec["name"],
+            slug=tenant_spec["slug"],
+            warnings=warnings,
+        )
+        for tenant_spec in OTHER_DEMO_TENANTS
     ]
     users = {
-        "manager": UserModel(
-            username=f"manager-{suffix}",
-            email=f"manager-{suffix}@example.com",
+        role: _get_or_create_user(
+            session,
             service=tenant_service,
-            service_id=f"manager-{suffix}-keycloak",
-            display_name="Manager",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
-        ),
-        "reviewer": UserModel(
-            username=f"reviewer-{suffix}",
-            email=f"reviewer-{suffix}@example.com",
-            service=tenant_service,
-            service_id=f"reviewer-{suffix}-keycloak",
-            display_name="Reviewer",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
-        ),
-        "finance": UserModel(
-            username=f"finance-{suffix}",
-            email=f"finance-{suffix}@example.com",
-            service=tenant_service,
-            service_id=f"finance-{suffix}-keycloak",
-            display_name="Finance",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
-        ),
-        "requester": UserModel(
-            username=f"requester-{suffix}",
-            email=f"requester-{suffix}@example.com",
-            service=tenant_service,
-            service_id=f"requester-{suffix}-keycloak",
-            display_name="Requester",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
-        ),
-        "observer": UserModel(
-            username=f"observer-{suffix}",
-            email=f"observer-{suffix}@example.com",
-            service=tenant_service,
-            service_id=f"observer-{suffix}-keycloak",
-            display_name="Observer",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
-        ),
+            username=user_spec["username"],
+            email=user_spec["email"],
+            service_id=user_spec["service_id"],
+            display_name=user_spec["display_name"],
+            warnings=warnings,
+        )
+        for role, user_spec in DEMO_USERS.items()
     }
     foreign_noise_tenant = other_tenants[0]
     foreign_noise_service = f"http://localhost:7002/realms/{foreign_noise_tenant.slug}"
-    foreign_noise_user = UserModel(
-        username=f"foreign-noise-{suffix}",
-        email=f"foreign-noise-{suffix}@example.com",
+    foreign_noise_user = _get_or_create_user(
+        session,
         service=foreign_noise_service,
-        service_id=f"foreign-noise-{suffix}-keycloak",
-        display_name="Foreign Noise",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        username=FOREIGN_NOISE_USER["username"],
+        email=FOREIGN_NOISE_USER["email"],
+        service_id=FOREIGN_NOISE_USER["service_id"],
+        display_name=FOREIGN_NOISE_USER["display_name"],
+        warnings=warnings,
     )
-
-    session.add(tenant)
-    session.add_all(other_tenants)
-    session.add_all([*users.values(), foreign_noise_user])
-    session.flush()
 
     observer_noise_process_instance, observer_noise_task = _seed_noise_work_item(
         session,
         tenant=tenant,
         user=users["observer"],
-        label=f"observer-noise-{suffix}",
+        label="observer-noise",
         process_display_name="Observer Noise Example",
         task_title="Observer Noise Task",
         lane_name="Noise Lane",
         created_at_in_seconds=1_010,
+        warnings=warnings,
     )
     foreign_noise_process_instance, foreign_noise_task = _seed_noise_work_item(
         session,
         tenant=foreign_noise_tenant,
         user=foreign_noise_user,
-        label=f"foreign-noise-{suffix}",
+        label="foreign-noise",
         process_display_name="Foreign Noise Example",
         task_title="Foreign Noise Task",
         lane_name="Noise Lane",
         created_at_in_seconds=1_020,
+        warnings=warnings,
     )
     print("Status: seed data is ready.")
+    if warnings:
+        print("Warnings:")
+        for warning in warnings:
+            print(f"- {warning}")
 
     context = ExampleContext(
         tenant_id=tenant.id,
@@ -373,7 +436,7 @@ def _seed_demo_context(session: Session) -> ExampleContext:
             "observer": observer_noise_task.id,
             "foreign_noise": foreign_noise_task.id,
         },
-        scenario_name=f"interactive-{suffix}",
+        scenario_name=f"interactive-{round(time.time())}",
     )
 
     print("Seeded rows:")
@@ -425,6 +488,76 @@ def _seed_demo_context(session: Session) -> ExampleContext:
     return context
 
 
+def _get_or_create_tenant(
+    session: Session,
+    *,
+    tenant_id: str,
+    name: str,
+    slug: str,
+    warnings: list[str],
+) -> M8flowTenantModel:
+    tenant = session.scalar(
+        select(M8flowTenantModel).where(M8flowTenantModel.slug == slug)
+    )
+    if tenant is None:
+        tenant = M8flowTenantModel(
+            id=tenant_id,
+            name=name,
+            slug=slug,
+        )
+        session.add(tenant)
+        session.flush()
+        return tenant
+
+    warnings.append(f"Tenant '{slug}' already exists; reusing id '{tenant.id}'.")
+    if tenant.name != name:
+        tenant.name = name
+    session.flush()
+    return tenant
+
+
+def _get_or_create_user(
+    session: Session,
+    *,
+    service: str,
+    username: str,
+    email: str,
+    service_id: str,
+    display_name: str,
+    warnings: list[str],
+) -> UserModel:
+    user = session.scalar(
+        select(UserModel).where(
+            UserModel.service == service,
+            UserModel.service_id == service_id,
+        )
+    )
+    if user is None:
+        user = UserModel(
+            username=username,
+            email=email,
+            service=service,
+            service_id=service_id,
+            display_name=display_name,
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
+        )
+        session.add(user)
+        session.flush()
+        return user
+
+    warnings.append(
+        f"User '{username}' already exists for service '{service}'; "
+        f"reusing id {user.id}."
+    )
+    user.username = username
+    user.email = email
+    user.display_name = display_name
+    user.updated_at_in_seconds = 1
+    session.flush()
+    return user
+
+
 def _seed_noise_work_item(
     session: Session,
     *,
@@ -435,7 +568,64 @@ def _seed_noise_work_item(
     task_title: str,
     lane_name: str,
     created_at_in_seconds: int,
+    warnings: list[str],
 ) -> tuple[ProcessInstanceModel, HumanTaskModel]:
+    task_guid = f"{label}-task"
+    existing_task = session.get(TaskModel, task_guid)
+    if existing_task is not None:
+        process_instance = session.get(
+            ProcessInstanceModel,
+            existing_task.process_instance_id,
+        )
+        if process_instance is None:
+            raise RuntimeError(
+                f"Noise task '{label}' exists without a process instance."
+            )
+
+        human_task = session.scalar(
+            select(HumanTaskModel).where(
+                HumanTaskModel.m8f_tenant_id == tenant.id,
+                HumanTaskModel.task_guid == task_guid,
+            )
+        )
+        if human_task is None:
+            human_task = HumanTaskModel(
+                m8f_tenant_id=tenant.id,
+                process_instance_id=process_instance.id,
+                task_guid=task_guid,
+                lane_assignment_id=None,
+                completed_by_user_id=None,
+                actual_owner_id=None,
+                task_name=f"{label.replace('-', '_')}_task",
+                task_title=task_title,
+                task_type="UserTask",
+                task_status="READY",
+                process_model_display_name=process_display_name,
+                bpmn_process_identifier=f"{label}-process",
+                lane_name=lane_name,
+                json_metadata={"noise": True, "label": label},
+                completed=False,
+            )
+            session.add(human_task)
+            session.flush()
+
+        _reset_noise_work_item(
+            session,
+            tenant_id=tenant.id,
+            user_id=user.id,
+            task=existing_task,
+            human_task=human_task,
+            process_instance=process_instance,
+            label=label,
+            process_display_name=process_display_name,
+            task_title=task_title,
+            lane_name=lane_name,
+        )
+        warnings.append(
+            f"Noise task '{label}' already existed; it was reused and reset to READY."
+        )
+        return process_instance, human_task
+
     source_bpmn_xml = NOISE_BPMN_PATH.read_text(encoding="utf-8")
     bpmn_identifier = f"{label}-process"
     task_identifier = f"{label.replace('-', '_')}_task"
@@ -446,14 +636,13 @@ def _seed_noise_work_item(
         full_process_model_hash=f"{label}-full",
         bpmn_identifier=bpmn_identifier,
         bpmn_name=process_display_name,
-        source_bpmn_xml=source_bpmn_xml,
-        source_dmn_xml=None,
         properties_json={"version": 1, "noise": True, "label": label},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
         created_at_in_seconds=created_at_in_seconds - 10,
         updated_at_in_seconds=created_at_in_seconds - 10,
     )
+    definition.source_bpmn_xml = source_bpmn_xml
     session.add(definition)
     session.flush()
 
@@ -490,7 +679,6 @@ def _seed_noise_work_item(
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        process_version=1,
         created_at_in_seconds=created_at_in_seconds,
         updated_at_in_seconds=created_at_in_seconds,
     )
@@ -542,6 +730,61 @@ def _seed_noise_work_item(
     session.flush()
 
     return process_instance, human_task
+
+
+def _reset_noise_work_item(
+    session: Session,
+    *,
+    tenant_id: str,
+    user_id: int,
+    task: TaskModel,
+    human_task: HumanTaskModel,
+    process_instance: ProcessInstanceModel,
+    label: str,
+    process_display_name: str,
+    task_title: str,
+    lane_name: str,
+) -> None:
+    task_identifier = f"{label.replace('-', '_')}_task"
+    task.state = "READY"
+    task.properties_json = {"task_spec": task_title, "noise": True}
+    task.start_in_seconds = None
+    task.end_in_seconds = None
+
+    process_instance.status = "running"
+    process_instance.process_model_identifier = f"{label}-process"
+    process_instance.process_model_display_name = process_display_name
+    process_instance.end_in_seconds = None
+
+    human_task.completed = False
+    human_task.completed_by_user_id = None
+    human_task.actual_owner_id = None
+    human_task.task_name = task_identifier
+    human_task.task_title = task_title
+    human_task.task_status = "READY"
+    human_task.task_type = "UserTask"
+    human_task.process_model_display_name = process_display_name
+    human_task.bpmn_process_identifier = f"{label}-process"
+    human_task.lane_name = lane_name
+    human_task.json_metadata = {"noise": True, "label": label}
+
+    assignment = session.scalar(
+        select(HumanTaskUserModel).where(
+            HumanTaskUserModel.m8f_tenant_id == tenant_id,
+            HumanTaskUserModel.human_task_id == human_task.id,
+            HumanTaskUserModel.user_id == user_id,
+        )
+    )
+    if assignment is None:
+        session.add(
+            HumanTaskUserModel(
+                m8f_tenant_id=tenant_id,
+                human_task_id=human_task.id,
+                user_id=user_id,
+                added_by="manual",
+            )
+        )
+    session.flush()
 
 
 def _run_workflow(engine: Engine, context: ExampleContext) -> None:
@@ -621,7 +864,12 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             user_id=context.user_ids["requester"],
         ),
     )
-    submit_task = _require_single_task(submit_tasks, "submit task")
+    submit_task = _require_single_task(
+        submit_tasks,
+        "submit task",
+        process_instance_id=process_instance.id,
+        task_name=CONDITIONAL_APPROVAL_TASK_IDS["submit"],
+    )
 
     _run_command_step(
         engine,
@@ -716,8 +964,18 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             user_id=context.user_ids["reviewer"],
         ),
     )
-    manager_task = _require_single_task(manager_tasks, "manager task")
-    reviewer_task = _require_single_task(reviewer_tasks, "reviewer task")
+    manager_task = _require_single_task(
+        manager_tasks,
+        "manager task",
+        process_instance_id=process_instance.id,
+        task_name=CONDITIONAL_APPROVAL_TASK_IDS["manager_review"],
+    )
+    reviewer_task = _require_single_task(
+        reviewer_tasks,
+        "reviewer task",
+        process_instance_id=process_instance.id,
+        task_name=CONDITIONAL_APPROVAL_TASK_IDS["manager_review"],
+    )
     if manager_task.id != reviewer_task.id:
         raise RuntimeError(
             "Manager and reviewer should see the same task id in the Manager lane"
@@ -806,7 +1064,12 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
                 user_id=context.user_ids["finance"],
             ),
         )
-        finance_task = _require_single_task(finance_tasks, "finance task")
+        finance_task = _require_single_task(
+            finance_tasks,
+            "finance task",
+            process_instance_id=process_instance.id,
+            task_name=CONDITIONAL_APPROVAL_TASK_IDS["finance_review"],
+        )
 
         _print_payload_values(
             "Finance decision payload",
@@ -886,8 +1149,15 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
                 user_id=context.user_ids["finance"],
             ),
         )
-        if finance_tasks:
-            raise RuntimeError("Finance worklist should be empty for this branch")
+        matching_finance_tasks = _matching_tasks(
+            finance_tasks,
+            process_instance_id=process_instance.id,
+            task_name=CONDITIONAL_APPROVAL_TASK_IDS["finance_review"],
+        )
+        if matching_finance_tasks:
+            raise RuntimeError(
+                "Finance worklist should not contain a task for the current branch"
+            )
 
     print()
     print(SECTION_SEPARATOR)
@@ -958,9 +1228,11 @@ def _run_isolation_checks(engine: Engine, context: ExampleContext) -> None:
         ),
         prefix="Verification",
     )
-    observer_task = _require_single_task(observer_tasks, "observer noise task")
-    if observer_task.id != context.noise_task_ids["observer"]:
-        raise RuntimeError("Observer noise task id did not match the seeded row")
+    _require_single_task(
+        observer_tasks,
+        "observer noise task",
+        task_id=context.noise_task_ids["observer"],
+    )
 
     manager_tasks = _run_command_step(
         engine,
@@ -977,7 +1249,7 @@ def _run_isolation_checks(engine: Engine, context: ExampleContext) -> None:
         ),
         prefix="Verification",
     )
-    if manager_tasks:
+    if any(task.id == context.noise_task_ids["observer"] for task in manager_tasks):
         raise RuntimeError("Manager should not see the observer noise task")
 
     _run_command_step(
@@ -1013,9 +1285,11 @@ def _run_isolation_checks(engine: Engine, context: ExampleContext) -> None:
         ),
         prefix="Verification",
     )
-    foreign_task = _require_single_task(foreign_tasks, "foreign noise task")
-    if foreign_task.id != context.noise_task_ids["foreign_noise"]:
-        raise RuntimeError("Foreign noise task id did not match the seeded tenant row")
+    _require_single_task(
+        foreign_tasks,
+        "foreign noise task",
+        task_id=context.noise_task_ids["foreign_noise"],
+    )
 
     _run_command_step(
         engine,
@@ -1133,29 +1407,32 @@ def _summarize(result: Any) -> Any:
     if isinstance(result, list):
         return [_summarize(item) for item in result]
     if isinstance(result, BpmnProcessDefinitionModel):
+        public_properties = {
+            key: value
+            for key, value in result.properties_json.items()
+            if not key.startswith("__m8f_source_")
+        }
         return {
             "id": result.id,
             "identifier": result.bpmn_identifier,
             "name": result.bpmn_name,
-            "properties_json": result.properties_json,
+            "properties_json": public_properties,
             "source_bpmn_xml_length": len(result.source_bpmn_xml or ""),
             "source_dmn_xml_length": len(result.source_dmn_xml or ""),
             "version_control_type": result.bpmn_version_control_type,
             "version_control_identifier": result.bpmn_version_control_identifier,
         }
     if isinstance(result, ProcessInstanceModel):
-        workflow_state_json = result.workflow_state_json or ""
         return {
             "id": result.id,
             "status": result.status,
             "summary": result.summary,
             "process_initiator_id": result.process_initiator_id,
             "definition_id": result.bpmn_process_definition_id,
-            "process_version": result.process_version,
             "start_in_seconds": result.start_in_seconds,
             "end_in_seconds": result.end_in_seconds,
-            "workflow_state_json_present": bool(workflow_state_json),
-            "workflow_state_json_length": len(workflow_state_json),
+            "workflow_state_json_present": bool(result.spiff_serializer_version),
+            "workflow_state_json_length": "(stored in json_data)",
         }
     if isinstance(result, HumanTaskModel):
         return {
@@ -1206,10 +1483,53 @@ def _summarize(result: Any) -> Any:
     return result
 
 
-def _require_single_task(tasks: list[HumanTaskModel], label: str) -> HumanTaskModel:
-    if len(tasks) != 1:
-        raise RuntimeError(f"Expected exactly one {label}, got {len(tasks)}")
-    return tasks[0]
+def _require_single_task(
+    tasks: list[HumanTaskModel],
+    label: str,
+    *,
+    task_id: int | None = None,
+    process_instance_id: int | None = None,
+    task_name: str | None = None,
+) -> HumanTaskModel:
+    matching_tasks = _matching_tasks(
+        tasks,
+        task_id=task_id,
+        process_instance_id=process_instance_id,
+        task_name=task_name,
+    )
+    if len(matching_tasks) != 1:
+        raise RuntimeError(
+            f"Expected exactly one {label}, got {len(matching_tasks)} matching task(s)"
+        )
+    ignored_tasks = len(tasks) - len(matching_tasks)
+    if ignored_tasks > 0:
+        _print_note(
+            f"Warning: ignoring {ignored_tasks} unrelated pending task(s) while "
+            f"selecting the current {label}."
+        )
+    return matching_tasks[0]
+
+
+def _matching_tasks(
+    tasks: list[HumanTaskModel],
+    *,
+    task_id: int | None = None,
+    process_instance_id: int | None = None,
+    task_name: str | None = None,
+) -> list[HumanTaskModel]:
+    matching_tasks: list[HumanTaskModel] = []
+    for task in tasks:
+        if task_id is not None and task.id != task_id:
+            continue
+        if (
+            process_instance_id is not None
+            and task.process_instance_id != process_instance_id
+        ):
+            continue
+        if task_name is not None and task.task_name != task_name:
+            continue
+        matching_tasks.append(task)
+    return matching_tasks
 
 
 def _pause(prompt: str) -> None:

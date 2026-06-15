@@ -401,6 +401,49 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert [event.event_type for event in events] == expected_events
 
 
+def test_conditional_approval_definition_can_start_multiple_instances(
+    session: Session,
+) -> None:
+    lane_owners = _assert_conditional_approval_bpmn_shape()
+    scenario = SCENARIOS[0]
+    context = _seed_conditional_approval_workflow(session, scenario, lane_owners)
+
+    second_process_instance = api.execute_command(
+        session,
+        api.InitializeProcessInstanceFromDefinitionCommand(
+            tenant_id=context.tenant.id,
+            bpmn_process_definition_id=context.process_instance.bpmn_process_definition_id,
+            process_initiator_id=context.users["requester"].id,
+            summary="Scenario: second-start",
+            process_version=1,
+            started_at_in_seconds=200,
+            bpmn_process_id=CONDITIONAL_APPROVAL_PROCESS_ID,
+        ),
+    )
+
+    assert second_process_instance.id != context.process_instance.id
+    assert second_process_instance.bpmn_process_id is not None
+    assert context.process_instance.bpmn_process_id is not None
+    assert (
+        second_process_instance.bpmn_process_id
+        != context.process_instance.bpmn_process_id
+    )
+    assert second_process_instance.workflow_state_json is not None
+    assert context.process_instance.workflow_state_json is not None
+
+    requester_tasks = api.execute_query(
+        session,
+        api.GetPendingTasksQuery(
+            tenant_id=context.tenant.id,
+            user_id=context.users["requester"].id,
+        ),
+    )
+    assert sorted(task.process_instance_id for task in requester_tasks) == [
+        context.process_instance.id,
+        second_process_instance.id,
+    ]
+
+
 def _seed_conditional_approval_workflow(
     session: Session,
     scenario: ConditionalApprovalScenario,

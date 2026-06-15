@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, Boolean, ForeignKey, String
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -18,9 +18,10 @@ class HumanTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
         index=True,
         nullable=False,
     )
+    task_id: Mapped[str | None] = mapped_column(String(50))
     task_guid: Mapped[str | None] = mapped_column(ForeignKey("task.guid"), index=True)
     lane_assignment_id: Mapped[int | None] = mapped_column(
-        BigInteger,
+        ForeignKey("group.id"),
         index=True,
     )
     completed_by_user_id: Mapped[int | None] = mapped_column(
@@ -29,6 +30,10 @@ class HumanTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
     actual_owner_id: Mapped[int | None] = mapped_column(
         ForeignKey("user.id"), index=True
     )
+    form_file_name: Mapped[str | None] = mapped_column(String(255))
+    ui_form_file_name: Mapped[str | None] = mapped_column(String(255))
+    updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
+    created_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
     task_name: Mapped[str] = mapped_column(String(255), nullable=False)
     task_title: Mapped[str | None] = mapped_column(String(255))
     task_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -47,4 +52,11 @@ class HumanTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
     task_model = relationship("TaskModel", back_populates="human_tasks")
     human_task_users = relationship(
         "HumanTaskUserModel", back_populates="human_task", cascade="all, delete-orphan"
+    )
+    potential_owners = relationship(
+        "UserModel",
+        viewonly=True,
+        secondary="human_task_user",
+        overlaps="human_task_users",
+        order_by="HumanTaskUserModel.id",
     )

@@ -97,10 +97,16 @@ def claim_task(
             )
         )
 
+    claimed_at = round(time.time())
+    human_task.task_id = human_task.task_id or human_task.task_guid
     human_task.actual_owner_id = user_id
     human_task.task_status = "CLAIMED"
+    human_task.updated_at_in_seconds = claimed_at
     if human_task.task_model is not None and human_task.task_model.state != "COMPLETED":
         human_task.task_model.state = "CLAIMED"
+    process_instance = session.get(ProcessInstanceModel, human_task.process_instance_id)
+    if process_instance is not None:
+        process_instance.task_updated_at_in_seconds = claimed_at
     session.flush()
     return human_task
 
@@ -147,10 +153,12 @@ def complete_task(
     human_task.completed_by_user_id = user_id
     human_task.actual_owner_id = user_id
     human_task.task_status = "COMPLETED"
+    human_task.task_id = human_task.task_id or human_task.task_guid
+    human_task.updated_at_in_seconds = completed_at
 
     if human_task.task_model is not None:
         human_task.task_model.state = "COMPLETED"
-        human_task.task_model.end_in_seconds = completed_at
+        human_task.task_model.end_in_seconds = float(completed_at)
 
     if human_task.task_guid is not None:
         future_task = session.get(FutureTaskModel, human_task.task_guid)
@@ -158,6 +166,8 @@ def complete_task(
             future_task.completed = True
 
     process_instance = session.get(ProcessInstanceModel, human_task.process_instance_id)
+    if process_instance is not None:
+        process_instance.task_updated_at_in_seconds = completed_at
     if (
         process_instance is not None
         and process_instance.workflow_state_json is not None

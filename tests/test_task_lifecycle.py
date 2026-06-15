@@ -78,7 +78,6 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        process_version=3,
         created_at_in_seconds=1_000,
         updated_at_in_seconds=1_000,
     )

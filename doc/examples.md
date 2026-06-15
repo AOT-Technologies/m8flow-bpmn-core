@@ -41,8 +41,13 @@ ends before the Finance lane is activated.
 
 ## Launchers
 
-The repository also includes shell launchers that use a local Postgres instance
-when one is reachable and otherwise start a temporary Docker container.
+The repository also includes shell launchers that first try the shared local
+Postgres database used by a nearby m8flow instance on `localhost:6843/postgres`.
+When that shared database is reachable, the interactive example asks for
+confirmation before proceeding, keeps the demo data in place after the run,
+and reuses existing seed rows with warnings instead of failing. If the shared
+database is not reachable, the launchers start a temporary Docker container
+instead.
 
 - PowerShell:
 

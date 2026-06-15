@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from collections.abc import Mapping
 from typing import Any
 
@@ -11,6 +12,9 @@ from sqlalchemy.orm import Session
 from m8flow_bpmn_core.errors import ValidationError
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
+)
+from m8flow_bpmn_core.models.process_model_bpmn_version import (
+    ProcessModelBpmnVersionModel,
 )
 
 
@@ -56,6 +60,7 @@ def import_bpmn_process_definition(
             == resolved_full_process_model_hash,
         )
     )
+    resolved_properties_json = dict(properties_json or {})
 
     if definition is None:
         definition = BpmnProcessDefinitionModel(
@@ -64,9 +69,7 @@ def import_bpmn_process_definition(
             full_process_model_hash=resolved_full_process_model_hash,
             bpmn_identifier=bpmn_identifier,
             bpmn_name=bpmn_name,
-            properties_json=dict(properties_json or {}),
-            source_bpmn_xml=source_bpmn_xml_text,
-            source_dmn_xml=source_dmn_xml_text,
+            properties_json=resolved_properties_json,
             bpmn_version_control_type=bpmn_version_control_type,
             bpmn_version_control_identifier=bpmn_version_control_identifier,
             created_at_in_seconds=created_at_in_seconds,
@@ -84,7 +87,7 @@ def import_bpmn_process_definition(
         if bpmn_name is not None:
             definition.bpmn_name = bpmn_name
         if properties_json is not None:
-            definition.properties_json = dict(properties_json)
+            definition.properties_json = resolved_properties_json
         definition.source_bpmn_xml = source_bpmn_xml_text
         if source_dmn_xml is not None:
             definition.source_dmn_xml = source_dmn_xml_text
@@ -100,8 +103,25 @@ def import_bpmn_process_definition(
             definition.updated_at_in_seconds = updated_at_in_seconds
         elif created_at_in_seconds is not None:
             definition.updated_at_in_seconds = created_at_in_seconds
+    definition.source_bpmn_xml = source_bpmn_xml_text
+    if source_dmn_xml is not None:
+        definition.source_dmn_xml = source_dmn_xml_text
 
     session.flush()
+    snapshot_timestamp = (
+        updated_at_in_seconds
+        if updated_at_in_seconds is not None
+        else created_at_in_seconds
+        if created_at_in_seconds is not None
+        else round(time.time())
+    )
+    _ensure_bpmn_version_snapshot(
+        session,
+        tenant_id=tenant_id,
+        process_model_identifier=bpmn_identifier,
+        bpmn_xml_text=source_bpmn_xml_text,
+        occurred_at=snapshot_timestamp,
+    )
     return definition
 
 
@@ -113,6 +133,36 @@ def _coerce_xml_text(xml: str | bytes) -> str:
     if isinstance(xml, bytes):
         return xml.decode("utf-8")
     return xml
+
+
+def _ensure_bpmn_version_snapshot(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_model_identifier: str,
+    bpmn_xml_text: str,
+    occurred_at: int,
+) -> None:
+    bpmn_xml_hash = _hash_text(bpmn_xml_text)
+    snapshot = session.scalar(
+        select(ProcessModelBpmnVersionModel).where(
+            ProcessModelBpmnVersionModel.m8f_tenant_id == tenant_id,
+            ProcessModelBpmnVersionModel.process_model_identifier
+            == process_model_identifier,
+            ProcessModelBpmnVersionModel.bpmn_xml_hash == bpmn_xml_hash,
+        )
+    )
+    if snapshot is None:
+        session.add(
+            ProcessModelBpmnVersionModel(
+                m8f_tenant_id=tenant_id,
+                process_model_identifier=process_model_identifier,
+                bpmn_xml_hash=bpmn_xml_hash,
+                bpmn_xml_file_contents=bpmn_xml_text,
+                created_at_in_seconds=occurred_at,
+            )
+        )
+        session.flush()
 
 
 def _validate_bpmn_source(
