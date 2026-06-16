@@ -102,8 +102,6 @@ def claim_task(
     human_task.actual_owner_id = user_id
     human_task.task_status = "CLAIMED"
     human_task.updated_at_in_seconds = claimed_at
-    if human_task.task_model is not None and human_task.task_model.state != "COMPLETED":
-        human_task.task_model.state = "CLAIMED"
     process_instance = session.get(ProcessInstanceModel, human_task.process_instance_id)
     if process_instance is not None:
         process_instance.task_updated_at_in_seconds = claimed_at

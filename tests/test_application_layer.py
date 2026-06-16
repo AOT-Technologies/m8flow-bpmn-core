@@ -454,7 +454,8 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
         ),
     )
     assert definition.id is not None
-    assert definition.bpmn_identifier == "imported-process"
+    assert definition.bpmn_identifier == "Process_import_1"
+    assert definition.process_model_identifier == "imported-process"
     assert definition.bpmn_name == "Imported Process"
     assert definition.source_bpmn_xml == bpmn_xml
     assert definition.source_dmn_xml == dmn_xml
@@ -467,7 +468,7 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
     public_properties = {
         key: value
         for key, value in definition.properties_json.items()
-        if not key.startswith("__m8f_source_")
+        if not key.startswith("__m8f_")
     }
     assert public_properties == {
         "source": "application-layer-test",

@@ -50,6 +50,14 @@ class JsonDataModel(Base):
         payload_hash, normalized_payload = cls.hash_payload(data)
         record = session.get(cls, payload_hash)
         if record is None:
+            for pending_record in session.new:
+                if (
+                    isinstance(pending_record, cls)
+                    and pending_record.hash == payload_hash
+                ):
+                    record = pending_record
+                    break
+        if record is None:
             session.add(cls(hash=payload_hash, data=normalized_payload))
         else:
             record.data = normalized_payload

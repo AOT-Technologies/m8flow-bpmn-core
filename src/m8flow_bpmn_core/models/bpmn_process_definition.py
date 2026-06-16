@@ -10,6 +10,7 @@ from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantSc
 
 SOURCE_BPMN_XML_PROPERTY_KEY = "__m8f_source_bpmn_xml"
 SOURCE_DMN_XML_PROPERTY_KEY = "__m8f_source_dmn_xml"
+PROCESS_MODEL_IDENTIFIER_PROPERTY_KEY = "__m8f_process_model_identifier"
 
 
 class BpmnProcessDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
@@ -78,4 +79,24 @@ class BpmnProcessDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
             properties.pop(SOURCE_DMN_XML_PROPERTY_KEY, None)
         else:
             properties[SOURCE_DMN_XML_PROPERTY_KEY] = value
+        self.properties_json = properties
+
+    @property
+    def explicit_process_model_identifier(self) -> str | None:
+        value = (self.properties_json or {}).get(
+            PROCESS_MODEL_IDENTIFIER_PROPERTY_KEY
+        )
+        return value if isinstance(value, str) else None
+
+    @property
+    def process_model_identifier(self) -> str:
+        explicit_identifier = self.explicit_process_model_identifier
+        if explicit_identifier:
+            return explicit_identifier
+        return self.bpmn_identifier
+
+    @process_model_identifier.setter
+    def process_model_identifier(self, value: str) -> None:
+        properties = dict(self.properties_json or {})
+        properties[PROCESS_MODEL_IDENTIFIER_PROPERTY_KEY] = value
         self.properties_json = properties

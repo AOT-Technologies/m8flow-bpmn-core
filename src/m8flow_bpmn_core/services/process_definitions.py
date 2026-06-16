@@ -52,6 +52,9 @@ def import_bpmn_process_definition(
         if single_process_hash is not None
         else _hash_text(f"single::{source_bpmn_xml_text}")
     )
+    resolved_process_definition_identifier = _extract_process_identifier(
+        source_bpmn_xml_text
+    )
 
     definition = session.scalar(
         select(BpmnProcessDefinitionModel).where(
@@ -67,7 +70,7 @@ def import_bpmn_process_definition(
             m8f_tenant_id=tenant_id,
             single_process_hash=resolved_single_process_hash,
             full_process_model_hash=resolved_full_process_model_hash,
-            bpmn_identifier=bpmn_identifier,
+            bpmn_identifier=resolved_process_definition_identifier,
             bpmn_name=bpmn_name,
             properties_json=resolved_properties_json,
             bpmn_version_control_type=bpmn_version_control_type,
@@ -83,7 +86,7 @@ def import_bpmn_process_definition(
     else:
         definition.single_process_hash = resolved_single_process_hash
         definition.full_process_model_hash = resolved_full_process_model_hash
-        definition.bpmn_identifier = bpmn_identifier
+        definition.bpmn_identifier = resolved_process_definition_identifier
         if bpmn_name is not None:
             definition.bpmn_name = bpmn_name
         if properties_json is not None:
@@ -103,6 +106,7 @@ def import_bpmn_process_definition(
             definition.updated_at_in_seconds = updated_at_in_seconds
         elif created_at_in_seconds is not None:
             definition.updated_at_in_seconds = created_at_in_seconds
+    definition.process_model_identifier = bpmn_identifier
     definition.source_bpmn_xml = source_bpmn_xml_text
     if source_dmn_xml is not None:
         definition.source_dmn_xml = source_dmn_xml_text
@@ -163,6 +167,25 @@ def _ensure_bpmn_version_snapshot(
             )
         )
         session.flush()
+
+
+def _extract_process_identifier(bpmn_xml_text: str) -> str:
+    parser = SpiffBpmnParser(validator=None)
+    parser.add_bpmn_str(
+        bpmn_xml_text.encode("utf-8"),
+        filename="definition-process-selector.bpmn",
+    )
+    process_ids = parser.get_process_ids()
+    if not process_ids:
+        raise ValidationError(
+            "BPMN source does not contain any executable processes"
+        )
+    if len(process_ids) != 1:
+        raise ValidationError(
+            "A BPMN file must contain exactly one executable process when it is "
+            "imported as a single definition"
+        )
+    return process_ids[0]
 
 
 def _validate_bpmn_source(

@@ -52,8 +52,29 @@ def user_belongs_to_tenant(
     user: UserModel,
     tenant_identifiers: set[str],
 ) -> bool:
+    return bool(user_tenant_identifiers(user).intersection(tenant_identifiers))
+
+
+def user_tenant_identifiers(user: UserModel) -> set[str]:
+    identifiers: set[str] = set()
+
     service_realm_value = service_realm(getattr(user, "service", None))
-    return service_realm_value in tenant_identifiers
+    if service_realm_value:
+        identifiers.add(service_realm_value)
+
+    for attribute_name in (
+        "tenant_specific_field_1",
+        "tenant_specific_field_2",
+        "tenant_specific_field_3",
+    ):
+        raw_value = getattr(user, attribute_name, None)
+        if not isinstance(raw_value, str):
+            continue
+        normalized_value = raw_value.strip()
+        if normalized_value:
+            identifiers.add(normalized_value)
+
+    return identifiers
 
 
 def service_realm(service: str | None) -> str | None:

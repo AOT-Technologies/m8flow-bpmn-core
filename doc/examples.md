@@ -45,9 +45,25 @@ The repository also includes shell launchers that first try the shared local
 Postgres database used by a nearby m8flow instance on `localhost:6843/postgres`.
 When that shared database is reachable, the interactive example asks for
 confirmation before proceeding, keeps the demo data in place after the run,
-and reuses existing seed rows with warnings instead of failing. If the shared
+reuses existing seed rows with warnings instead of failing. In that shared-DB
+mode, the conditional-approval example also tries to publish its BPMN and DMN
+files into the local m8flow backend process-model catalog so the model appears
+in the m8flow UI. It also provisions the example tenants and demo users in the
+local Keycloak shared realm (`http://localhost:6842/realms/m8flow` by default)
+through `m8flow_bpmn_core.utils.keycloak`, then mirrors the local `user`
+records to the shared-realm issuer and Keycloak user ids so the same accounts
+work in both the example and the UI. In that mode the example also aligns the
+local `m8flow_tenant.id` values to the Keycloak organization UUIDs, because the
+m8flow backend resolves the active tenant from those organization ids during
+shared-realm login finalization. New Keycloak demo users default to
+password `poc-demo-password` unless `M8FLOW_EXAMPLE_KEYCLOAK_PASSWORD` is set.
+If the tenant, users, or deployed process model already exist, the example
+warns and leaves the existing Keycloak/backend data in place. If the shared
 database is not reachable, the launchers start a temporary Docker container
-instead.
+instead. When the shared m8flow backend is in use, the example stores the
+process model identifier as
+`m8flow-bpmn-core-examples/conditional-approval-poc` so process instance links
+resolve to the deployed model in the UI.
 
 - PowerShell:
 

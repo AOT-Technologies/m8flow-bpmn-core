@@ -25,7 +25,7 @@ with engine.begin() as connection:
         connection,
         api.ImportBpmnProcessDefinitionCommand(
             tenant_id="tenant-conditional-approval",
-            bpmn_identifier="conditional-approval-poc",
+            bpmn_identifier="m8flow-bpmn-core-examples/conditional-approval-poc",
             bpmn_name="Conditional Approval POC",
             source_bpmn_xml=bpmn_xml,
             source_dmn_xml=dmn_xml,
@@ -113,7 +113,13 @@ See [`api.md`](api.md) for which errors each command and query can raise.
 
 - Use `Session` if you want the library to work inside an existing ORM session.
 - Use `Connection` if you want to control when the transaction commits.
+- If you want instances to resolve cleanly in the m8flow UI, use the same
+  grouped process model identifier that the backend catalog uses, for example
+  `m8flow-bpmn-core-examples/conditional-approval-poc`.
 - The API validates tenant membership before user-scoped operations such as
   pending-task reads, claims, and completions.
+- Shared-realm m8flow users can still be scoped to one tenant locally by
+  storing the shared-realm issuer in `user.service` and persisting the tenant
+  id and slug in `tenant_specific_field_1` / `tenant_specific_field_2`.
 - `task_payload` values are stored as process metadata keys at completion time,
   which is the closest match to a form submit in the example flows.
