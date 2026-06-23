@@ -7,6 +7,7 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
@@ -15,6 +16,8 @@ from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.process_model_bpmn_version import (
     ProcessModelBpmnVersionModel,
 )
+from m8flow_bpmn_core.models.task import TaskModel
+from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.utils.keycloak import (
@@ -147,7 +150,9 @@ def test_align_shared_db_tenant_with_keycloak_organization_updates_example_rows(
         created_at_in_seconds=10,
         updated_at_in_seconds=10,
     )
-    session.add_all([tenant, user, definition])
+    session.add(tenant)
+    session.flush()
+    session.add_all([user, definition])
     session.flush()
 
     warnings: list[str] = []
@@ -574,10 +579,51 @@ def test_realign_existing_example_process_model_identifiers_updates_rows(
     session.add(process_instance)
     session.flush()
 
+    bpmn_process = BpmnProcessModel(
+        m8f_tenant_id=tenant.id,
+        guid="legacy-process-guid",
+        bpmn_process_definition_id=definition.id,
+        top_level_process_id=None,
+        direct_parent_process_id=None,
+        properties_json={"legacy": True},
+        json_data_hash="legacy-process-json",
+    )
+    session.add(bpmn_process)
+    session.flush()
+
+    process_instance.bpmn_process_id = bpmn_process.id
+
+    task_definition = TaskDefinitionModel(
+        m8f_tenant_id=tenant.id,
+        bpmn_process_definition_id=definition.id,
+        bpmn_identifier="legacy_task",
+        bpmn_name="Legacy Task",
+        typename="UserTask",
+        properties_json={"legacy": True},
+        created_at_in_seconds=25,
+        updated_at_in_seconds=25,
+    )
+    session.add(task_definition)
+    session.flush()
+
+    task = TaskModel(
+        m8f_tenant_id=tenant.id,
+        guid="legacy-task-guid",
+        bpmn_process_id=bpmn_process.id,
+        process_instance_id=process_instance.id,
+        task_definition_id=task_definition.id,
+        state="READY",
+        properties_json={"legacy": True},
+        json_data_hash="legacy-task-json",
+        python_env_data_hash="legacy-task-env",
+    )
+    session.add(task)
+    session.flush()
+
     human_task = HumanTaskModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
-        task_guid="legacy-task-guid",
+        task_guid=task.guid,
         task_name="legacy_task",
         task_title="Legacy Task",
         task_type="UserTask",

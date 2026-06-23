@@ -29,6 +29,7 @@ from m8flow_bpmn_core.models import (
     UserModel,
 )
 from m8flow_bpmn_core.services.authorization import (
+    ROLE_ADMIN,
     ROLE_MANAGER,
     ROLE_USER,
     ensure_v1_role,
@@ -149,6 +150,7 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
                 api.ImportBpmnProcessDefinitionCommand(
                     tenant_id=tenant.id,
                     bpmn_identifier="conditional-approval-poc",
+                    user_id=users["admin"].id,
                     bpmn_name="Conditional Approval POC",
                     source_bpmn_xml=bpmn_xml,
                     source_dmn_xml=dmn_xml,
@@ -182,7 +184,14 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             assert process_instance.status == (
                 api.ProcessInstanceStatus.user_input_required
             )
-            assert process_instance.workflow_state_json is not None
+            persisted_process_instance = api.execute_query(
+                session,
+                api.GetProcessInstanceQuery(
+                    tenant_id=tenant.id,
+                    process_instance_id=process_instance.id,
+                ),
+            )
+            assert persisted_process_instance.workflow_state_json is not None
 
             submit_tasks = api.execute_query(
                 connection,
@@ -678,6 +687,15 @@ def _seed_conditional_approval_users(
     )
     service_url = f"http://localhost:7002/realms/{tenant.slug}"
     users = {
+        "admin": UserModel(
+            username="admin",
+            email="admin@example.com",
+            service=service_url,
+            service_id="admin-keycloak",
+            display_name="Admin",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
+        ),
         "manager": UserModel(
             username="manager",
             email="manager@example.com",
@@ -723,6 +741,12 @@ def _seed_conditional_approval_users(
         tenant_id=tenant.id,
         role_name=ROLE_USER,
         user_ids=[users["requester"].id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[users["admin"].id],
     )
     ensure_v1_role(
         session,
