@@ -45,6 +45,7 @@ from m8flow_bpmn_core.models.process_instance import (  # noqa: E402
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel  # noqa: E402
 from m8flow_bpmn_core.models.user import UserModel  # noqa: E402
 from m8flow_bpmn_core.services.authorization import (  # noqa: E402
+    ROLE_ADMIN,
     ROLE_USER,
     ensure_v1_role,
 )
@@ -121,6 +122,7 @@ def main() -> None:
                 api.SuspendProcessInstanceCommand(
                     tenant_id=TENANT_ID,
                     process_instance_id=context["terminated_process_instance_id"],
+                    user_id=context["primary_user_id"],
                 ),
             ),
             expected_domain=api.InvalidStateError,
@@ -250,7 +252,7 @@ def _seed(session: Session) -> dict[str, int]:
     ensure_v1_role(
         session,
         tenant_id=tenant.id,
-        role_name=ROLE_USER,
+        role_name=ROLE_ADMIN,
         user_ids=[primary_user.id, other_user.id],
     )
 

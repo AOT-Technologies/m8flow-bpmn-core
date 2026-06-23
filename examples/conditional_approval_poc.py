@@ -42,6 +42,7 @@ from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.services.authorization import (
+    ROLE_ADMIN,
     ROLE_MANAGER,
     ROLE_USER,
     ensure_v1_role,
@@ -134,6 +135,12 @@ DEMO_USERS = {
         "service_id": "poc-finance-keycloak",
         "display_name": "Finance",
     },
+    "admin": {
+        "username": "poc-admin",
+        "email": "poc-admin@example.com",
+        "service_id": "poc-admin-keycloak",
+        "display_name": "Admin",
+    },
     "requester": {
         "username": "poc-requester",
         "email": "poc-requester@example.com",
@@ -157,6 +164,7 @@ KEYCLOAK_GROUPS_BY_DEMO_ROLE = {
     "manager": ("Approvers", "Viewers"),
     "reviewer": ("Approvers", "Viewers"),
     "finance": ("Approvers", "Viewers"),
+    "admin": ("Approvers", "Viewers"),
     "requester": ("Submitters", "Viewers"),
     "observer": ("Viewers",),
 }
@@ -1201,6 +1209,12 @@ def _seed_demo_context(
     ensure_v1_role(
         session,
         tenant_id=tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[users["admin"].id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
         role_name=ROLE_MANAGER,
         user_ids=[
             users["manager"].id,
@@ -1887,6 +1901,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         command=api.ImportBpmnProcessDefinitionCommand(
             tenant_id=context.tenant_id,
             bpmn_identifier=CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER,
+            user_id=context.user_ids["admin"],
             bpmn_name="Conditional Approval POC",
             source_bpmn_xml=bpmn_xml,
             source_dmn_xml=dmn_xml,

@@ -26,6 +26,7 @@ with engine.begin() as connection:
         api.ImportBpmnProcessDefinitionCommand(
             tenant_id="tenant-conditional-approval",
             bpmn_identifier="m8flow-bpmn-core-examples/conditional-approval-poc",
+            user_id=definition_admin_user_id,
             bpmn_name="Conditional Approval POC",
             source_bpmn_xml=bpmn_xml,
             source_dmn_xml=dmn_xml,
@@ -134,9 +135,14 @@ with api.authorization_policy_scope(FinanceGatePolicy()):
     api.execute_command(connection, api.CompleteTaskCommand(...))
 ```
 
-The authorization request includes stable command keys plus contextual metadata
-for the current V1-enforced actions (`process.start`, `task.claim`,
-`task.complete`).
+The authorization request includes stable command keys for all currently
+covered V1 actions. It also carries contextual metadata for the currently
+enriched enforcement points (`process.start`, `task.claim`, `task.complete`).
+
+The built-in database policy resolves those command checks through
+`permission_target` rows. In practice, callers register URI targets together
+with the relevant `permission_target.command` values so the same permission
+catalog can distinguish generic URI access from specific workflow commands.
 
 ## Practical Notes
 
@@ -146,9 +152,15 @@ for the current V1-enforced actions (`process.start`, `task.claim`,
   grouped process model identifier that the backend catalog uses, for example
   `m8flow-bpmn-core-examples/conditional-approval-poc`.
 - The API validates tenant membership before user-scoped operations.
-- Starting a process from a stored definition, claiming a task, and
-  completing a task also require tenant-scoped command grants for
-  `process.start`, `task.claim`, and `task.complete`.
+- Importing a definition, starting a process from a stored definition,
+  claiming a task, completing a task, and the covered lifecycle admin
+  operations all require tenant-scoped command grants.
+- The built-in covered command keys are `process_definition.import`,
+  `process.start`, `task.claim`, `task.complete`, `process.suspend`,
+  `process.resume`, `process.retry`, and `process.terminate`.
+- Those command grants are backed by `permission_target.command`, so a shared
+  permission catalog can register both URI-only targets and command-specific
+  targets for the same URI pattern.
 - Shared-realm m8flow users can still be scoped to one tenant locally by
   storing the shared-realm issuer in `user.service` and persisting the tenant
   id and slug in `tenant_specific_field_1` / `tenant_specific_field_2`.

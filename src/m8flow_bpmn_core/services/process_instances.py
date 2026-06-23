@@ -17,6 +17,13 @@ from m8flow_bpmn_core.models.process_instance_event import (
 from m8flow_bpmn_core.models.process_instance_metadata import (
     ProcessInstanceMetadataModel,
 )
+from m8flow_bpmn_core.services.authorization import (
+    PROCESS_RESUME_COMMAND,
+    PROCESS_RETRY_COMMAND,
+    PROCESS_SUSPEND_COMMAND,
+    PROCESS_TERMINATE_COMMAND,
+    require_command_authorization,
+)
 from m8flow_bpmn_core.services.tenant_users import (
     ensure_user_belongs_to_tenant,
 )
@@ -226,17 +233,24 @@ def suspend_process_instance(
     *,
     tenant_id: str,
     process_instance_id: int,
-    user_id: int | None = None,
+    user_id: int,
     suspended_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
-    if user_id is not None:
-        ensure_user_belongs_to_tenant(
-            session,
-            tenant_id=tenant_id,
-            user_id=user_id,
-        )
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
+    )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        command_key=PROCESS_SUSPEND_COMMAND,
+        target_uri=f"/process-instances/{process_instance.id}",
+        target_id=process_instance.id,
     )
     if process_instance.status == ProcessInstanceStatus.suspended.value:
         return process_instance
@@ -312,17 +326,24 @@ def resume_process_instance(
     *,
     tenant_id: str,
     process_instance_id: int,
-    user_id: int | None = None,
+    user_id: int,
     resumed_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
-    if user_id is not None:
-        ensure_user_belongs_to_tenant(
-            session,
-            tenant_id=tenant_id,
-            user_id=user_id,
-        )
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
+    )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        command_key=PROCESS_RESUME_COMMAND,
+        target_uri=f"/process-instances/{process_instance.id}",
+        target_id=process_instance.id,
     )
     if process_instance.status == ProcessInstanceStatus.running.value:
         return process_instance
@@ -351,17 +372,24 @@ def retry_process_instance(
     *,
     tenant_id: str,
     process_instance_id: int,
-    user_id: int | None = None,
+    user_id: int,
     retried_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
-    if user_id is not None:
-        ensure_user_belongs_to_tenant(
-            session,
-            tenant_id=tenant_id,
-            user_id=user_id,
-        )
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
+    )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        command_key=PROCESS_RETRY_COMMAND,
+        target_uri=f"/process-instances/{process_instance.id}",
+        target_id=process_instance.id,
     )
     if process_instance.status != ProcessInstanceStatus.error.value:
         raise InvalidStateError("Only errored process instances can be retried")
@@ -391,17 +419,24 @@ def terminate_process_instance(
     *,
     tenant_id: str,
     process_instance_id: int,
-    user_id: int | None = None,
+    user_id: int,
     terminated_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
-    if user_id is not None:
-        ensure_user_belongs_to_tenant(
-            session,
-            tenant_id=tenant_id,
-            user_id=user_id,
-        )
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
+    )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        command_key=PROCESS_TERMINATE_COMMAND,
+        target_uri=f"/process-instances/{process_instance.id}",
+        target_id=process_instance.id,
     )
     if process_instance.status == ProcessInstanceStatus.terminated.value:
         return process_instance

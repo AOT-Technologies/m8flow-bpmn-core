@@ -122,6 +122,7 @@ COMMAND_AUTHORIZATION_SPECS: dict[type[object], CommandAuthorizationSpec] = {
         command_key=PROCESS_DEFINITION_IMPORT_COMMAND,
         permission=PermissionAction.create.value,
         target_uri=PROCESS_DEFINITIONS_TARGET_URI,
+        actor_field_name="user_id",
     ),
     InitializeProcessInstanceFromDefinitionCommand: CommandAuthorizationSpec(
         command_key=PROCESS_START_COMMAND,
@@ -195,6 +196,11 @@ V1_BASIC_ROLE_COMMAND_KEYS: dict[str, tuple[str, ...]] = {
         PROCESS_START_COMMAND,
         TASK_CLAIM_COMMAND,
         TASK_COMPLETE_COMMAND,
+        PROCESS_DEFINITION_IMPORT_COMMAND,
+        PROCESS_SUSPEND_COMMAND,
+        PROCESS_RESUME_COMMAND,
+        PROCESS_RETRY_COMMAND,
+        PROCESS_TERMINATE_COMMAND,
     ),
 }
 

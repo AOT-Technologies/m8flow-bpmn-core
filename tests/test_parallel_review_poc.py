@@ -34,6 +34,7 @@ from m8flow_bpmn_core import api
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.services.authorization import (
+    ROLE_ADMIN,
     ROLE_MANAGER,
     ROLE_USER,
     ensure_v1_role,
@@ -368,6 +369,15 @@ def _seed_parallel_review_workflow(
             created_at_in_seconds=1,
             updated_at_in_seconds=1,
         ),
+        "admin": UserModel(
+            username="admin",
+            email="admin@example.com",
+            service=service_url,
+            service_id="admin-keycloak",
+            display_name="Admin",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
+        ),
         "compliance_user": UserModel(
             username="compliance_user",
             email="compliance@example.com",
@@ -390,6 +400,12 @@ def _seed_parallel_review_workflow(
     ensure_v1_role(
         session,
         tenant_id=tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[users["admin"].id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
         role_name=ROLE_MANAGER,
         user_ids=[
             users["finance_user"].id,
@@ -402,6 +418,7 @@ def _seed_parallel_review_workflow(
         api.ImportBpmnProcessDefinitionCommand(
             tenant_id=tenant.id,
             bpmn_identifier="parallel-review-poc",
+            user_id=users["admin"].id,
             bpmn_name="Parallel Review POC",
             source_bpmn_xml=bpmn_xml,
             properties_json={

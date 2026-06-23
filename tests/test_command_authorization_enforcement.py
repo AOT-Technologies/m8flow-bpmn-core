@@ -19,7 +19,11 @@ from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.services.authorization import ROLE_USER, ensure_v1_role
+from m8flow_bpmn_core.services.authorization import (
+    ROLE_ADMIN,
+    ROLE_USER,
+    ensure_v1_role,
+)
 
 VALIDATION_BPMN_PATH = (
     Path(__file__).with_name("fixtures") / "invoice_approval_poc.bpmn"
@@ -37,7 +41,61 @@ class DefinitionContext:
 class TaskContext:
     tenant: M8flowTenantModel
     actor: UserModel
+    process_instance: ProcessInstanceModel
     human_task: HumanTaskModel
+
+
+def test_process_definition_import_requires_command_permission(
+    session: Session,
+) -> None:
+    tenant = M8flowTenantModel(
+        id="tenant-command-auth-import",
+        name="Command Auth Import",
+        slug="tenant-command-auth-import",
+    )
+    actor = UserModel(
+        username="importer",
+        email="importer@example.com",
+        service=f"http://localhost:7002/realms/{tenant.slug}",
+        service_id="importer-keycloak",
+        display_name="Importer",
+        created_at_in_seconds=1,
+        updated_at_in_seconds=1,
+    )
+    session.add_all([tenant, actor])
+    session.flush()
+
+    bpmn_xml = VALIDATION_BPMN_PATH.read_text(encoding="utf-8")
+
+    with pytest.raises(api.AuthorizationError, match="process_definition.import"):
+        api.execute_command(
+            session,
+            api.ImportBpmnProcessDefinitionCommand(
+                tenant_id=tenant.id,
+                bpmn_identifier="invoice-approval-poc",
+                user_id=actor.id,
+                source_bpmn_xml=bpmn_xml,
+            ),
+        )
+
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[actor.id],
+    )
+    definition = api.execute_command(
+        session,
+        api.ImportBpmnProcessDefinitionCommand(
+            tenant_id=tenant.id,
+            bpmn_identifier="invoice-approval-poc",
+            user_id=actor.id,
+            source_bpmn_xml=bpmn_xml,
+        ),
+    )
+
+    assert definition.m8f_tenant_id == tenant.id
+    assert definition.process_model_identifier == "invoice-approval-poc"
 
 
 def test_process_start_requires_command_permission(session: Session) -> None:
@@ -152,6 +210,143 @@ def test_task_completion_requires_command_permission(session: Session) -> None:
 
     assert completed_task.completed is True
     assert completed_task.completed_by_user_id == context.actor.id
+
+
+def test_process_suspend_requires_command_permission(session: Session) -> None:
+    context = _seed_task_context(session)
+
+    with pytest.raises(api.AuthorizationError, match="process.suspend"):
+        api.execute_command(
+            session,
+            api.SuspendProcessInstanceCommand(
+                tenant_id=context.tenant.id,
+                process_instance_id=context.process_instance.id,
+                user_id=context.actor.id,
+                suspended_at_in_seconds=140,
+            ),
+        )
+
+    ensure_v1_role(
+        session,
+        tenant_id=context.tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[context.actor.id],
+    )
+    process_instance = api.execute_command(
+        session,
+        api.SuspendProcessInstanceCommand(
+            tenant_id=context.tenant.id,
+            process_instance_id=context.process_instance.id,
+            user_id=context.actor.id,
+            suspended_at_in_seconds=150,
+        ),
+    )
+
+    assert process_instance.status == "suspended"
+
+
+def test_process_resume_requires_command_permission(session: Session) -> None:
+    context = _seed_task_context(session)
+    context.process_instance.status = "suspended"
+    session.flush()
+
+    with pytest.raises(api.AuthorizationError, match="process.resume"):
+        api.execute_command(
+            session,
+            api.ResumeProcessInstanceCommand(
+                tenant_id=context.tenant.id,
+                process_instance_id=context.process_instance.id,
+                user_id=context.actor.id,
+                resumed_at_in_seconds=160,
+            ),
+        )
+
+    ensure_v1_role(
+        session,
+        tenant_id=context.tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[context.actor.id],
+    )
+    process_instance = api.execute_command(
+        session,
+        api.ResumeProcessInstanceCommand(
+            tenant_id=context.tenant.id,
+            process_instance_id=context.process_instance.id,
+            user_id=context.actor.id,
+            resumed_at_in_seconds=170,
+        ),
+    )
+
+    assert process_instance.status == "running"
+
+
+def test_process_retry_requires_command_permission(session: Session) -> None:
+    context = _seed_task_context(session)
+    context.process_instance.status = "error"
+    context.process_instance.end_in_seconds = 180
+    session.flush()
+
+    with pytest.raises(api.AuthorizationError, match="process.retry"):
+        api.execute_command(
+            session,
+            api.RetryProcessInstanceCommand(
+                tenant_id=context.tenant.id,
+                process_instance_id=context.process_instance.id,
+                user_id=context.actor.id,
+                retried_at_in_seconds=190,
+            ),
+        )
+
+    ensure_v1_role(
+        session,
+        tenant_id=context.tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[context.actor.id],
+    )
+    process_instance = api.execute_command(
+        session,
+        api.RetryProcessInstanceCommand(
+            tenant_id=context.tenant.id,
+            process_instance_id=context.process_instance.id,
+            user_id=context.actor.id,
+            retried_at_in_seconds=200,
+        ),
+    )
+
+    assert process_instance.status == "running"
+
+
+def test_process_terminate_requires_command_permission(session: Session) -> None:
+    context = _seed_task_context(session)
+
+    with pytest.raises(api.AuthorizationError, match="process.terminate"):
+        api.execute_command(
+            session,
+            api.TerminateProcessInstanceCommand(
+                tenant_id=context.tenant.id,
+                process_instance_id=context.process_instance.id,
+                user_id=context.actor.id,
+                terminated_at_in_seconds=210,
+            ),
+        )
+
+    ensure_v1_role(
+        session,
+        tenant_id=context.tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[context.actor.id],
+    )
+    process_instance = api.execute_command(
+        session,
+        api.TerminateProcessInstanceCommand(
+            tenant_id=context.tenant.id,
+            process_instance_id=context.process_instance.id,
+            user_id=context.actor.id,
+            terminated_at_in_seconds=220,
+        ),
+    )
+
+    assert process_instance.status == "terminated"
 
 
 def _seed_definition_context(session: Session) -> DefinitionContext:
@@ -315,5 +510,6 @@ def _seed_task_context(session: Session) -> TaskContext:
     return TaskContext(
         tenant=tenant,
         actor=actor,
+        process_instance=process_instance,
         human_task=human_task,
     )

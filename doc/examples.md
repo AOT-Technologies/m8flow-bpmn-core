@@ -35,6 +35,8 @@ Both examples:
 - list pending tasks for the requester, manager, reviewer, and finance users
 - claim and complete tasks through the public API
 - attach the form payload to task completion through `CompleteTaskCommand`
+- exercise the built-in V1 RBAC checks for `process_definition.import`,
+  `process.start`, `task.claim`, and `task.complete`
 
 The rejection variant changes the manager decision to `Rejected`, so the flow
 ends before the Finance lane is activated.
@@ -65,7 +67,9 @@ example also starts the same temporary Docker fallback. When the shared m8flow
 backend is in use, the example stores the
 process model identifier as
 `m8flow-bpmn-core-examples/conditional-approval-poc` so process instance links
-resolve to the deployed model in the UI.
+resolve to the deployed model in the UI. In that shared-DB mode you can watch
+the process instance progress and audit it live in the m8flow UI while
+`conditional_approval_poc.py` is still running.
 
 - PowerShell:
 
@@ -92,6 +96,14 @@ running after the example exits.
   mapping.
 - User membership is validated against the tenant before user-scoped actions
   run.
+- Command-level RBAC is enforced through `permission_target.command` for the
+  API's currently covered workflow actions, including
+  `process_definition.import`, `process.start`, `task.claim`,
+  `task.complete`, `process.suspend`, `process.resume`, `process.retry`, and
+  `process.terminate`.
+- When the example uses the shared local m8flow database, the running process
+  instance can be inspected in the m8flow UI at the same time as the terminal
+  walkthrough.
 
 ## Parallel Review
 

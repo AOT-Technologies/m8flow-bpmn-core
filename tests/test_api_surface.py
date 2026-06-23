@@ -25,7 +25,12 @@ EXPECTED_PUBLIC_API = frozenset(
         "ImportBpmnProcessDefinitionCommand",
         "InitializeProcessInstanceFromDefinitionCommand",
         "InitializeProcessInstanceWorkflowCommand",
+        "PROCESS_DEFINITION_IMPORT_COMMAND",
+        "PROCESS_RESUME_COMMAND",
+        "PROCESS_RETRY_COMMAND",
         "PROCESS_START_COMMAND",
+        "PROCESS_SUSPEND_COMMAND",
+        "PROCESS_TERMINATE_COMMAND",
         "RecordProcessInstanceEventCommand",
         "ResumeProcessInstanceCommand",
         "RetryProcessInstanceCommand",
@@ -117,6 +122,11 @@ def test_public_api_re_exports_task_services() -> None:
     assert callable(api.ListSuspendedProcessInstancesQuery)
     assert callable(api.ListTerminatedProcessInstancesQuery)
     assert callable(api.ListProcessInstancesQuery)
+    assert api.PROCESS_DEFINITION_IMPORT_COMMAND == "process_definition.import"
+    assert api.PROCESS_SUSPEND_COMMAND == "process.suspend"
+    assert api.PROCESS_RESUME_COMMAND == "process.resume"
+    assert api.PROCESS_RETRY_COMMAND == "process.retry"
+    assert api.PROCESS_TERMINATE_COMMAND == "process.terminate"
     assert api.PROCESS_START_COMMAND == "process.start"
     assert api.TASK_CLAIM_COMMAND == "task.claim"
     assert api.TASK_COMPLETE_COMMAND == "task.complete"

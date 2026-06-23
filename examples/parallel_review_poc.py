@@ -36,6 +36,7 @@ from m8flow_bpmn_core.db import build_engine, create_schema  # noqa: E402
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel  # noqa: E402
 from m8flow_bpmn_core.models.user import UserModel  # noqa: E402
 from m8flow_bpmn_core.services.authorization import (  # noqa: E402
+    ROLE_ADMIN,
     ROLE_MANAGER,
     ROLE_USER,
     ensure_v1_role,
@@ -99,6 +100,7 @@ def main() -> None:
             api.ImportBpmnProcessDefinitionCommand(
                 tenant_id=TENANT_ID,
                 bpmn_identifier="parallel-review-poc",
+                user_id=users["admin"].id,
                 bpmn_name="Parallel Review POC",
                 source_bpmn_xml=BPMN_PATH.read_text(encoding="utf-8"),
                 properties_json={
@@ -335,6 +337,15 @@ def _seed(session: Session) -> dict[str, UserModel]:
             created_at_in_seconds=1,
             updated_at_in_seconds=1,
         ),
+        "admin": UserModel(
+            username="admin",
+            email="admin@example.com",
+            service=SERVICE_URL,
+            service_id="admin-keycloak",
+            display_name="Admin",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
+        ),
         "compliance_user": UserModel(
             username="compliance_user",
             email="compliance@example.com",
@@ -353,6 +364,12 @@ def _seed(session: Session) -> dict[str, UserModel]:
         tenant_id=TENANT_ID,
         role_name=ROLE_USER,
         user_ids=[users["requester"].id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=TENANT_ID,
+        role_name=ROLE_ADMIN,
+        user_ids=[users["admin"].id],
     )
     ensure_v1_role(
         session,

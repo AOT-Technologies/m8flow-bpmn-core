@@ -25,6 +25,7 @@ from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.services.authorization import (
+    ROLE_ADMIN,
     ROLE_MANAGER,
     ROLE_USER,
     ensure_v1_role,
@@ -531,6 +532,15 @@ def _seed_conditional_approval_workflow(
             created_at_in_seconds=1,
             updated_at_in_seconds=1,
         ),
+        "admin": UserModel(
+            username="admin",
+            email="admin@example.com",
+            service=service_url,
+            service_id="admin-keycloak",
+            display_name="Admin",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
+        ),
         "requester": UserModel(
             username="requester",
             email="requester@example.com",
@@ -559,6 +569,12 @@ def _seed_conditional_approval_workflow(
     ensure_v1_role(
         session,
         tenant_id=tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[users["admin"].id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
         role_name=ROLE_MANAGER,
         user_ids=[
             users["manager"].id,
@@ -573,6 +589,7 @@ def _seed_conditional_approval_workflow(
         api.ImportBpmnProcessDefinitionCommand(
             tenant_id=tenant.id,
             bpmn_identifier=CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER,
+            user_id=users["admin"].id,
             bpmn_name="Conditional Approval POC",
             source_bpmn_xml=bpmn_xml,
             source_dmn_xml=dmn_xml,

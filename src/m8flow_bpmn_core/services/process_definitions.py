@@ -16,6 +16,11 @@ from m8flow_bpmn_core.models.bpmn_process_definition import (
 from m8flow_bpmn_core.models.process_model_bpmn_version import (
     ProcessModelBpmnVersionModel,
 )
+from m8flow_bpmn_core.services.authorization import (
+    PROCESS_DEFINITION_IMPORT_COMMAND,
+    require_command_authorization,
+)
+from m8flow_bpmn_core.services.tenant_users import ensure_user_belongs_to_tenant
 
 
 def import_bpmn_process_definition(
@@ -24,6 +29,7 @@ def import_bpmn_process_definition(
     tenant_id: str,
     bpmn_identifier: str,
     source_bpmn_xml: str | bytes,
+    user_id: int,
     source_dmn_xml: str | bytes | None = None,
     bpmn_name: str | None = None,
     properties_json: Mapping[str, Any] | None = None,
@@ -34,6 +40,18 @@ def import_bpmn_process_definition(
     created_at_in_seconds: int | None = None,
     updated_at_in_seconds: int | None = None,
 ) -> BpmnProcessDefinitionModel:
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        command_key=PROCESS_DEFINITION_IMPORT_COMMAND,
+        target_uri=f"/process-definitions/{bpmn_identifier}",
+    )
     source_bpmn_xml_text = _coerce_xml_text(source_bpmn_xml)
     source_dmn_xml_text = (
         _coerce_xml_text(source_dmn_xml) if source_dmn_xml is not None else None

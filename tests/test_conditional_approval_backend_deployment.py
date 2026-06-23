@@ -208,6 +208,15 @@ def test_seed_demo_context_uses_keycloak_user_ids_for_shared_db(
                 ),
             },
             users_by_username={
+                "poc-admin": ProvisionedKeycloakUser(
+                    username="poc-admin",
+                    email="poc-admin@example.com",
+                    user_id="kc-admin",
+                    organization_alias=tenant.slug,
+                    organization_id="org-demo",
+                    organization_group_names=("Approvers", "Viewers"),
+                    created=True,
+                ),
                 "poc-manager": ProvisionedKeycloakUser(
                     username="poc-manager",
                     email="poc-manager@example.com",

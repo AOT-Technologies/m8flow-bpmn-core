@@ -11,7 +11,10 @@ from m8flow_bpmn_core.errors import AuthorizationError
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.services.authorization import (
+    PROCESS_DEFINITION_IMPORT_COMMAND,
     PROCESS_START_COMMAND,
+    PROCESS_SUSPEND_COMMAND,
+    PROCESS_TERMINATE_COMMAND,
     ROLE_ADMIN,
     ROLE_MANAGER,
     TASK_CLAIM_COMMAND,
@@ -204,9 +207,36 @@ def test_ensure_v1_role_supports_basic_roles(session: Session) -> None:
             command_key=TASK_CLAIM_COMMAND,
         ),
     )
+    import_decision = DatabaseAuthorizationPolicy().authorize(
+        session,
+        build_authorization_request(
+            tenant_id=tenant.id,
+            actor_user_id=user.id,
+            command_key=PROCESS_DEFINITION_IMPORT_COMMAND,
+        ),
+    )
+    suspend_decision = DatabaseAuthorizationPolicy().authorize(
+        session,
+        build_authorization_request(
+            tenant_id=tenant.id,
+            actor_user_id=user.id,
+            command_key=PROCESS_SUSPEND_COMMAND,
+        ),
+    )
+    terminate_decision = DatabaseAuthorizationPolicy().authorize(
+        session,
+        build_authorization_request(
+            tenant_id=tenant.id,
+            actor_user_id=user.id,
+            command_key=PROCESS_TERMINATE_COMMAND,
+        ),
+    )
 
     assert start_decision.allowed is True
     assert claim_decision.allowed is True
+    assert import_decision.allowed is True
+    assert suspend_decision.allowed is True
+    assert terminate_decision.allowed is True
 
 
 def _seed_tenant_and_user(

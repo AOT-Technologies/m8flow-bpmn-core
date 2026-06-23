@@ -44,7 +44,12 @@ from m8flow_bpmn_core.errors import (
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceStatus
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
 from m8flow_bpmn_core.services.authorization import (
+    PROCESS_DEFINITION_IMPORT_COMMAND,
+    PROCESS_RESUME_COMMAND,
+    PROCESS_RETRY_COMMAND,
     PROCESS_START_COMMAND,
+    PROCESS_SUSPEND_COMMAND,
+    PROCESS_TERMINATE_COMMAND,
     TASK_CLAIM_COMMAND,
     TASK_COMPLETE_COMMAND,
     AuthorizationDecision,
@@ -107,7 +112,12 @@ __all__ = [
     "ListSuspendedProcessInstancesQuery",
     "ListTerminatedProcessInstancesQuery",
     "NotFoundError",
+    "PROCESS_DEFINITION_IMPORT_COMMAND",
+    "PROCESS_RESUME_COMMAND",
+    "PROCESS_RETRY_COMMAND",
     "PROCESS_START_COMMAND",
+    "PROCESS_SUSPEND_COMMAND",
+    "PROCESS_TERMINATE_COMMAND",
     "ProcessInstanceEventType",
     "ProcessInstanceStatus",
     "RecordProcessInstanceEventCommand",
