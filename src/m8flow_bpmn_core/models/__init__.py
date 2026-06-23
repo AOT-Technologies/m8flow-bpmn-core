@@ -11,6 +11,16 @@ from m8flow_bpmn_core.models.human_task_user import (
     HumanTaskUserModel,
 )
 from m8flow_bpmn_core.models.json_data import JsonDataModel
+from m8flow_bpmn_core.models.permission_assignment import (
+    PermissionAction,
+    PermissionAssignmentModel,
+    PermitDeny,
+)
+from m8flow_bpmn_core.models.permission_target import (
+    InvalidPermissionTargetUriError,
+    PermissionTargetModel,
+)
+from m8flow_bpmn_core.models.principal import PrincipalModel
 from m8flow_bpmn_core.models.process_instance import (
     ProcessInstanceModel,
     ProcessInstanceStatus,
@@ -30,6 +40,7 @@ from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantScoped
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
 
 __all__ = [
     "Base",
@@ -40,9 +51,15 @@ __all__ = [
     "HumanTaskModel",
     "HumanTaskUserAddedBy",
     "HumanTaskUserModel",
+    "InvalidPermissionTargetUriError",
     "JsonDataModel",
     "M8fTenantScopedMixin",
     "M8flowTenantModel",
+    "PermissionAction",
+    "PermissionAssignmentModel",
+    "PermissionTargetModel",
+    "PermitDeny",
+    "PrincipalModel",
     "ProcessInstanceModel",
     "ProcessInstanceEventModel",
     "ProcessInstanceEventType",
@@ -52,5 +69,6 @@ __all__ = [
     "TaskModel",
     "TaskDefinitionModel",
     "TenantScoped",
+    "UserGroupAssignmentModel",
     "UserModel",
 ]

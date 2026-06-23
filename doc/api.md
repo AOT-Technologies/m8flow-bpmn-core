@@ -105,7 +105,8 @@ Create a process instance from a stored definition and start the workflow.
 
 **Raises**: `ValidationError` (definition missing source XML, ambiguous
 process id), `NotFoundError` (definition or initiator missing),
-`AuthorizationError` (initiator not in tenant).
+`AuthorizationError` (initiator not in tenant or lacks the
+tenant-scoped `process.start` permission).
 
 ### `InitializeProcessInstanceWorkflowCommand`
 
@@ -158,7 +159,9 @@ Claim a pending human task for a user.
 **Returns**: `HumanTaskModel`.
 
 **Raises**: `NotFoundError` (task missing), `AuthorizationError`
-(user not in tenant), `InvalidStateError` (task already completed).
+(user not in tenant, lacks the tenant-scoped `task.claim` permission,
+is not assigned to the task, or tries to claim a task already owned by
+another user), `InvalidStateError` (task already completed).
 
 ### `CompleteTaskCommand`
 
@@ -175,8 +178,10 @@ Complete a claimed task and advance the workflow.
 **Returns**: `HumanTaskModel`.
 
 **Raises**: `NotFoundError`, `AuthorizationError`
-(user not in tenant or not assigned to the task), `InvalidStateError`
-(task already completed).
+(user not in tenant, lacks the tenant-scoped `task.complete`
+permission, is not assigned to the task, or does not own the claimed
+task), `InvalidStateError` (task already completed or has not been
+claimed yet).
 
 ### `UpsertProcessInstanceMetadataCommand`
 
@@ -321,7 +326,7 @@ BpmnCoreError
 | --- | --- | --- |
 | `ValidationError` | Inputs are malformed (e.g. ambiguous `bpmn_process_id`, missing definition XML) | `Initialize*`, `Import*` commands |
 | `InvalidStateError` | The target entity is in a state that does not permit the operation (e.g. suspending a terminal instance, claiming a completed task) | Task and lifecycle commands |
-| `AuthorizationError` | The supplied user does not belong to the tenant, or is not assigned to the target task | Any command/query that accepts `user_id` |
+| `AuthorizationError` | The supplied user does not belong to the tenant, lacks a required command permission, is not assigned to the target task, or does not own the target task | Any command/query that accepts `user_id` |
 | `NotFoundError` | The requested entity (tenant, user, task, process instance, definition, lane owner) does not exist for the supplied tenant | All commands/queries |
 
 Catch by either the domain class or the matching builtin — both work.
@@ -329,6 +334,37 @@ Catch by either the domain class or the matching builtin — both work.
 See [`examples.md`](examples.md#errors-demo) for a runnable walkthrough
 (`examples/errors_demo.py`) that triggers each class through the public
 API and asserts the contract above.
+
+---
+
+## Authorization Hooks
+
+Custom policy engines can plug into command authorization through the public
+hook surface:
+
+- `AuthorizationPolicy` — protocol with
+  `authorize(session, request) -> AuthorizationDecision`
+- `AuthorizationPolicyFactory` — callable returning an `AuthorizationPolicy`
+- `AuthorizationRequest` — carries `tenant_id`, `actor_user_id`,
+  `command_key`, `permission`, `target_uri`, `target_id`, and optional
+  `metadata`
+- `AuthorizationDecision` — `{allowed: bool, reason: str | None}`
+- `DatabaseAuthorizationPolicy` — the built-in role/grant policy used by default
+- `authorization_policy_scope(policy_or_factory)` — temporary override, useful
+  for tests or request-scoped policy composition
+- `set_default_authorization_policy_factory(factory)` — process-wide default
+  policy override
+
+Stable V1 command keys are re-exported from `m8flow_bpmn_core.api`:
+
+- `PROCESS_START_COMMAND == "process.start"`
+- `TASK_CLAIM_COMMAND == "task.claim"`
+- `TASK_COMPLETE_COMMAND == "task.complete"`
+
+The current task and process-start enforcement points also attach request
+metadata so future policy engines can make richer decisions without changing
+the command shape. Examples include task lane/owner context and process
+definition identifiers.
 
 ---
 

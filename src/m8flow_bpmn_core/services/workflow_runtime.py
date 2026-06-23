@@ -47,6 +47,10 @@ from m8flow_bpmn_core.models.process_model_bpmn_version import (
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.services.authorization import (
+    PROCESS_START_COMMAND,
+    require_command_authorization,
+)
 from m8flow_bpmn_core.services.process_instances import (
     create_process_instance,
     get_process_instance_metadata,
@@ -198,6 +202,21 @@ def initialize_process_instance_from_definition(
         tenant_id=tenant_id,
         bpmn_process_definition_id=bpmn_process_definition_id,
     )
+    process_model_identifier = (
+        process_definition.process_model_identifier or str(process_definition.id)
+    )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=process_initiator_id,
+        command_key=PROCESS_START_COMMAND,
+        target_uri=f"/process-models/{process_model_identifier}",
+        target_id=process_definition.id,
+        metadata=_process_start_authorization_metadata(
+            process_definition=process_definition,
+            requested_bpmn_process_id=bpmn_process_id,
+        ),
+    )
     if process_definition.source_bpmn_xml is None:
         raise ValidationError(
             "Process definition does not include stored BPMN XML"
@@ -213,7 +232,6 @@ def initialize_process_instance_from_definition(
         process_definition=process_definition,
         process_identifier=selected_process_id,
     )
-    process_model_identifier = process_definition.process_model_identifier
 
     process_instance = create_process_instance(
         session,
@@ -774,6 +792,20 @@ def _upsert_task_definition_from_payload(
 
     session.flush()
     return task_definition
+
+
+def _process_start_authorization_metadata(
+    *,
+    process_definition: BpmnProcessDefinitionModel,
+    requested_bpmn_process_id: str | None,
+) -> dict[str, object]:
+    return {
+        "bpmn_process_definition_id": process_definition.id,
+        "process_model_identifier": process_definition.process_model_identifier,
+        "bpmn_identifier": process_definition.bpmn_identifier,
+        "bpmn_name": process_definition.bpmn_name,
+        "requested_bpmn_process_id": requested_bpmn_process_id,
+    }
 
 
 def _materialize_ready_manual_tasks(

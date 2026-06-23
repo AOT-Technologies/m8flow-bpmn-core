@@ -60,7 +60,9 @@ password `poc-demo-password` unless `M8FLOW_EXAMPLE_KEYCLOAK_PASSWORD` is set.
 If the tenant, users, or deployed process model already exist, the example
 warns and leaves the existing Keycloak/backend data in place. If the shared
 database is not reachable, the launchers start a temporary Docker container
-instead. When the shared m8flow backend is in use, the example stores the
+instead. If the prompt appears and you decline the shared database, the Python
+example also starts the same temporary Docker fallback. When the shared m8flow
+backend is in use, the example stores the
 process model identifier as
 `m8flow-bpmn-core-examples/conditional-approval-poc` so process instance links
 resolve to the deployed model in the UI.

@@ -24,6 +24,11 @@ from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.services.authorization import (
+    ROLE_MANAGER,
+    ROLE_USER,
+    ensure_v1_role,
+)
 
 EXAMPLE_BPMN_PATH = Path(__file__).with_name("fixtures") / "conditional-approval.bpmn"
 EXAMPLE_DMN_PATH = Path(__file__).with_name("fixtures") / "check_eligibility.dmn"
@@ -545,6 +550,22 @@ def _seed_conditional_approval_workflow(
     session.add(tenant)
     session.add_all(users.values())
     session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_USER,
+        user_ids=[users["requester"].id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_MANAGER,
+        user_ids=[
+            users["manager"].id,
+            users["reviewer"].id,
+            users["finance"].id,
+        ],
+    )
 
     # Import the stored BPMN/DMN definition first so the workflow can start by id.
     definition = api.execute_command(

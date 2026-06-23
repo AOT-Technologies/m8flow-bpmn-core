@@ -28,6 +28,11 @@ from m8flow_bpmn_core.models import (
     TaskModel,
     UserModel,
 )
+from m8flow_bpmn_core.services.authorization import (
+    ROLE_MANAGER,
+    ROLE_USER,
+    ensure_v1_role,
+)
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 CONDITIONAL_APPROVAL_BPMN_PATH = FIXTURE_DIR / "conditional-approval.bpmn"
@@ -545,6 +550,12 @@ def _seed_runtime_rows(
     )
     session.add_all([tenant, user])
     session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_USER,
+        user_ids=[user.id],
+    )
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
@@ -594,7 +605,6 @@ def _seed_runtime_rows(
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        process_version=1,
         created_at_in_seconds=1_000,
         updated_at_in_seconds=1_000,
     )
@@ -708,6 +718,22 @@ def _seed_conditional_approval_users(
     session.add(tenant)
     session.add_all(users.values())
     session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_USER,
+        user_ids=[users["requester"].id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_MANAGER,
+        user_ids=[
+            users["manager"].id,
+            users["reviewer"].id,
+            users["finance"].id,
+        ],
+    )
     return tenant, users
 
 
@@ -757,6 +783,12 @@ def _seed_tenant_validation_context(
         [tenant, foreign_tenant, tenant_user, tenant_observer, foreign_user]
     )
     session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_USER,
+        user_ids=[tenant_user.id],
+    )
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
@@ -808,7 +840,6 @@ def _seed_tenant_validation_context(
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        process_version=1,
         created_at_in_seconds=1_000,
         updated_at_in_seconds=1_000,
     )
@@ -865,7 +896,6 @@ def _seed_tenant_validation_context(
         bpmn_process_definition_id=foreign_definition.id,
         bpmn_process_id=foreign_bpmn_process.id,
         status="running",
-        process_version=1,
         created_at_in_seconds=1_001,
         updated_at_in_seconds=1_001,
     )

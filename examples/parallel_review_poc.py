@@ -35,6 +35,11 @@ from m8flow_bpmn_core import api  # noqa: E402
 from m8flow_bpmn_core.db import build_engine, create_schema  # noqa: E402
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel  # noqa: E402
 from m8flow_bpmn_core.models.user import UserModel  # noqa: E402
+from m8flow_bpmn_core.services.authorization import (  # noqa: E402
+    ROLE_MANAGER,
+    ROLE_USER,
+    ensure_v1_role,
+)
 
 BPMN_PATH = REPO_ROOT / "tests" / "fixtures" / "parallel_review_poc.bpmn"
 PROCESS_ID = "Process_parallel_review_poc"
@@ -343,6 +348,21 @@ def _seed(session: Session) -> dict[str, UserModel]:
     session.add(tenant)
     session.add_all(users.values())
     session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=TENANT_ID,
+        role_name=ROLE_USER,
+        user_ids=[users["requester"].id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=TENANT_ID,
+        role_name=ROLE_MANAGER,
+        user_ids=[
+            users["finance_user"].id,
+            users["compliance_user"].id,
+        ],
+    )
     return users
 
 

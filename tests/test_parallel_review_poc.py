@@ -33,6 +33,11 @@ from sqlalchemy.orm import Session
 from m8flow_bpmn_core import api
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.services.authorization import (
+    ROLE_MANAGER,
+    ROLE_USER,
+    ensure_v1_role,
+)
 
 EXAMPLE_BPMN_PATH = (
     Path(__file__).with_name("fixtures") / "parallel_review_poc.bpmn"
@@ -376,6 +381,21 @@ def _seed_parallel_review_workflow(
     session.add(tenant)
     session.add_all(users.values())
     session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_USER,
+        user_ids=[users["requester"].id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_MANAGER,
+        user_ids=[
+            users["finance_user"].id,
+            users["compliance_user"].id,
+        ],
+    )
 
     definition = api.execute_command(
         session,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -10,6 +11,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from pprint import pformat
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import inspect, select, text
 from sqlalchemy.engine import Engine
@@ -39,6 +41,11 @@ from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.services.authorization import (
+    ROLE_MANAGER,
+    ROLE_USER,
+    ensure_v1_role,
+)
 from m8flow_bpmn_core.services.tenant_users import user_belongs_to_tenant
 from m8flow_bpmn_core.services.workflow_runtime import (
     repair_process_instance_runtime_representation,
@@ -88,6 +95,8 @@ M8FLOW_BACKEND_DEFAULT_CONTAINER_NAMES = (
     "m8flow-backend-1",
 )
 EXAMPLE_KEYCLOAK_DEFAULT_PASSWORD = "poc-demo-password"
+FALLBACK_POSTGRES_DATABASE_NAME = "m8flow_bpmn_core_example"
+FALLBACK_POSTGRES_IMAGE = "postgres:16"
 
 DEMO_TENANT = {
     "id": "tenant-conditional-approval-example",
@@ -182,13 +191,24 @@ class BackendProcessModelDeployment:
 
 def main() -> None:
     database_url, display_database_url = _resolve_database_url()
+    temporary_container_name: str | None = None
+    engine: Engine | None = None
+
     print("m8flow-bpmn-core conditional-approval usage example")
-    print(f"Database URL: {display_database_url}")
     print(
         "This script creates the schema if needed, seeds demo data, and then "
         "drives the workflow through the public API."
     )
     print(_describe_workflow_mode())
+    (
+        database_url,
+        display_database_url,
+        temporary_container_name,
+    ) = _confirm_shared_database_usage(
+        database_url,
+        display_database_url,
+    )
+    print(f"Database URL: {display_database_url}")
     print()
     print(SECTION_SEPARATOR)
     print("Database connection details")
@@ -201,36 +221,35 @@ def main() -> None:
         "Each workflow command runs in its own committed transaction, so "
         "you can watch the database change step by step."
     )
-    _confirm_shared_database_usage(database_url, display_database_url)
     _pause("Press Enter to start the example.")
 
-    print()
-    print(SECTION_SEPARATOR)
-    print("Database setup")
-    print("Connecting to Postgres and creating the schema...")
-    print(
-        "If this takes a moment, the example is waiting for the database "
-        "server to accept connections."
-    )
-
-    print("Status: connecting...")
-    engine = build_engine(database_url)
     try:
-        _wait_for_database(engine)
-    except RuntimeError as exc:
-        print(f"Status: unable to reach Postgres. {exc}")
+        print()
+        print(SECTION_SEPARATOR)
+        print("Database setup")
+        print("Connecting to Postgres and creating the schema...")
         print(
-            "Hint: start PostgreSQL locally or set M8FLOW_EXAMPLE_DATABASE_URL "
-            "to a reachable database, then rerun the example."
+            "If this takes a moment, the example is waiting for the database "
+            "server to accept connections."
         )
-        engine.dispose()
-        raise SystemExit(1) from exc
 
-    print("Status: creating schema...")
-    create_schema(engine)
-    print("Status: database connection and schema are ready.")
+        print("Status: connecting...")
+        engine = build_engine(database_url)
+        try:
+            _wait_for_database(engine)
+        except RuntimeError as exc:
+            print(f"Status: unable to reach Postgres. {exc}")
+            print(
+                "Hint: start PostgreSQL locally or set "
+                "M8FLOW_EXAMPLE_DATABASE_URL to a reachable database, then "
+                "rerun the example."
+            )
+            raise SystemExit(1) from exc
 
-    try:
+        print("Status: creating schema...")
+        create_schema(engine)
+        print("Status: database connection and schema are ready.")
+
         with engine.begin() as connection:
             session = Session(
                 bind=connection,
@@ -259,11 +278,32 @@ def main() -> None:
     except KeyboardInterrupt:
         print("\nInterrupted. The current step was rolled back.")
     finally:
-        engine.dispose()
+        if engine is not None:
+            engine.dispose()
+        _remove_temporary_postgres_container(temporary_container_name)
 
 
 def _resolve_database_url() -> tuple[str, str]:
     raw_url = os.getenv("M8FLOW_EXAMPLE_DATABASE_URL") or DEFAULT_LOCAL_DATABASE_URL
+    return _normalize_database_url(raw_url)
+
+
+def _current_timestamp() -> int:
+    return round(time.time())
+
+
+def _offset_timestamp(timestamp: int, offset_seconds: int) -> int:
+    return max(1, timestamp + offset_seconds)
+
+
+def _current_date_string() -> str:
+    return time.strftime(
+        "%Y-%m-%d",
+        time.localtime(_current_timestamp()),
+    )
+
+
+def _normalize_database_url(raw_url: str) -> tuple[str, str]:
     try:
         url = make_url(raw_url)
     except Exception:
@@ -301,9 +341,9 @@ def _describe_connection(database_url: str) -> dict[str, Any]:
 def _confirm_shared_database_usage(
     database_url: str,
     display_database_url: str,
-) -> None:
+) -> tuple[str, str, str | None]:
     if not _is_shared_database_url(database_url):
-        return
+        return database_url, display_database_url, None
 
     print()
     print(SECTION_SEPARATOR)
@@ -327,11 +367,13 @@ def _confirm_shared_database_usage(
     )
     response = input("Continue with the shared database? [Y/n] ").strip().lower()
     if response in {"", "y", "yes"}:
-        return
-    raise SystemExit(
-        "Cancelled. Set M8FLOW_EXAMPLE_DATABASE_URL to an isolated database if "
-        "you want a disposable run."
+        return database_url, display_database_url, None
+
+    print(
+        "Status: shared database declined, starting a temporary Docker "
+        "Postgres container instead."
     )
+    return _start_temporary_postgres_container()
 
 
 def _is_shared_database_url(database_url: str) -> bool:
@@ -340,6 +382,101 @@ def _is_shared_database_url(database_url: str) -> bool:
     except Exception:
         return False
     return (url.database or "").lower() == SHARED_POSTGRES_DATABASE_NAME
+
+
+def _start_temporary_postgres_container() -> tuple[str, str, str]:
+    if shutil.which("docker") is None:
+        raise SystemExit(
+            "Shared database use was declined, but Docker is not available for "
+            "the fallback Postgres container."
+        )
+
+    postgres_image = (
+        os.getenv("M8FLOW_EXAMPLE_POSTGRES_IMAGE", "").strip()
+        or FALLBACK_POSTGRES_IMAGE
+    )
+    container_name = f"m8flow-bpmn-core-example-{uuid4().hex[:8]}"
+    print(
+        "Status: starting temporary Docker Postgres container "
+        f"{container_name}..."
+    )
+    result = subprocess.run(
+        [
+            "docker",
+            "run",
+            "-d",
+            "--rm",
+            "--name",
+            container_name,
+            "-e",
+            "POSTGRES_USER=postgres",
+            "-e",
+            "POSTGRES_HOST_AUTH_METHOD=trust",
+            "-e",
+            f"POSTGRES_DB={FALLBACK_POSTGRES_DATABASE_NAME}",
+            "-P",
+            postgres_image,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        error_message = result.stderr.strip() or result.stdout.strip()
+        raise SystemExit(
+            "Shared database use was declined, but starting the Docker "
+            f"fallback failed: {error_message or 'unknown docker error'}"
+        )
+
+    try:
+        host_port = _get_container_host_port(container_name)
+    except Exception:
+        _remove_temporary_postgres_container(container_name)
+        raise
+
+    database_url, display_database_url = _normalize_database_url(
+        "postgresql+psycopg://postgres@127.0.0.1:"
+        f"{host_port}/{FALLBACK_POSTGRES_DATABASE_NAME}"
+    )
+    print(f"Status: temporary container is available on host port {host_port}.")
+    return database_url, display_database_url, container_name
+
+
+def _get_container_host_port(container_name: str) -> int:
+    result = subprocess.run(
+        ["docker", "port", container_name, "5432/tcp"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        error_message = result.stderr.strip() or result.stdout.strip()
+        raise RuntimeError(
+            f"Could not determine the mapped port for container {container_name}: "
+            f"{error_message or 'unknown docker error'}"
+        )
+
+    for line in result.stdout.splitlines():
+        match = re.search(r":(\d+)$", line.strip())
+        if match is not None:
+            return int(match.group(1))
+
+    raise RuntimeError(
+        f"Could not parse the mapped port for container {container_name}."
+    )
+
+
+def _remove_temporary_postgres_container(container_name: str | None) -> None:
+    if not container_name:
+        return
+
+    print(f"Status: removing temporary Docker container {container_name}...")
+    subprocess.run(
+        ["docker", "rm", "-f", container_name],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
 
 def _maybe_deploy_process_model_to_m8flow_backend(
@@ -964,6 +1101,7 @@ def _seed_demo_context(
 
     print("Status: seeding tenant and users...")
     warnings: list[str] = []
+    seed_anchor = _offset_timestamp(_current_timestamp(), -120)
     tenant = _get_or_create_tenant(
         session,
         tenant_id=DEMO_TENANT["id"],
@@ -1054,6 +1192,22 @@ def _seed_demo_context(
         warnings=warnings,
         reuse_by_username_within_tenant=reuse_users_by_username,
     )
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_USER,
+        user_ids=[users["requester"].id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_MANAGER,
+        user_ids=[
+            users["manager"].id,
+            users["reviewer"].id,
+            users["finance"].id,
+        ],
+    )
 
     observer_noise_process_instance, observer_noise_task = _seed_noise_work_item(
         session,
@@ -1063,7 +1217,7 @@ def _seed_demo_context(
         process_display_name="Observer Noise Example",
         task_title="Observer Noise Task",
         lane_name="Noise Lane",
-        created_at_in_seconds=1_010,
+        created_at_in_seconds=seed_anchor,
         warnings=warnings,
     )
     foreign_noise_process_instance, foreign_noise_task = _seed_noise_work_item(
@@ -1074,7 +1228,7 @@ def _seed_demo_context(
         process_display_name="Foreign Noise Example",
         task_title="Foreign Noise Task",
         lane_name="Noise Lane",
-        created_at_in_seconds=1_020,
+        created_at_in_seconds=_offset_timestamp(seed_anchor, 10),
         warnings=warnings,
     )
     _realign_existing_example_process_model_identifiers(
@@ -1377,6 +1531,7 @@ def _get_or_create_user(
                 "different service identity; updating it to match the shared "
                 "Keycloak realm."
             )
+    current_timestamp = _current_timestamp()
     if user is None:
         user = UserModel(
             username=username,
@@ -1399,8 +1554,8 @@ def _get_or_create_user(
                 if len(tenant_membership_identifiers) > 2
                 else None
             ),
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at_in_seconds=current_timestamp,
+            updated_at_in_seconds=current_timestamp,
         )
         session.add(user)
         session.flush()
@@ -1431,7 +1586,7 @@ def _get_or_create_user(
         if len(tenant_membership_identifiers) > 2
         else None
     )
-    user.updated_at_in_seconds = 1
+    user.updated_at_in_seconds = current_timestamp
     session.flush()
     _ensure_principal_row_for_user(session, user=user, warnings=warnings)
     return user
@@ -1705,9 +1860,17 @@ def _reset_noise_work_item(
 def _run_workflow(engine: Engine, context: ExampleContext) -> None:
     bpmn_xml = _render_conditional_approval_bpmn_xml(context.lane_owners)
     dmn_xml = EXAMPLE_DMN_PATH.read_text(encoding="utf-8")
+    workflow_anchor = _current_timestamp()
+    definition_created_at = _offset_timestamp(workflow_anchor, -40)
+    unauthorized_process_start_at = _offset_timestamp(workflow_anchor, -35)
+    unauthorized_task_complete_at = _offset_timestamp(workflow_anchor, -34)
+    process_started_at = _offset_timestamp(workflow_anchor, -30)
+    submit_completed_at = _offset_timestamp(workflow_anchor, -20)
+    manager_completed_at = _offset_timestamp(workflow_anchor, -10)
+    finance_completed_at = workflow_anchor
 
     submission_payload = {
-        "expense_date": "2026-04-01",
+        "expense_date": _current_date_string(),
         "expense_type": "Travel",
         "amount": str(SCENARIO_AMOUNT),
         "description": "Trip to LA",
@@ -1736,12 +1899,19 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             },
             bpmn_version_control_type="git",
             bpmn_version_control_identifier="main",
-            created_at_in_seconds=90,
-            updated_at_in_seconds=90,
+            created_at_in_seconds=definition_created_at,
+            updated_at_in_seconds=definition_created_at,
         ),
     )
     _print_note(
         f"Imported definition id {definition.id} for tenant {context.tenant_id}."
+    )
+    _run_rbac_checks(
+        engine,
+        context,
+        definition,
+        unauthorized_process_start_at=unauthorized_process_start_at,
+        unauthorized_task_complete_at=unauthorized_task_complete_at,
     )
 
     process_instance = _run_command_step(
@@ -1758,7 +1928,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             process_initiator_id=context.user_ids["requester"],
             summary=f"Scenario: {context.scenario_name}",
             process_version=1,
-            started_at_in_seconds=100,
+            started_at_in_seconds=process_started_at,
             bpmn_process_id=CONDITIONAL_APPROVAL_PROCESS_ID,
         ),
     )
@@ -1815,7 +1985,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             tenant_id=context.tenant_id,
             human_task_id=submit_task.id,
             user_id=context.user_ids["requester"],
-            completed_at_in_seconds=110,
+            completed_at_in_seconds=submit_completed_at,
             task_payload=submission_payload,
         ),
     )
@@ -1925,7 +2095,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             tenant_id=context.tenant_id,
             human_task_id=manager_task.id,
             user_id=context.user_ids["manager"],
-            completed_at_in_seconds=120,
+            completed_at_in_seconds=manager_completed_at,
             task_payload={"decision": MANAGER_DECISION},
         ),
     )
@@ -2015,7 +2185,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
                 tenant_id=context.tenant_id,
                 human_task_id=finance_task.id,
                 user_id=context.user_ids["finance"],
-                completed_at_in_seconds=130,
+                completed_at_in_seconds=finance_completed_at,
                 task_payload={"finance_decision": FINANCE_DECISION},
             ),
         )
@@ -2114,6 +2284,93 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
 
     _print_note(
         "The example is complete. Each command was committed immediately after it ran."
+    )
+
+
+def _run_rbac_checks(
+    engine: Engine,
+    context: ExampleContext,
+    definition: BpmnProcessDefinitionModel,
+    *,
+    unauthorized_process_start_at: int,
+    unauthorized_task_complete_at: int,
+) -> None:
+    print()
+    print(SECTION_SEPARATOR)
+    print("Verification: command-level RBAC")
+    print(
+        "These checks prove that tenant membership by itself is not enough. "
+        "The observer belongs to the main tenant and has an assigned noise "
+        "task, but no V1 role, so command authorization should reject "
+        "process start, task claim, and task completion."
+    )
+    _pause("Press Enter to run the RBAC checks.")
+
+    _run_command_step(
+        engine,
+        step_number=1,
+        title="Reject process start without process.start permission",
+        context_text=(
+            "The observer is a tenant member, but does not have the User role. "
+            "Starting a process from the stored definition should fail with "
+            "an AuthorizationError mentioning process.start."
+        ),
+        command=api.InitializeProcessInstanceFromDefinitionCommand(
+            tenant_id=context.tenant_id,
+            bpmn_process_definition_id=definition.id,
+            process_initiator_id=context.user_ids["observer"],
+            summary="Unauthorized start attempt",
+            process_version=1,
+            started_at_in_seconds=unauthorized_process_start_at,
+            bpmn_process_id=CONDITIONAL_APPROVAL_PROCESS_ID,
+        ),
+        prefix="RBAC",
+        expected_failure=api.AuthorizationError,
+        expected_failure_contains="process.start",
+    )
+
+    _run_command_step(
+        engine,
+        step_number=2,
+        title="Reject task claim without task.claim permission",
+        context_text=(
+            "The observer has a dedicated noise task assigned, so this is a "
+            "pure RBAC check rather than an assignment check. Claiming that "
+            "task should fail with an AuthorizationError mentioning task.claim."
+        ),
+        command=api.ClaimTaskCommand(
+            tenant_id=context.tenant_id,
+            human_task_id=context.noise_task_ids["observer"],
+            user_id=context.user_ids["observer"],
+        ),
+        prefix="RBAC",
+        expected_failure=api.AuthorizationError,
+        expected_failure_contains="task.claim",
+    )
+
+    _run_command_step(
+        engine,
+        step_number=3,
+        title="Reject task completion without task.complete permission",
+        context_text=(
+            "The same assigned noise task is used again here. Completing it "
+            "should fail at the RBAC layer before any task-state transition "
+            "logic runs, with an AuthorizationError mentioning task.complete."
+        ),
+        command=api.CompleteTaskCommand(
+            tenant_id=context.tenant_id,
+            human_task_id=context.noise_task_ids["observer"],
+            user_id=context.user_ids["observer"],
+            completed_at_in_seconds=unauthorized_task_complete_at,
+        ),
+        prefix="RBAC",
+        expected_failure=api.AuthorizationError,
+        expected_failure_contains="task.complete",
+    )
+
+    _print_note(
+        "RBAC check complete: the observer can belong to the tenant and still "
+        "be blocked from protected commands until a role grants them."
     )
 
 

@@ -43,6 +43,18 @@ from m8flow_bpmn_core.errors import (
 )
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceStatus
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.services.authorization import (
+    PROCESS_START_COMMAND,
+    TASK_CLAIM_COMMAND,
+    TASK_COMPLETE_COMMAND,
+    AuthorizationDecision,
+    AuthorizationPolicy,
+    AuthorizationPolicyFactory,
+    AuthorizationRequest,
+    DatabaseAuthorizationPolicy,
+    authorization_policy_scope,
+    set_default_authorization_policy_factory,
+)
 from m8flow_bpmn_core.services.process_instances import (
     create_process_instance,
     error_process_instance,
@@ -72,10 +84,15 @@ from m8flow_bpmn_core.services.workflow_runtime import (
 
 __all__ = [
     "AuthorizationError",
+    "AuthorizationDecision",
+    "AuthorizationPolicy",
+    "AuthorizationPolicyFactory",
+    "AuthorizationRequest",
     "BpmnCoreError",
     "ClaimTaskCommand",
     "CompleteTaskCommand",
     "CreateProcessInstanceCommand",
+    "DatabaseAuthorizationPolicy",
     "ErrorProcessInstanceCommand",
     "GetPendingTasksQuery",
     "GetProcessInstanceEventsQuery",
@@ -90,16 +107,20 @@ __all__ = [
     "ListSuspendedProcessInstancesQuery",
     "ListTerminatedProcessInstancesQuery",
     "NotFoundError",
+    "PROCESS_START_COMMAND",
     "ProcessInstanceEventType",
     "ProcessInstanceStatus",
     "RecordProcessInstanceEventCommand",
     "ResumeProcessInstanceCommand",
     "RetryProcessInstanceCommand",
     "SuspendProcessInstanceCommand",
+    "TASK_CLAIM_COMMAND",
+    "TASK_COMPLETE_COMMAND",
     "TerminateProcessInstanceCommand",
     "UpsertProcessInstanceMetadataCommand",
     "ValidationError",
     "advance_process_instance_workflow",
+    "authorization_policy_scope",
     "claim_task",
     "complete_task",
     "create_process_instance",
@@ -118,6 +139,7 @@ __all__ = [
     "resolve_lane_assignment_id",
     "resume_process_instance",
     "retry_process_instance",
+    "set_default_authorization_policy_factory",
     "suspend_process_instance",
     "terminate_process_instance",
     "upsert_process_instance_metadata",

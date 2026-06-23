@@ -9,22 +9,29 @@ The items below are intentionally not covered yet.
 ## Permissions And RBAC
 
 M8Flow and SpiffArena model permissions through URIs that a user can access.
-This library does not yet provide a permission layer on top of the BPMN API.
+This library now provides a minimal V1 permission layer on top of the BPMN API
+for process start, task claim, and task completion.
 
-Planned direction:
+Supported today:
+
+- stable command keys for `process.start`, `task.claim`, and `task.complete`
+- tenant-scoped role-to-command grants
+- runtime enforcement of tenant membership plus command permission checks for
+  those three workflow actions
+
+Planned direction beyond V1:
 
 - keep the existing URI-based RBAC model
-- add command and function assignments to users alongside the URI grants
-- make API calls check both URI access and workflow-command permissions
+- extend command and function assignments beyond the current V1 workflow actions
+- make more API calls check both URI access and workflow-command permissions
 - support tenant-aware authorization rules for worklist reads, task actions,
   workflow administration, and definition import
 
 Examples of missing permission features:
 
-- no command-level authorization matrix
-- no role-to-command mapping
+- no command-level authorization coverage for the full API surface
 - no workflow admin / tenant admin separation
-- no policy engine for lane-specific or process-specific access rules
+- no built-in policy engine for lane-specific or process-specific access rules
 
 ## Service Task Integrations
 

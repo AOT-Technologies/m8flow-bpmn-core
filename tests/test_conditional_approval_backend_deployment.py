@@ -290,20 +290,84 @@ def test_seed_demo_context_uses_keycloak_user_ids_for_shared_db(
     )
 
 
+def test_confirm_shared_database_usage_keeps_shared_database_when_confirmed(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+
+    selection = example_poc._confirm_shared_database_usage(
+        "postgresql+psycopg://postgres:postgres@localhost:6843/postgres"
+        "?connect_timeout=1",
+        "postgresql+psycopg://postgres:***@localhost:6843/postgres"
+        "?connect_timeout=1",
+    )
+
+    assert selection == (
+        "postgresql+psycopg://postgres:postgres@localhost:6843/postgres"
+        "?connect_timeout=1",
+        "postgresql+psycopg://postgres:***@localhost:6843/postgres"
+        "?connect_timeout=1",
+        None,
+    )
+
+
+def test_confirm_shared_database_usage_uses_docker_fallback_when_declined(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("builtins.input", lambda _prompt: "n")
+    monkeypatch.setattr(
+        example_poc,
+        "_start_temporary_postgres_container",
+        lambda: (
+            "postgresql+psycopg://postgres@127.0.0.1:55432/"
+            "m8flow_bpmn_core_example",
+            "postgresql+psycopg://postgres@127.0.0.1:55432/"
+            "m8flow_bpmn_core_example",
+            "temp-container-123",
+        ),
+    )
+
+    selection = example_poc._confirm_shared_database_usage(
+        "postgresql+psycopg://postgres:postgres@localhost:6843/postgres"
+        "?connect_timeout=1",
+        "postgresql+psycopg://postgres:***@localhost:6843/postgres"
+        "?connect_timeout=1",
+    )
+
+    assert selection == (
+        "postgresql+psycopg://postgres@127.0.0.1:55432/"
+        "m8flow_bpmn_core_example",
+        "postgresql+psycopg://postgres@127.0.0.1:55432/"
+        "m8flow_bpmn_core_example",
+        "temp-container-123",
+    )
+
+
+def test_confirm_shared_database_usage_skips_prompt_for_non_shared_database(
+    monkeypatch,
+) -> None:
+    prompts: list[str] = []
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt: prompts.append(prompt) or "y",
+    )
+
+    selection = example_poc._confirm_shared_database_usage(
+        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_bpmn_core_example",
+        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_bpmn_core_example",
+    )
+
+    assert selection == (
+        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_bpmn_core_example",
+        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_bpmn_core_example",
+        None,
+    )
+    assert prompts == []
+
+
 def test_get_or_create_user_creates_principal_row_for_new_shared_db_user(
     session: Session,
 ) -> None:
-    session.execute(
-        text(
-            """
-            create table principal (
-                id integer primary key,
-                user_id integer unique,
-                group_id integer unique
-            )
-            """
-        )
-    )
     warnings: list[str] = []
 
     user = example_poc._get_or_create_user(
@@ -333,17 +397,6 @@ def test_get_or_create_user_creates_principal_row_for_new_shared_db_user(
 def test_get_or_create_user_backfills_principal_for_reused_shared_db_user(
     session: Session,
 ) -> None:
-    session.execute(
-        text(
-            """
-            create table principal (
-                id integer primary key,
-                user_id integer unique,
-                group_id integer unique
-            )
-            """
-        )
-    )
     existing_user = UserModel(
         username="poc-manager",
         email="poc-manager@example.com",
@@ -392,17 +445,6 @@ def test_get_or_create_user_backfills_principal_for_reused_shared_db_user(
 def test_get_or_create_user_reuses_same_realm_username_even_without_tenant_fields(
     session: Session,
 ) -> None:
-    session.execute(
-        text(
-            """
-            create table principal (
-                id integer primary key,
-                user_id integer unique,
-                group_id integer unique
-            )
-            """
-        )
-    )
     existing_user = UserModel(
         username="poc-manager",
         email="poc-manager@example.com",

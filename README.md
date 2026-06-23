@@ -147,7 +147,9 @@ For the rejection variant, run:
 
 Add `-UseDocker` to force a temporary container even when a local database is
 available. Add `-KeepContainer` if you want the temporary container to stay up
-after the example exits.
+after the example exits. If the shared-database confirmation prompt appears and
+you answer `No`, the Python example also switches to a temporary Docker
+database automatically.
 
 For Bash or Unix-like shells, use:
 
@@ -158,7 +160,9 @@ For the rejection variant, use:
 `bash examples/conditional_approval_rejection_poc.sh`
 
 Use `--docker` to force the temporary container and `--keep-container` to leave
-it running after the example exits.
+it running after the example exits. If the shared-database confirmation prompt
+appears and you answer `No`, the Python example also switches to a temporary
+Docker database automatically.
 
 Install the Postgres extra first with:
 

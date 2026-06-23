@@ -109,6 +109,35 @@ except api.InvalidStateError:
 
 See [`api.md`](api.md) for which errors each command and query can raise.
 
+## Custom Authorization Policies
+
+If you need policy logic beyond the built-in V1 role grants, install a custom
+policy temporarily with `api.authorization_policy_scope(...)` or globally with
+`api.set_default_authorization_policy_factory(...)`.
+
+```python
+class FinanceGatePolicy:
+    def authorize(self, session, request):
+        if (
+            request.command_key == api.TASK_COMPLETE_COMMAND
+            and request.metadata is not None
+            and request.metadata.get("lane_name") == "Finance"
+        ):
+            return api.AuthorizationDecision(
+                False,
+                reason="Finance completions require external approval",
+            )
+        return api.DatabaseAuthorizationPolicy().authorize(session, request)
+
+
+with api.authorization_policy_scope(FinanceGatePolicy()):
+    api.execute_command(connection, api.CompleteTaskCommand(...))
+```
+
+The authorization request includes stable command keys plus contextual metadata
+for the current V1-enforced actions (`process.start`, `task.claim`,
+`task.complete`).
+
 ## Practical Notes
 
 - Use `Session` if you want the library to work inside an existing ORM session.
@@ -116,8 +145,10 @@ See [`api.md`](api.md) for which errors each command and query can raise.
 - If you want instances to resolve cleanly in the m8flow UI, use the same
   grouped process model identifier that the backend catalog uses, for example
   `m8flow-bpmn-core-examples/conditional-approval-poc`.
-- The API validates tenant membership before user-scoped operations such as
-  pending-task reads, claims, and completions.
+- The API validates tenant membership before user-scoped operations.
+- Starting a process from a stored definition, claiming a task, and
+  completing a task also require tenant-scoped command grants for
+  `process.start`, `task.claim`, and `task.complete`.
 - Shared-realm m8flow users can still be scoped to one tenant locally by
   storing the shared-realm issuer in `user.service` and persisting the tenant
   id and slug in `tenant_specific_field_1` / `tenant_specific_field_2`.

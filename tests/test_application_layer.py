@@ -39,6 +39,7 @@ from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.services.authorization import ROLE_USER, ensure_v1_role
 
 
 def test_application_layer_handles_tasks_events_and_metadata(
@@ -515,6 +516,12 @@ def _seed_process_instance(
     )
     session.add_all([tenant, user])
     session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_USER,
+        user_ids=[user.id],
+    )
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,

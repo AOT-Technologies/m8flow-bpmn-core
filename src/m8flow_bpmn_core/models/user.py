@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy import Integer, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
 
@@ -27,3 +27,21 @@ class UserModel(Base):
     tenant_specific_field_3: Mapped[str | None] = mapped_column(String(255))
     updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
     created_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
+
+    user_group_assignments = relationship(
+        "UserGroupAssignmentModel",
+        cascade="all, delete-orphan",
+        overlaps="groups,users",
+    )
+    groups = relationship(
+        "GroupModel",
+        viewonly=True,
+        secondary="user_group_assignment",
+        overlaps="user_group_assignments,users",
+    )
+    principal = relationship(
+        "PrincipalModel",
+        uselist=False,
+        cascade="all, delete-orphan",
+        overlaps="user",
+    )
