@@ -60,16 +60,26 @@ Missing pieces include:
 
 ## Timers And Scheduling
 
-Timer events and schedulers are not yet implemented.
+The scheduling foundation is now partially implemented.
 
-Missing pieces include:
+Available today:
 
-- timer start events
-- timer boundary events
-- intermediate timer events
+- persisted scheduler jobs through the internal `scheduler_job` table
+- detection of waiting intermediate catch and boundary timer events during
+  workflow persistence
+- storage of the next due time for waiting intermediate and boundary timers
+- execution of due intermediate and boundary timer jobs through
+  `api.run_due_scheduler_jobs`
+- scheduling and execution of basic timer start events through persisted scheduler jobs
+- programmatic scheduling and execution of delayed retries for errored process instances
+- an architecture that supports either an inline poller or a Celery-backed
+  dispatcher/worker integration
+
+Still missing:
+
 - reminder and escalation jobs
-- delayed task creation and scheduled retries
-- persisted scheduler state and job recovery after restart
+- production-grade multi-worker claim/lock orchestration
+- Celery dispatcher and worker adapter implementation
 
 ## User Management
 

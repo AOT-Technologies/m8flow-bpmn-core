@@ -34,6 +34,7 @@ EXPECTED_PUBLIC_API = frozenset(
         "RecordProcessInstanceEventCommand",
         "ResumeProcessInstanceCommand",
         "RetryProcessInstanceCommand",
+        "ScheduleProcessInstanceRetryCommand",
         "SuspendProcessInstanceCommand",
         "TASK_CLAIM_COMMAND",
         "TASK_COMPLETE_COMMAND",
@@ -71,8 +72,10 @@ EXPECTED_PUBLIC_API = frozenset(
         "list_terminated_process_instances",
         "record_process_instance_event",
         "resolve_lane_assignment_id",
+        "run_due_scheduler_jobs",
         "resume_process_instance",
         "retry_process_instance",
+        "schedule_process_instance_retry",
         "set_default_authorization_policy_factory",
         "suspend_process_instance",
         "terminate_process_instance",
@@ -99,6 +102,8 @@ def test_public_api_re_exports_task_services() -> None:
     assert callable(api.list_suspended_process_instances)
     assert callable(api.list_terminated_process_instances)
     assert callable(api.retry_process_instance)
+    assert callable(api.run_due_scheduler_jobs)
+    assert callable(api.schedule_process_instance_retry)
     assert callable(api.execute_command)
     assert callable(api.execute_query)
     assert callable(api.create_process_instance)
@@ -112,6 +117,7 @@ def test_public_api_re_exports_task_services() -> None:
     assert callable(api.SuspendProcessInstanceCommand)
     assert callable(api.ResumeProcessInstanceCommand)
     assert callable(api.RetryProcessInstanceCommand)
+    assert callable(api.ScheduleProcessInstanceRetryCommand)
     assert callable(api.TerminateProcessInstanceCommand)
     assert callable(api.RecordProcessInstanceEventCommand)
     assert callable(api.GetPendingTasksQuery)

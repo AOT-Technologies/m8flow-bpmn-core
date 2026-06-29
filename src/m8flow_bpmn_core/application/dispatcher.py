@@ -17,6 +17,7 @@ from m8flow_bpmn_core.application.commands import (
     RecordProcessInstanceEventCommand,
     ResumeProcessInstanceCommand,
     RetryProcessInstanceCommand,
+    ScheduleProcessInstanceRetryCommand,
     SuspendProcessInstanceCommand,
     TerminateProcessInstanceCommand,
     UpsertProcessInstanceMetadataCommand,
@@ -47,6 +48,7 @@ from m8flow_bpmn_core.services.process_instances import (
     record_process_instance_event,
     resume_process_instance,
     retry_process_instance,
+    schedule_process_instance_retry,
     suspend_process_instance,
     terminate_process_instance,
     upsert_process_instance_metadata,
@@ -209,6 +211,15 @@ def execute_command(
                 process_instance_id=command.process_instance_id,
                 user_id=command.user_id,
                 retried_at_in_seconds=command.retried_at_in_seconds,
+            )
+        if isinstance(command, ScheduleProcessInstanceRetryCommand):
+            return schedule_process_instance_retry(
+                session,
+                tenant_id=command.tenant_id,
+                process_instance_id=command.process_instance_id,
+                user_id=command.user_id,
+                retry_at_in_seconds=command.retry_at_in_seconds,
+                scheduled_at_in_seconds=command.scheduled_at_in_seconds,
             )
         if isinstance(command, TerminateProcessInstanceCommand):
             return terminate_process_instance(

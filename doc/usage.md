@@ -90,8 +90,81 @@ inspect the workflow state:
 
 - `GetProcessInstanceQuery` — process instance snapshot.
 - `GetProcessInstanceMetadataQuery` — persisted payload values.
-- `GetProcessInstanceEventsQuery` — event history.
-- `GetPendingTasksQuery` — current worklist for a tenant or user.
+- `GetProcessInstanceEventsQuery` - event history.
+- `GetPendingTasksQuery` - current worklist for a tenant or user.
+
+## Poll For Due Timers
+
+When timer-based workflows are waiting, or when a process retry has been
+scheduled, the library persists due work in `scheduler_job`. The host
+application only needs to wake up periodically and call the public scheduler
+entrypoint.
+
+```python
+api.execute_command(
+    connection,
+    api.ScheduleProcessInstanceRetryCommand(
+        tenant_id="tenant-conditional-approval",
+        process_instance_id=errored_process_instance.id,
+        user_id=workflow_admin_user_id,
+        retry_at_in_seconds=1_717_000_000,
+    ),
+)
+```
+
+```python
+import time
+
+from sqlalchemy import create_engine
+from m8flow_bpmn_core import api
+
+engine = create_engine("postgresql+psycopg://postgres:postgres@localhost:5432/m8flow_bpmn_core")
+
+while True:
+    with engine.begin() as connection:
+        processed = api.run_due_scheduler_jobs(
+            connection,
+            worker_id="inline-scheduler-1",
+            tenant_id="tenant-conditional-approval",
+        )
+    time.sleep(5 if processed == 0 else 1)
+```
+
+The host application owns the wake-up cadence and the surrounding transaction.
+The library owns due-job lookup, workflow restoration, timer refresh, workflow
+advancement, timer-start instance creation, scheduled retry execution, and
+timer rescheduling.
+
+For interrupting timer boundary events, the same poller path is enough. When
+the due row is reached, the library reloads the same process instance,
+refreshes the workflow, closes the interrupted human task as `CANCELLED`, and
+materializes the timeout-path task that became READY.
+
+For delayed retry specifically, the normal host-application sequence is:
+
+1. Move the current process instance into `error` with
+   `ErrorProcessInstanceCommand`.
+2. Persist one delayed retry row for that same process instance with
+   `ScheduleProcessInstanceRetryCommand`.
+3. Keep calling `api.run_due_scheduler_jobs(...)` from the application's
+   scheduler loop.
+4. When the row becomes due, the library reloads the same process instance and
+   executes the normal retry lifecycle for it.
+5. If the instance is still in `error`, the library changes it back to
+   `running`, clears `end_in_seconds`, reopens terminated runtime tasks and
+   human tasks to `READY`, records a `process_instance_retried` event, and
+   deletes the consumed scheduler row.
+6. If the instance is no longer in `error` by the time the worker reaches the
+   due row, the library treats that scheduler row as stale and deletes it
+   instead of forcing a retry.
+
+The current V1 runner is intentionally simple and is best used as a single
+logical poller per database or tenant scope. A Celery-backed dispatcher can be
+added later on top of the same persisted scheduler rows.
+
+Timer-started workflows do not require a caller-supplied initiator id. The
+library creates those process instances with an internal tenant-scoped system
+user because there is no external actor at trigger time.
 
 ## Error Handling
 

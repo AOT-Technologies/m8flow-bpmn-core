@@ -17,12 +17,21 @@ from m8flow_bpmn_core.models.process_instance_event import (
 from m8flow_bpmn_core.models.process_instance_metadata import (
     ProcessInstanceMetadataModel,
 )
+from m8flow_bpmn_core.models.scheduler_job import (
+    SchedulerJobModel,
+    SchedulerJobType,
+)
 from m8flow_bpmn_core.services.authorization import (
     PROCESS_RESUME_COMMAND,
     PROCESS_RETRY_COMMAND,
     PROCESS_SUSPEND_COMMAND,
     PROCESS_TERMINATE_COMMAND,
     require_command_authorization,
+)
+from m8flow_bpmn_core.services.scheduler_jobs import (
+    build_scheduler_job_key,
+    delete_scheduler_job,
+    upsert_scheduler_job,
 )
 from m8flow_bpmn_core.services.tenant_users import (
     ensure_user_belongs_to_tenant,
@@ -402,6 +411,11 @@ def retry_process_instance(
         process_instance,
         occurred_at=occurred_at,
     )
+    _delete_scheduled_process_retry_job(
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance.id,
+    )
     record_process_instance_event(
         session,
         tenant_id=tenant_id,
@@ -412,6 +426,56 @@ def retry_process_instance(
     )
     session.flush()
     return process_instance
+
+
+def schedule_process_instance_retry(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_instance_id: int,
+    user_id: int,
+    retry_at_in_seconds: int,
+    scheduled_at_in_seconds: int | None = None,
+) -> SchedulerJobModel:
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
+    process_instance = _load_process_instance(
+        session, tenant_id=tenant_id, process_instance_id=process_instance_id
+    )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        command_key=PROCESS_RETRY_COMMAND,
+        target_uri=f"/process-instances/{process_instance.id}",
+        target_id=process_instance.id,
+    )
+    if process_instance.status != ProcessInstanceStatus.error.value:
+        raise InvalidStateError(
+            "Only errored process instances can be scheduled for retry"
+        )
+
+    occurred_at = _resolve_timestamp(scheduled_at_in_seconds)
+    return upsert_scheduler_job(
+        session,
+        tenant_id=tenant_id,
+        job_key=_process_retry_scheduler_job_key(
+            process_instance_id=process_instance.id
+        ),
+        job_type=SchedulerJobType.process_retry,
+        process_instance_id=process_instance.id,
+        bpmn_process_definition_id=process_instance.bpmn_process_definition_id,
+        run_at_in_seconds=retry_at_in_seconds,
+        payload_json={
+            "requested_by_user_id": user_id,
+            "scheduled_at_in_seconds": occurred_at,
+        },
+        updated_at_in_seconds=occurred_at,
+        created_at_in_seconds=occurred_at,
+    )
 
 
 def terminate_process_instance(
@@ -524,6 +588,21 @@ def _reopen_process_instance_runtime_state(
         human_task.updated_at_in_seconds = occurred_at
 
 
+def _delete_scheduled_process_retry_job(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_instance_id: int,
+) -> None:
+    delete_scheduler_job(
+        session,
+        tenant_id=tenant_id,
+        job_key=_process_retry_scheduler_job_key(
+            process_instance_id=process_instance_id
+        ),
+    )
+
+
 def get_process_instance_metadata(
     session: Session,
     *,
@@ -566,6 +645,13 @@ def _load_process_instance(
 
 def _normalize_status(status: ProcessInstanceStatus | str) -> str:
     return ProcessInstanceStatus(status).value
+
+
+def _process_retry_scheduler_job_key(*, process_instance_id: int) -> str:
+    return build_scheduler_job_key(
+        job_type=SchedulerJobType.process_retry,
+        process_instance_id=process_instance_id,
+    )
 
 
 def _resolve_timestamp(timestamp_in_seconds: int | None) -> int:

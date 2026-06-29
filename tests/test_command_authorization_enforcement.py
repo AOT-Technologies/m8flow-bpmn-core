@@ -15,6 +15,7 @@ from m8flow_bpmn_core.models.bpmn_process_definition import (
 from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
+from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
@@ -314,6 +315,46 @@ def test_process_retry_requires_command_permission(session: Session) -> None:
     )
 
     assert process_instance.status == "running"
+
+
+def test_process_retry_schedule_requires_command_permission(session: Session) -> None:
+    context = _seed_task_context(session)
+    context.process_instance.status = "error"
+    context.process_instance.end_in_seconds = 180
+    session.flush()
+
+    with pytest.raises(api.AuthorizationError, match="process.retry"):
+        api.execute_command(
+            session,
+            api.ScheduleProcessInstanceRetryCommand(
+                tenant_id=context.tenant.id,
+                process_instance_id=context.process_instance.id,
+                user_id=context.actor.id,
+                retry_at_in_seconds=220,
+                scheduled_at_in_seconds=190,
+            ),
+        )
+
+    ensure_v1_role(
+        session,
+        tenant_id=context.tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[context.actor.id],
+    )
+    scheduler_job = api.execute_command(
+        session,
+        api.ScheduleProcessInstanceRetryCommand(
+            tenant_id=context.tenant.id,
+            process_instance_id=context.process_instance.id,
+            user_id=context.actor.id,
+            retry_at_in_seconds=220,
+            scheduled_at_in_seconds=200,
+        ),
+    )
+
+    assert isinstance(scheduler_job, SchedulerJobModel)
+    assert scheduler_job.process_instance_id == context.process_instance.id
+    assert scheduler_job.job_type == "process_retry"
 
 
 def test_process_terminate_requires_command_permission(session: Session) -> None:

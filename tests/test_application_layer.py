@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core.application import (
@@ -20,6 +21,7 @@ from m8flow_bpmn_core.application import (
     RecordProcessInstanceEventCommand,
     ResumeProcessInstanceCommand,
     RetryProcessInstanceCommand,
+    ScheduleProcessInstanceRetryCommand,
     SuspendProcessInstanceCommand,
     TerminateProcessInstanceCommand,
     UpsertProcessInstanceMetadataCommand,
@@ -35,6 +37,7 @@ from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
@@ -420,6 +423,55 @@ def test_error_and_retry_lifecycle_commands(session: Session) -> None:
             ),
         )
     ] == ["process_instance_error", "process_instance_retried"]
+
+
+def test_schedule_retry_command_persists_scheduler_job(session: Session) -> None:
+    tenant, user, process_instance, _task, _human_task = _seed_process_instance(session)
+
+    execute_command(
+        session,
+        ErrorProcessInstanceCommand(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+            user_id=user.id,
+            errored_at_in_seconds=275,
+        ),
+    )
+
+    scheduler_job = execute_command(
+        session,
+        ScheduleProcessInstanceRetryCommand(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+            user_id=user.id,
+            retry_at_in_seconds=325,
+            scheduled_at_in_seconds=300,
+        ),
+    )
+    assert scheduler_job.job_type == "process_retry"
+    assert scheduler_job.process_instance_id == process_instance.id
+    assert scheduler_job.run_at_in_seconds == 325
+    assert scheduler_job.payload_json == {
+        "requested_by_user_id": user.id,
+        "scheduled_at_in_seconds": 300,
+    }
+
+    execute_command(
+        session,
+        RetryProcessInstanceCommand(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+            user_id=user.id,
+            retried_at_in_seconds=310,
+        ),
+    )
+
+    assert session.scalar(
+        select(SchedulerJobModel).where(
+            SchedulerJobModel.m8f_tenant_id == tenant.id,
+            SchedulerJobModel.process_instance_id == process_instance.id,
+        )
+    ) is None
 
 
 def test_application_layer_imports_bpmn_process_definition(session: Session) -> None:

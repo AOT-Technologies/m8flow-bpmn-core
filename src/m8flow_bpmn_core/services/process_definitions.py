@@ -21,6 +21,9 @@ from m8flow_bpmn_core.services.authorization import (
     require_command_authorization,
 )
 from m8flow_bpmn_core.services.tenant_users import ensure_user_belongs_to_tenant
+from m8flow_bpmn_core.services.workflow_runtime import (
+    _sync_timer_start_scheduler_jobs_for_definition,
+)
 
 
 def import_bpmn_process_definition(
@@ -142,6 +145,11 @@ def import_bpmn_process_definition(
         tenant_id=tenant_id,
         process_model_identifier=bpmn_identifier,
         bpmn_xml_text=source_bpmn_xml_text,
+        occurred_at=snapshot_timestamp,
+    )
+    _sync_timer_start_scheduler_jobs_for_definition(
+        session,
+        process_definition=definition,
         occurred_at=snapshot_timestamp,
     )
     return definition

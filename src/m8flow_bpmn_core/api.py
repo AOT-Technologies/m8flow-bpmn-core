@@ -9,6 +9,9 @@ fields, return types, and the error classes each operation may raise.
 
 from __future__ import annotations
 
+from sqlalchemy.engine import Connection
+from sqlalchemy.orm import Session
+
 from m8flow_bpmn_core.application import (
     ClaimTaskCommand,
     CompleteTaskCommand,
@@ -28,12 +31,14 @@ from m8flow_bpmn_core.application import (
     RecordProcessInstanceEventCommand,
     ResumeProcessInstanceCommand,
     RetryProcessInstanceCommand,
+    ScheduleProcessInstanceRetryCommand,
     SuspendProcessInstanceCommand,
     TerminateProcessInstanceCommand,
     UpsertProcessInstanceMetadataCommand,
     execute_command,
     execute_query,
 )
+from m8flow_bpmn_core.application.dispatcher import _session_scope
 from m8flow_bpmn_core.errors import (
     AuthorizationError,
     BpmnCoreError,
@@ -73,9 +78,13 @@ from m8flow_bpmn_core.services.process_instances import (
     record_process_instance_event,
     resume_process_instance,
     retry_process_instance,
+    schedule_process_instance_retry,
     suspend_process_instance,
     terminate_process_instance,
     upsert_process_instance_metadata,
+)
+from m8flow_bpmn_core.services.scheduler_runtime import (
+    run_due_scheduler_jobs as _run_due_scheduler_jobs,
 )
 from m8flow_bpmn_core.services.tasks import (
     claim_task,
@@ -86,6 +95,24 @@ from m8flow_bpmn_core.services.workflow_runtime import (
     advance_process_instance_workflow,
     resolve_lane_assignment_id,
 )
+
+
+def run_due_scheduler_jobs(
+    session_or_connection: Session | Connection,
+    *,
+    now_in_seconds: int | None = None,
+    limit: int = 100,
+    worker_id: str = "inline",
+    tenant_id: str | None = None,
+) -> int:
+    with _session_scope(session_or_connection) as session:
+        return _run_due_scheduler_jobs(
+            session,
+            now_in_seconds=now_in_seconds,
+            limit=limit,
+            worker_id=worker_id,
+            tenant_id=tenant_id,
+        )
 
 __all__ = [
     "AuthorizationError",
@@ -123,6 +150,7 @@ __all__ = [
     "RecordProcessInstanceEventCommand",
     "ResumeProcessInstanceCommand",
     "RetryProcessInstanceCommand",
+    "ScheduleProcessInstanceRetryCommand",
     "SuspendProcessInstanceCommand",
     "TASK_CLAIM_COMMAND",
     "TASK_COMPLETE_COMMAND",
@@ -147,8 +175,10 @@ __all__ = [
     "list_terminated_process_instances",
     "record_process_instance_event",
     "resolve_lane_assignment_id",
+    "run_due_scheduler_jobs",
     "resume_process_instance",
     "retry_process_instance",
+    "schedule_process_instance_retry",
     "set_default_authorization_policy_factory",
     "suspend_process_instance",
     "terminate_process_instance",

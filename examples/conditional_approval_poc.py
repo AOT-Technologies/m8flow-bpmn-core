@@ -653,8 +653,26 @@ def _extract_process_models_mount_source(
         destination = mount.get("Destination") or mount.get("Target")
         source = mount.get("Source")
         if destination == target and isinstance(source, str) and source.strip():
-            return source.strip()
+            return _normalize_docker_desktop_mount_source(source.strip())
     return None
+
+
+def _normalize_docker_desktop_mount_source(source: str) -> str:
+    normalized_source = source.strip()
+    docker_desktop_source = normalized_source.replace("\\", "/")
+
+    host_mnt_match = re.match(
+        r"^(?:[a-zA-Z]:)?/host_mnt/([a-zA-Z])(?:/(.*))?$",
+        docker_desktop_source,
+    )
+    if host_mnt_match is None:
+        return normalized_source
+
+    drive_letter = host_mnt_match.group(1).upper()
+    remaining_path = (host_mnt_match.group(2) or "").replace("/", "\\")
+    if not remaining_path:
+        return f"{drive_letter}:\\"
+    return f"{drive_letter}:\\{remaining_path}"
 
 
 def _deploy_conditional_approval_definition_to_m8flow_backend(

@@ -38,6 +38,53 @@ if you prefer to skip the dispatch step. The semantics are identical.
 
 ---
 
+## Scheduler Service Function
+
+```python
+from m8flow_bpmn_core import api
+
+api.run_due_scheduler_jobs(
+    session_or_connection,
+    *,
+    now_in_seconds=None,
+    limit=100,
+    worker_id="inline",
+    tenant_id=None,
+)
+```
+
+This is the public polling entrypoint for persisted scheduler jobs. It is a
+service function rather than a command/query because the caller is driving a
+worker loop, not issuing a business command on behalf of an end user.
+
+- **Inputs** - accepts either a `Session` or `Connection`, with the same
+  caller-owned transaction semantics as `execute_command(...)` and
+  `execute_query(...)`.
+- **`now_in_seconds`** - optional due-time override for tests or externally
+  controlled scheduling loops.
+- **`limit`** - maximum number of due jobs to process in one call. Must be
+  greater than zero.
+- **`worker_id`** - non-blank identifier recorded in the in-row job lock while
+  a job is being processed.
+- **`tenant_id`** - optional tenant filter when a host application wants to run
+  one scheduler loop per tenant.
+- **Return value** - `int`, the number of due jobs processed in that call.
+- **Raises** - `ValidationError` for invalid `limit` or blank `worker_id`;
+  `BpmnCoreError` if a claimed job fails during execution.
+
+Current V1 coverage includes waiting intermediate catch events, interrupting
+timer boundary events, timer start events, and scheduled process retries. The
+host application is responsible for wake-up cadence; the library is
+responsible for finding due jobs, restoring workflow state, advancing the
+workflow, creating timer-started instances, retrying errored instances, and
+rescheduling the next timer if the instance remains waiting.
+
+The current implementation is intentionally simple and is best treated as a
+single-poller execution path. Multi-worker claim hardening and Celery dispatch
+remain follow-on work.
+
+---
+
 ## Conventions
 
 All command/query inputs are `@dataclass(frozen=True, slots=True)`. Fields
@@ -280,6 +327,38 @@ raises `InvalidStateError` for `complete` and `terminated`. Unlike the covered
 admin lifecycle commands above, `process.error` is not yet part of the built-in
 V1 command-permission set.
 
+### `ScheduleProcessInstanceRetryCommand`
+
+Persist a delayed retry job for an errored process instance.
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `tenant_id` | `str` | yes |
+| `process_instance_id` | `int` | yes |
+| `user_id` | `int` | yes |
+| `retry_at_in_seconds` | `int` | yes |
+| `scheduled_at_in_seconds` | `int \| None` | no |
+
+**Returns**: `SchedulerJobModel`.
+
+**Raises**: `NotFoundError` (process instance or user missing),
+`AuthorizationError` (user not in tenant or lacks the tenant-scoped
+`process.retry` permission), `InvalidStateError` (instance is not currently in
+`error` status).
+
+The scheduled job is deduplicated per process instance. Scheduling a second
+retry for the same errored instance updates the existing row rather than
+creating a duplicate job.
+
+When the due row is later picked up by `api.run_due_scheduler_jobs(...)`, the
+library retries that same process instance through the normal
+`process.retry` lifecycle. That means the instance returns from `error` to
+`running`, `end_in_seconds` is cleared, terminated runtime tasks are reopened,
+terminated human tasks are reset back to `READY`, and the consumed scheduler
+row is deleted. If the instance is no longer in `error` when the worker
+reaches the due row, the stale scheduler row is deleted without forcing a
+retry.
+
 ---
 
 ## Queries (read side)
@@ -421,6 +500,9 @@ definition identifiers.
   `ensure_user_belongs_to_tenant(...)` before doing any work.
 - Process-instance queries filter on `m8f_tenant_id`. There is no
   cross-tenant read path in the public API.
+- Timer-started process instances do not have an external caller. The library
+  creates them with an internal tenant-scoped system user and stores that user
+  id in `process_initiator_id`.
 
 ---
 

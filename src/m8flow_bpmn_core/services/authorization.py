@@ -20,6 +20,7 @@ from m8flow_bpmn_core.application.commands import (
     RecordProcessInstanceEventCommand,
     ResumeProcessInstanceCommand,
     RetryProcessInstanceCommand,
+    ScheduleProcessInstanceRetryCommand,
     SuspendProcessInstanceCommand,
     TerminateProcessInstanceCommand,
     UpsertProcessInstanceMetadataCommand,
@@ -165,6 +166,12 @@ COMMAND_AUTHORIZATION_SPECS: dict[type[object], CommandAuthorizationSpec] = {
         actor_field_name="user_id",
     ),
     RetryProcessInstanceCommand: CommandAuthorizationSpec(
+        command_key=PROCESS_RETRY_COMMAND,
+        permission=PermissionAction.execute.value,
+        target_uri=PROCESS_INSTANCES_TARGET_URI,
+        actor_field_name="user_id",
+    ),
+    ScheduleProcessInstanceRetryCommand: CommandAuthorizationSpec(
         command_key=PROCESS_RETRY_COMMAND,
         permission=PermissionAction.execute.value,
         target_uri=PROCESS_INSTANCES_TARGET_URI,

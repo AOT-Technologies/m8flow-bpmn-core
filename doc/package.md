@@ -52,6 +52,29 @@ that wheel in downstream builds.
 2. Build the package with `make package`.
 3. Take the wheel from `dist/` and consume it in the other project.
 
+## Optional Extras
+
+Some repo features intentionally sit behind optional dependency groups.
+
+- PostgreSQL support:
+
+  ```bash
+  uv sync --extra postgresql
+  ```
+
+- Celery POC support:
+
+  ```bash
+  uv sync --extra celery
+  ```
+
+- Common local setup for the scheduler examples that use both Postgres and the
+  Celery POC worker:
+
+  ```bash
+  uv sync --extra postgresql --extra celery
+  ```
+
 ## Notes
 
 - The wheel filename changes when the project version changes.
