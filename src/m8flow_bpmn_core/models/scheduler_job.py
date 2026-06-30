@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BIGINT, JSON, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from m8flow_bpmn_core.models.base import Base
@@ -41,15 +41,15 @@ class SchedulerJobModel(M8fTenantScopedMixin, TenantScoped, Base):
         index=True,
     )
     locked_by: Mapped[str | None] = mapped_column(String(255), index=True)
-    locked_at_in_seconds: Mapped[int | None] = mapped_column(Integer, index=True)
-    run_at_in_seconds: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    locked_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT, index=True)
+    run_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False, index=True)
     payload_json: Mapped[dict[str, Any]] = mapped_column(
         JSON,
         nullable=False,
         default=dict,
     )
-    updated_at_in_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at_in_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    created_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False)
 
     process_instance = relationship(
         "ProcessInstanceModel",

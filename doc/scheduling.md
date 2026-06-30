@@ -54,11 +54,11 @@ It is a tenant-scoped table with one row per persisted logical scheduled job.
 | `process_instance_id` | integer | yes | Foreign key to `process_instance.id`. Used for jobs that belong to a specific running instance, such as intermediate timers and retries. |
 | `bpmn_process_definition_id` | integer | yes | Foreign key to `bpmn_process_definition.id`. Used for definition-scoped jobs, especially timer-start events. |
 | `locked_by` | string(255) | yes | Worker identifier for claimed jobs. `NULL` means the row is currently unclaimed. |
-| `locked_at_in_seconds` | integer | yes | Timestamp for when the claim happened. V1 stores it for coordination and future recovery logic. |
-| `run_at_in_seconds` | integer | no | Indexed due timestamp used by the poller or a future Celery dispatcher. |
+| `locked_at_in_seconds` | bigint | yes | Timestamp for when the claim happened. V1 stores it for coordination and future recovery logic. |
+| `run_at_in_seconds` | bigint | no | Indexed due timestamp used by the poller or a future Celery dispatcher. |
 | `payload_json` | JSON | no | Job-specific metadata. For example, timer descriptors or retry context. Defaults to an empty object. |
-| `updated_at_in_seconds` | integer | no | Last mutation timestamp for the row. |
-| `created_at_in_seconds` | integer | no | Initial insert timestamp for the row. |
+| `updated_at_in_seconds` | bigint | no | Last mutation timestamp for the row. |
+| `created_at_in_seconds` | bigint | no | Initial insert timestamp for the row. |
 
 The model also exposes two SQLAlchemy relationships:
 
