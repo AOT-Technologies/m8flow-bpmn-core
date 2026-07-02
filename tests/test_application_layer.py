@@ -39,6 +39,10 @@ from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.services.authorization import (
+    ROLE_ADMIN,
+    ensure_v1_role,
+)
 
 
 def test_application_layer_handles_tasks_events_and_metadata(
@@ -424,8 +428,23 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
         name="Tenant Definition",
         slug="tenant-definition",
     )
-    session.add(tenant)
+    user = UserModel(
+        username="definition-admin",
+        email="definition-admin@example.com",
+        service="http://localhost:7002/realms/tenant-definition",
+        service_id="definition-admin-keycloak",
+        display_name="Definition Admin",
+        created_at_in_seconds=1,
+        updated_at_in_seconds=1,
+    )
+    session.add_all([tenant, user])
     session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[user.id],
+    )
 
     bpmn_xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
@@ -443,6 +462,7 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
         ImportBpmnProcessDefinitionCommand(
             tenant_id=tenant.id,
             bpmn_identifier="imported-process",
+            user_id=user.id,
             bpmn_name="Imported Process",
             source_bpmn_xml=bpmn_xml,
             source_dmn_xml=dmn_xml,
@@ -454,7 +474,8 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
         ),
     )
     assert definition.id is not None
-    assert definition.bpmn_identifier == "imported-process"
+    assert definition.bpmn_identifier == "Process_import_1"
+    assert definition.process_model_identifier == "imported-process"
     assert definition.bpmn_name == "Imported Process"
     assert definition.source_bpmn_xml == bpmn_xml
     assert definition.source_dmn_xml == dmn_xml
@@ -464,7 +485,12 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
     assert definition.single_process_hash == hashlib.sha256(
         f"single::{bpmn_xml}".encode()
     ).hexdigest()
-    assert definition.properties_json == {
+    public_properties = {
+        key: value
+        for key, value in definition.properties_json.items()
+        if not key.startswith("__m8f_")
+    }
+    assert public_properties == {
         "source": "application-layer-test",
         "version": 1,
     }
@@ -474,6 +500,7 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
         ImportBpmnProcessDefinitionCommand(
             tenant_id=tenant.id,
             bpmn_identifier="imported-process",
+            user_id=user.id,
             bpmn_name="Imported Process",
             source_bpmn_xml=bpmn_xml,
             source_dmn_xml=dmn_xml,
@@ -509,6 +536,12 @@ def _seed_process_instance(
     )
     session.add_all([tenant, user])
     session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[user.id],
+    )
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
@@ -558,7 +591,6 @@ def _seed_process_instance(
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        process_version=3,
         created_at_in_seconds=1_000,
         updated_at_in_seconds=1_000,
     )

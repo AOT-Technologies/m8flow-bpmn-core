@@ -17,6 +17,13 @@ from m8flow_bpmn_core.models.process_instance_event import (
 from m8flow_bpmn_core.models.process_instance_metadata import (
     ProcessInstanceMetadataModel,
 )
+from m8flow_bpmn_core.services.authorization import (
+    PROCESS_RESUME_COMMAND,
+    PROCESS_RETRY_COMMAND,
+    PROCESS_SUSPEND_COMMAND,
+    PROCESS_TERMINATE_COMMAND,
+    require_command_authorization,
+)
 from m8flow_bpmn_core.services.tenant_users import (
     ensure_user_belongs_to_tenant,
 )
@@ -50,7 +57,6 @@ def create_process_instance(
         process_initiator_id=process_initiator_id,
         bpmn_process_definition_id=bpmn_process_definition_id,
         bpmn_process_id=bpmn_process_id,
-        process_version=process_version,
         status=ProcessInstanceStatus.not_started.value,
         created_at_in_seconds=occurred_at,
         updated_at_in_seconds=(
@@ -227,17 +233,24 @@ def suspend_process_instance(
     *,
     tenant_id: str,
     process_instance_id: int,
-    user_id: int | None = None,
+    user_id: int,
     suspended_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
-    if user_id is not None:
-        ensure_user_belongs_to_tenant(
-            session,
-            tenant_id=tenant_id,
-            user_id=user_id,
-        )
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
+    )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        command_key=PROCESS_SUSPEND_COMMAND,
+        target_uri=f"/process-instances/{process_instance.id}",
+        target_id=process_instance.id,
     )
     if process_instance.status == ProcessInstanceStatus.suspended.value:
         return process_instance
@@ -313,17 +326,24 @@ def resume_process_instance(
     *,
     tenant_id: str,
     process_instance_id: int,
-    user_id: int | None = None,
+    user_id: int,
     resumed_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
-    if user_id is not None:
-        ensure_user_belongs_to_tenant(
-            session,
-            tenant_id=tenant_id,
-            user_id=user_id,
-        )
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
+    )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        command_key=PROCESS_RESUME_COMMAND,
+        target_uri=f"/process-instances/{process_instance.id}",
+        target_id=process_instance.id,
     )
     if process_instance.status == ProcessInstanceStatus.running.value:
         return process_instance
@@ -352,17 +372,24 @@ def retry_process_instance(
     *,
     tenant_id: str,
     process_instance_id: int,
-    user_id: int | None = None,
+    user_id: int,
     retried_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
-    if user_id is not None:
-        ensure_user_belongs_to_tenant(
-            session,
-            tenant_id=tenant_id,
-            user_id=user_id,
-        )
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
+    )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        command_key=PROCESS_RETRY_COMMAND,
+        target_uri=f"/process-instances/{process_instance.id}",
+        target_id=process_instance.id,
     )
     if process_instance.status != ProcessInstanceStatus.error.value:
         raise InvalidStateError("Only errored process instances can be retried")
@@ -392,17 +419,24 @@ def terminate_process_instance(
     *,
     tenant_id: str,
     process_instance_id: int,
-    user_id: int | None = None,
+    user_id: int,
     terminated_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
-    if user_id is not None:
-        ensure_user_belongs_to_tenant(
-            session,
-            tenant_id=tenant_id,
-            user_id=user_id,
-        )
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
     process_instance = _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
+    )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        command_key=PROCESS_TERMINATE_COMMAND,
+        target_uri=f"/process-instances/{process_instance.id}",
+        target_id=process_instance.id,
     )
     if process_instance.status == ProcessInstanceStatus.terminated.value:
         return process_instance
@@ -442,6 +476,7 @@ def _close_process_instance_runtime_state(
     occurred_at: int,
     user_id: int | None,
 ) -> None:
+    process_instance.task_updated_at_in_seconds = occurred_at
     for task in process_instance.tasks:
         if task.state != "COMPLETED":
             task.state = "TERMINATED"
@@ -456,6 +491,7 @@ def _close_process_instance_runtime_state(
             continue
         human_task.completed = True
         human_task.task_status = "TERMINATED"
+        human_task.updated_at_in_seconds = occurred_at
         if user_id is not None:
             human_task.actual_owner_id = user_id
             human_task.completed_by_user_id = user_id
@@ -466,6 +502,7 @@ def _reopen_process_instance_runtime_state(
     *,
     occurred_at: int,
 ) -> None:
+    process_instance.task_updated_at_in_seconds = occurred_at
     for task in process_instance.tasks:
         if task.state != "TERMINATED":
             continue
@@ -484,6 +521,7 @@ def _reopen_process_instance_runtime_state(
         human_task.completed_by_user_id = None
         human_task.actual_owner_id = None
         human_task.task_status = "READY"
+        human_task.updated_at_in_seconds = occurred_at
 
 
 def get_process_instance_metadata(

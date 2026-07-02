@@ -25,7 +25,8 @@ with engine.begin() as connection:
         connection,
         api.ImportBpmnProcessDefinitionCommand(
             tenant_id="tenant-conditional-approval",
-            bpmn_identifier="conditional-approval-poc",
+            bpmn_identifier="m8flow-bpmn-core-examples/conditional-approval-poc",
+            user_id=definition_admin_user_id,
             bpmn_name="Conditional Approval POC",
             source_bpmn_xml=bpmn_xml,
             source_dmn_xml=dmn_xml,
@@ -109,11 +110,59 @@ except api.InvalidStateError:
 
 See [`api.md`](api.md) for which errors each command and query can raise.
 
+## Custom Authorization Policies
+
+If you need policy logic beyond the built-in V1 role grants, install a custom
+policy temporarily with `api.authorization_policy_scope(...)` or globally with
+`api.set_default_authorization_policy_factory(...)`.
+
+```python
+class FinanceGatePolicy:
+    def authorize(self, session, request):
+        if (
+            request.command_key == api.TASK_COMPLETE_COMMAND
+            and request.metadata is not None
+            and request.metadata.get("lane_name") == "Finance"
+        ):
+            return api.AuthorizationDecision(
+                False,
+                reason="Finance completions require external approval",
+            )
+        return api.DatabaseAuthorizationPolicy().authorize(session, request)
+
+
+with api.authorization_policy_scope(FinanceGatePolicy()):
+    api.execute_command(connection, api.CompleteTaskCommand(...))
+```
+
+The authorization request includes stable command keys for all currently
+covered V1 actions. It also carries contextual metadata for the currently
+enriched enforcement points (`process.start`, `task.claim`, `task.complete`).
+
+The built-in database policy resolves those command checks through
+`permission_target` rows. In practice, callers register URI targets together
+with the relevant `permission_target.command` values so the same permission
+catalog can distinguish generic URI access from specific workflow commands.
+
 ## Practical Notes
 
 - Use `Session` if you want the library to work inside an existing ORM session.
 - Use `Connection` if you want to control when the transaction commits.
-- The API validates tenant membership before user-scoped operations such as
-  pending-task reads, claims, and completions.
+- If you want instances to resolve cleanly in the m8flow UI, use the same
+  grouped process model identifier that the backend catalog uses, for example
+  `m8flow-bpmn-core-examples/conditional-approval-poc`.
+- The API validates tenant membership before user-scoped operations.
+- Importing a definition, starting a process from a stored definition,
+  claiming a task, completing a task, and the covered lifecycle admin
+  operations all require tenant-scoped command grants.
+- The built-in covered command keys are `process_definition.import`,
+  `process.start`, `task.claim`, `task.complete`, `process.suspend`,
+  `process.resume`, `process.retry`, and `process.terminate`.
+- Those command grants are backed by `permission_target.command`, so a shared
+  permission catalog can register both URI-only targets and command-specific
+  targets for the same URI pattern.
+- Shared-realm m8flow users can still be scoped to one tenant locally by
+  storing the shared-realm issuer in `user.service` and persisting the tenant
+  id and slug in `tenant_specific_field_1` / `tenant_specific_field_2`.
 - `task_payload` values are stored as process metadata keys at completion time,
   which is the closest match to a form submit in the example flows.

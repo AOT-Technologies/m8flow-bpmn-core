@@ -44,6 +44,11 @@ from m8flow_bpmn_core.models.process_instance import (  # noqa: E402
 )
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel  # noqa: E402
 from m8flow_bpmn_core.models.user import UserModel  # noqa: E402
+from m8flow_bpmn_core.services.authorization import (  # noqa: E402
+    ROLE_ADMIN,
+    ROLE_USER,
+    ensure_v1_role,
+)
 
 TENANT_ID = "tenant-errors-demo"
 TENANT_SLUG = "tenant-errors-demo"
@@ -117,6 +122,7 @@ def main() -> None:
                 api.SuspendProcessInstanceCommand(
                     tenant_id=TENANT_ID,
                     process_instance_id=context["terminated_process_instance_id"],
+                    user_id=context["primary_user_id"],
                 ),
             ),
             expected_domain=api.InvalidStateError,
@@ -243,6 +249,12 @@ def _seed(session: Session) -> dict[str, int]:
     )
     session.add_all([tenant, foreign_tenant, primary_user, other_user, foreign_user])
     session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[primary_user.id, other_user.id],
+    )
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
@@ -280,7 +292,6 @@ def _seed(session: Session) -> dict[str, int]:
             bpmn_process_definition_id=definition.id,
             bpmn_process_id=bpmn_process.id,
             status=status,
-            process_version=1,
             created_at_in_seconds=20,
             updated_at_in_seconds=20,
         )

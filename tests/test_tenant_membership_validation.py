@@ -242,7 +242,6 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        process_version=1,
         created_at_in_seconds=1_000,
         updated_at_in_seconds=1_000,
     )
@@ -299,7 +298,6 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         bpmn_process_definition_id=foreign_definition.id,
         bpmn_process_id=foreign_bpmn_process.id,
         status="running",
-        process_version=1,
         created_at_in_seconds=1_001,
         updated_at_in_seconds=1_001,
     )

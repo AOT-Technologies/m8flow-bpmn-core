@@ -132,7 +132,10 @@ The script seeds a demo tenant and users, imports the conditional approval BPMN
 and DMN fixtures, and then drives the workflow through the public
 `m8flow-bpmn-core` API using a caller-owned Postgres connection.
 It pauses before and after each command so you can read the context and result
-for every step.
+for every step. The walkthrough now also exercises the built-in V1 RBAC checks
+for `process_definition.import`, `process.start`, `task.claim`, and
+`task.complete`, backed by command keys registered in
+`permission_target.command`.
 The rejection variant follows the same setup but stops before the Finance lane
 by setting the manager decision to `Rejected`.
 
@@ -147,7 +150,9 @@ For the rejection variant, run:
 
 Add `-UseDocker` to force a temporary container even when a local database is
 available. Add `-KeepContainer` if you want the temporary container to stay up
-after the example exits.
+after the example exits. If the shared-database confirmation prompt appears and
+you answer `No`, the Python example also switches to a temporary Docker
+database automatically.
 
 For Bash or Unix-like shells, use:
 
@@ -158,7 +163,14 @@ For the rejection variant, use:
 `bash examples/conditional_approval_rejection_poc.sh`
 
 Use `--docker` to force the temporary container and `--keep-container` to leave
-it running after the example exits.
+it running after the example exits. If the shared-database confirmation prompt
+appears and you answer `No`, the Python example also switches to a temporary
+Docker database automatically.
+
+When the example uses the shared local m8flow database, the seeded process
+model is published into the backend catalog and the running process instance
+can be inspected and audited in the m8flow UI while
+`examples/conditional_approval_poc.py` is still running.
 
 Install the Postgres extra first with:
 

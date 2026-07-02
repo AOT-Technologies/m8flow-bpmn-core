@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from SpiffWorkflow.bpmn.serializer.workflow import BpmnWorkflowSerializer
+from SpiffWorkflow.spiff.serializer.config import SPIFF_CONFIG
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,16 +17,27 @@ from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.human_task_user import (
     HumanTaskUserAddedBy,
 )
+from m8flow_bpmn_core.models.json_data import JsonDataModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.services.authorization import (
+    ROLE_ADMIN,
+    ROLE_MANAGER,
+    ROLE_USER,
+    ensure_v1_role,
+)
 
 EXAMPLE_BPMN_PATH = Path(__file__).with_name("fixtures") / "conditional-approval.bpmn"
 EXAMPLE_DMN_PATH = Path(__file__).with_name("fixtures") / "check_eligibility.dmn"
 
 CONDITIONAL_APPROVAL_PROCESS_ID = "Process_conditional_approval_8qpy9gh"
+CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER = (
+    "m8flow-bpmn-core-examples/conditional-approval-poc"
+)
 CONDITIONAL_APPROVAL_TASK_IDS = {
     "script": "Activity_09regp6",
     "submit": "Activity_0qoxmh9",
@@ -122,6 +135,10 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     )
     assert process_instance.status == api.ProcessInstanceStatus.user_input_required
     assert process_instance.start_in_seconds == 100
+    assert (
+        process_instance.process_model_identifier
+        == CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER
+    )
     assert process_instance.workflow_state_json is not None
 
     # Step 1 continued: the submit task should be pending for the requester.
@@ -141,6 +158,10 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert submit_task.task_status == "READY"
     assert submit_task.task_model is not None
     assert submit_task.task_model.task_definition is not None
+    assert (
+        submit_task.bpmn_process_identifier
+        == CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER
+    )
     assert (
         submit_task.task_model.task_definition.bpmn_identifier
         == CONDITIONAL_APPROVAL_TASK_IDS["submit"]
@@ -401,6 +422,79 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert [event.event_type for event in events] == expected_events
 
 
+def test_conditional_approval_definition_can_start_multiple_instances(
+    session: Session,
+) -> None:
+    lane_owners = _assert_conditional_approval_bpmn_shape()
+    scenario = SCENARIOS[0]
+    context = _seed_conditional_approval_workflow(session, scenario, lane_owners)
+
+    second_process_instance = api.execute_command(
+        session,
+        api.InitializeProcessInstanceFromDefinitionCommand(
+            tenant_id=context.tenant.id,
+            bpmn_process_definition_id=context.process_instance.bpmn_process_definition_id,
+            process_initiator_id=context.users["requester"].id,
+            summary="Scenario: second-start",
+            process_version=1,
+            started_at_in_seconds=200,
+            bpmn_process_id=CONDITIONAL_APPROVAL_PROCESS_ID,
+        ),
+    )
+
+    assert second_process_instance.id != context.process_instance.id
+    assert second_process_instance.bpmn_process_id is not None
+    assert context.process_instance.bpmn_process_id is not None
+    assert (
+        second_process_instance.bpmn_process_id
+        != context.process_instance.bpmn_process_id
+    )
+    assert (
+        second_process_instance.process_model_identifier
+        == CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER
+    )
+    assert second_process_instance.workflow_state_json is not None
+    assert context.process_instance.workflow_state_json is not None
+
+    requester_tasks = api.execute_query(
+        session,
+        api.GetPendingTasksQuery(
+            tenant_id=context.tenant.id,
+            user_id=context.users["requester"].id,
+        ),
+    )
+    assert sorted(task.process_instance_id for task in requester_tasks) == [
+        context.process_instance.id,
+        second_process_instance.id,
+    ]
+
+
+def test_conditional_approval_rows_rehydrate_with_m8flow_serializer(
+    session: Session,
+) -> None:
+    context = _seed_conditional_approval_workflow(
+        session,
+        SCENARIOS[0],
+        _assert_conditional_approval_bpmn_shape(),
+    )
+
+    process_instance = api.execute_query(
+        session,
+        api.GetProcessInstanceQuery(
+            tenant_id=context.tenant.id,
+            process_instance_id=context.process_instance.id,
+        ),
+    )
+    serializer = BpmnWorkflowSerializer(
+        registry=BpmnWorkflowSerializer.configure(SPIFF_CONFIG)
+    )
+    restored = serializer.from_dict(
+        _assemble_m8flow_process_instance_dict(session, process_instance)
+    )
+
+    assert restored.get_tasks()
+
+
 def _seed_conditional_approval_workflow(
     session: Session,
     scenario: ConditionalApprovalScenario,
@@ -438,6 +532,15 @@ def _seed_conditional_approval_workflow(
             created_at_in_seconds=1,
             updated_at_in_seconds=1,
         ),
+        "admin": UserModel(
+            username="admin",
+            email="admin@example.com",
+            service=service_url,
+            service_id="admin-keycloak",
+            display_name="Admin",
+            created_at_in_seconds=1,
+            updated_at_in_seconds=1,
+        ),
         "requester": UserModel(
             username="requester",
             email="requester@example.com",
@@ -457,13 +560,36 @@ def _seed_conditional_approval_workflow(
     session.add(tenant)
     session.add_all(users.values())
     session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_USER,
+        user_ids=[users["requester"].id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[users["admin"].id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_MANAGER,
+        user_ids=[
+            users["manager"].id,
+            users["reviewer"].id,
+            users["finance"].id,
+        ],
+    )
 
     # Import the stored BPMN/DMN definition first so the workflow can start by id.
     definition = api.execute_command(
         session,
         api.ImportBpmnProcessDefinitionCommand(
             tenant_id=tenant.id,
-            bpmn_identifier="conditional-approval-poc",
+            bpmn_identifier=CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER,
+            user_id=users["admin"].id,
             bpmn_name="Conditional Approval POC",
             source_bpmn_xml=bpmn_xml,
             source_dmn_xml=dmn_xml,
@@ -482,6 +608,11 @@ def _seed_conditional_approval_workflow(
     )
     assert definition.source_bpmn_xml == bpmn_xml
     assert definition.source_dmn_xml == dmn_xml
+    assert definition.bpmn_identifier == CONDITIONAL_APPROVAL_PROCESS_ID
+    assert (
+        definition.process_model_identifier
+        == CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER
+    )
     assert definition.properties_json["scenario_name"] == scenario.name
 
     process_instance = api.execute_command(
@@ -497,6 +628,10 @@ def _seed_conditional_approval_workflow(
         ),
     )
     assert process_instance.status == api.ProcessInstanceStatus.user_input_required
+    assert (
+        process_instance.process_model_identifier
+        == CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER
+    )
     assert process_instance.workflow_state_json is not None
 
     session.refresh(process_instance)
@@ -728,3 +863,49 @@ def _extract_condition_text(root: ET.Element, element_id: str) -> str:
     condition_node = node.find("bpmn:conditionExpression", BPMN_NAMESPACES)
     assert condition_node is not None
     return "".join(condition_node.itertext()).strip()
+
+
+def _assemble_m8flow_process_instance_dict(
+    session: Session,
+    process_instance: ProcessInstanceModel,
+) -> dict[str, object]:
+    assert process_instance.bpmn_process is not None
+    assert process_instance.bpmn_process_definition is not None
+
+    process_dict: dict[str, object] = {
+        "serializer_version": process_instance.spiff_serializer_version,
+        "spec": dict(process_instance.bpmn_process_definition.properties_json),
+        "subprocess_specs": {},
+        "subprocesses": {},
+    }
+    process_dict["spec"]["task_specs"] = {}
+    for task_definition in session.scalars(
+        select(TaskDefinitionModel).where(
+            TaskDefinitionModel.m8f_tenant_id == process_instance.m8f_tenant_id,
+            TaskDefinitionModel.bpmn_process_definition_id
+            == process_instance.bpmn_process_definition_id,
+        )
+    ).all():
+        process_dict["spec"]["task_specs"][task_definition.bpmn_identifier] = dict(
+            task_definition.properties_json
+        )
+
+    process_dict.update(dict(process_instance.bpmn_process.properties_json))
+    process_data = session.get(
+        JsonDataModel,
+        process_instance.bpmn_process.json_data_hash,
+    )
+    assert process_data is not None
+    process_dict["data"] = dict(process_data.data)
+    process_dict["tasks"] = {}
+
+    for task in session.scalars(
+        select(TaskModel).where(TaskModel.process_instance_id == process_instance.id)
+    ).all():
+        task_data = session.get(JsonDataModel, task.json_data_hash)
+        assert task_data is not None
+        serialized_task = dict(task.properties_json)
+        serialized_task["data"] = dict(task_data.data)
+        process_dict["tasks"][task.guid] = serialized_task
+
+    return process_dict

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Integer, String
+from sqlalchemy import JSON, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -28,15 +28,15 @@ class TaskModel(M8fTenantScopedMixin, TenantScoped, Base):
         index=True,
         nullable=False,
     )
-    state: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
+    state: Mapped[str] = mapped_column(String(10), index=True, nullable=False)
     properties_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     json_data_hash: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     python_env_data_hash: Mapped[str] = mapped_column(
         String(255), index=True, nullable=False
     )
     runtime_info: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    start_in_seconds: Mapped[int | None] = mapped_column(Integer)
-    end_in_seconds: Mapped[int | None] = mapped_column(Integer)
+    start_in_seconds: Mapped[float | None] = mapped_column(Numeric(17, 6))
+    end_in_seconds: Mapped[float | None] = mapped_column(Numeric(17, 6))
 
     bpmn_process = relationship("BpmnProcessModel", back_populates="tasks")
     process_instance = relationship("ProcessInstanceModel", back_populates="tasks")

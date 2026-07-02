@@ -6,25 +6,45 @@ human task worklists, task claim/complete, metadata, and event persistence.
 
 The items below are intentionally not covered yet.
 
-## Permissions And RBAC
+## Authorization Gaps Beyond V1 RBAC
 
 M8Flow and SpiffArena model permissions through URIs that a user can access.
-This library does not yet provide a permission layer on top of the BPMN API.
+This library now provides a minimal V1 permission layer on top of the BPMN API
+for the highest-risk write-side workflow commands.
 
-Planned direction:
+Supported today:
+
+- stable command keys for `process_definition.import`, `process.start`,
+  `task.claim`, `task.complete`, `process.suspend`, `process.resume`,
+  `process.retry`, and `process.terminate`
+- persistence of those command keys through `permission_target.command`
+- tenant-scoped role-to-command grants
+- runtime enforcement of tenant membership plus command permission checks for
+  those covered workflow actions
+
+Planned direction beyond V1:
 
 - keep the existing URI-based RBAC model
-- add command and function assignments to users alongside the URI grants
-- make API calls check both URI access and workflow-command permissions
+- extend command and function assignments beyond the current V1 workflow actions
+- make more API calls check both URI access and workflow-command permissions
 - support tenant-aware authorization rules for worklist reads, task actions,
-  workflow administration, and definition import
+  workflow administration, and read-side access
 
 Examples of missing permission features:
 
-- no command-level authorization matrix
-- no role-to-command mapping
+- no command-level authorization coverage for the full API surface
+  Remaining uncovered examples include `process.create`,
+  `process.initialize_workflow`, `process.metadata.upsert`,
+  `process.event.record`, `process.error`, and the read/query surface.
 - no workflow admin / tenant admin separation
-- no policy engine for lane-specific or process-specific access rules
+  V1 `admin` is still a coarse workflow operator role. A future split would
+  separate process-definition/process-instance administration from tenant
+  identity and policy administration.
+- no built-in policy engine for lane-specific or process-specific access rules
+  That means there is still no first-class way to express rules such as "only
+  Finance lane members may complete this task" or "only admins for process
+  model X may terminate its instances" beyond coarse role grants or custom
+  policy hooks.
 
 ## Service Task Integrations
 

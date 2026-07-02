@@ -22,7 +22,7 @@ function Main {
 
     $exampleScript = Join-Path $PSScriptRoot "conditional_approval_rejection_poc.py"
     $pythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
-    $defaultDatabaseUrl = "postgresql+psycopg://postgres:postgres@localhost:5432/m8flow_bpmn_core_example?connect_timeout=1"
+    $defaultDatabaseUrl = "postgresql+psycopg://postgres:postgres@localhost:6843/postgres?connect_timeout=1"
 
     if (-not (Test-Path $pythonExe)) {
         throw "Could not find the project virtual environment at $pythonExe"
@@ -105,16 +105,16 @@ function Resolve-ExampleDatabaseUrl {
         }
     }
 
-    Write-Host "Status: checking whether the default local Postgres database is reachable..."
+    Write-Host "Status: checking whether the shared local Postgres database is reachable..."
     if (Test-DatabaseUrlReachable -DatabaseUrl $DefaultDatabaseUrl -PythonExe $PythonExe) {
-        Write-Host "Status: default local Postgres database is reachable."
+        Write-Host "Status: found a reachable shared local Postgres database."
         return [pscustomobject]@{
             DatabaseUrl   = $DefaultDatabaseUrl
             ContainerName = $null
         }
     }
 
-    Write-Host "Status: default local database is not reachable, starting Docker fallback..."
+    Write-Host "Status: shared local Postgres database is not reachable, starting Docker fallback..."
     return Start-TemporaryPostgresContainer -PostgresImage $PostgresImage
 }
 

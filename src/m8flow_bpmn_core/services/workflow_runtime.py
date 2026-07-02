@@ -28,19 +28,29 @@ from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
 from m8flow_bpmn_core.models.future_task import FutureTaskModel
+from m8flow_bpmn_core.models.group import GroupModel
 from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.human_task_user import (
     HumanTaskUserAddedBy,
     HumanTaskUserModel,
 )
+from m8flow_bpmn_core.models.json_data import JsonDataModel
 from m8flow_bpmn_core.models.process_instance import (
+    WORKFLOW_STATE_JSON_DATA_KEY,
     ProcessInstanceModel,
     ProcessInstanceStatus,
 )
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.process_model_bpmn_version import (
+    ProcessModelBpmnVersionModel,
+)
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.services.authorization import (
+    PROCESS_START_COMMAND,
+    require_command_authorization,
+)
 from m8flow_bpmn_core.services.process_instances import (
     create_process_instance,
     get_process_instance_metadata,
@@ -48,13 +58,16 @@ from m8flow_bpmn_core.services.process_instances import (
     upsert_process_instance_metadata,
 )
 from m8flow_bpmn_core.services.tenant_users import (
+    ensure_user_belongs_to_tenant,
     tenant_identifiers_for,
     user_belongs_to_tenant,
 )
 
 _WORKFLOW_SERIALIZER = BpmnWorkflowSerializer(
-    registry=BpmnWorkflowSerializer.configure(SPIFF_CONFIG)
+    registry=BpmnWorkflowSerializer.configure(SPIFF_CONFIG),
+    version="5",
 )
+_WORKFLOW_STATE_SERIALIZER_VERSION = "5"
 
 
 class _NoopDMNEngine:
@@ -81,10 +94,11 @@ class _RuntimeSpiffBpmnParser(SpiffBpmnParser):
 
 
 def resolve_lane_assignment_id(lane_name: str) -> int:
-    """Return a stable lane identifier without a groups table."""
+    """Return a stable lane identifier that fits m8flow's integer group ids."""
     normalized_lane = lane_name.strip().lower()
     digest = hashlib.sha256(normalized_lane.encode("utf-8")).hexdigest()
-    return int(digest[:8], 16)
+    stable_int = int(digest[:8], 16) & 0x7FFFFFFF
+    return stable_int or 1
 
 
 def initialize_process_instance_workflow(
@@ -130,7 +144,12 @@ def initialize_process_instance_workflow(
     )
     workflow.run_all(halt_on_manual=True)
 
-    _persist_workflow_state(process_instance, workflow)
+    _persist_workflow_state(
+        session,
+        process_instance,
+        workflow,
+        occurred_at=occurred_at,
+    )
     _materialize_ready_manual_tasks(
         session,
         process_instance=process_instance,
@@ -173,10 +192,30 @@ def initialize_process_instance_from_definition(
     started_at_in_seconds: int | None = None,
     bpmn_process_id: str | None = None,
 ) -> ProcessInstanceModel:
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=process_initiator_id,
+    )
     process_definition = _load_process_definition(
         session,
         tenant_id=tenant_id,
         bpmn_process_definition_id=bpmn_process_definition_id,
+    )
+    process_model_identifier = (
+        process_definition.process_model_identifier or str(process_definition.id)
+    )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=process_initiator_id,
+        command_key=PROCESS_START_COMMAND,
+        target_uri=f"/process-models/{process_model_identifier}",
+        target_id=process_definition.id,
+        metadata=_process_start_authorization_metadata(
+            process_definition=process_definition,
+            requested_bpmn_process_id=bpmn_process_id,
+        ),
     )
     if process_definition.source_bpmn_xml is None:
         raise ValidationError(
@@ -197,9 +236,9 @@ def initialize_process_instance_from_definition(
     process_instance = create_process_instance(
         session,
         tenant_id=tenant_id,
-        process_model_identifier=process_definition.bpmn_identifier,
+        process_model_identifier=process_model_identifier,
         process_model_display_name=(
-            process_definition.bpmn_name or process_definition.bpmn_identifier
+            process_definition.bpmn_name or process_model_identifier
         ),
         process_initiator_id=process_initiator_id,
         bpmn_process_definition_id=process_definition.id,
@@ -209,8 +248,24 @@ def initialize_process_instance_from_definition(
         created_at_in_seconds=started_at_in_seconds,
         updated_at_in_seconds=started_at_in_seconds,
     )
+    process_instance.bpmn_version_control_type = (
+        process_definition.bpmn_version_control_type
+    )
+    process_instance.bpmn_version_control_identifier = (
+        process_definition.bpmn_version_control_identifier
+    )
+    process_instance.last_milestone_bpmn_name = (
+        process_definition.bpmn_name or process_definition.bpmn_identifier
+    )
 
     metadata_timestamp = _resolve_timestamp(started_at_in_seconds)
+    process_instance.bpmn_version_id = _ensure_bpmn_version_snapshot(
+        session,
+        tenant_id=tenant_id,
+        process_model_identifier=process_model_identifier,
+        bpmn_xml_text=process_definition.source_bpmn_xml,
+        occurred_at=metadata_timestamp,
+    ).id
     for key, value in (submission_metadata or {}).items():
         upsert_process_instance_metadata(
             session,
@@ -266,7 +321,12 @@ def advance_process_instance_workflow(
     completed_task.complete()
     workflow.run_all(halt_on_manual=True)
 
-    _persist_workflow_state(process_instance, workflow)
+    _persist_workflow_state(
+        session,
+        process_instance,
+        workflow,
+        occurred_at=occurred_at,
+    )
     _materialize_ready_manual_tasks(
         session,
         process_instance=process_instance,
@@ -279,6 +339,35 @@ def advance_process_instance_workflow(
         occurred_at=occurred_at,
     )
 
+    session.flush()
+    return process_instance
+
+
+def repair_process_instance_runtime_representation(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_instance_id: int,
+    occurred_at: int | None = None,
+) -> ProcessInstanceModel:
+    process_instance = _load_process_instance(
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance_id,
+    )
+    serialized_state = process_instance.workflow_state_json
+    if serialized_state is None:
+        return process_instance
+
+    workflow = _restore_workflow(serialized_state)
+    timestamp = _resolve_timestamp(occurred_at)
+    process_instance.spiff_serializer_version = _WORKFLOW_STATE_SERIALIZER_VERSION
+    _persist_workflow_state(
+        session,
+        process_instance,
+        workflow,
+        occurred_at=timestamp,
+    )
     session.flush()
     return process_instance
 
@@ -310,10 +399,8 @@ def _resolve_or_create_bpmn_process(
     process_definition: BpmnProcessDefinitionModel,
     process_identifier: str,
 ) -> BpmnProcessModel:
-    for bpmn_process in process_definition.bpmn_processes:
-        if bpmn_process.properties_json.get("root") == process_identifier:
-            return bpmn_process
-
+    # A stored definition can be reused across many process instances, but each
+    # instance needs its own runtime BPMN process row and workflow-state blob.
     bpmn_process = BpmnProcessModel(
         m8f_tenant_id=tenant_id,
         guid=None,
@@ -321,16 +408,59 @@ def _resolve_or_create_bpmn_process(
         top_level_process_id=None,
         direct_parent_process_id=None,
         properties_json={"root": process_identifier},
-        json_data_hash=_hash_payload(
+        json_data_hash=JsonDataModel.create_or_update_from_payload(
+            session,
             {
                 "bpmn_process_definition_id": process_definition.id,
                 "process_identifier": process_identifier,
-            }
+            },
         ),
+        start_in_seconds=None,
+        end_in_seconds=None,
     )
     session.add(bpmn_process)
     session.flush()
     return bpmn_process
+
+
+def _ensure_bpmn_version_snapshot(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_model_identifier: str,
+    bpmn_xml_text: str | bytes | None,
+    occurred_at: int,
+) -> ProcessModelBpmnVersionModel:
+    if bpmn_xml_text is None:
+        raise ValidationError("Cannot create a BPMN version snapshot without BPMN XML")
+
+    normalized_bpmn_xml = (
+        bpmn_xml_text.decode("utf-8")
+        if isinstance(bpmn_xml_text, bytes)
+        else bpmn_xml_text
+    )
+    bpmn_xml_hash = hashlib.sha256(
+        normalized_bpmn_xml.encode("utf-8")
+    ).hexdigest()
+    snapshot = session.scalar(
+        select(ProcessModelBpmnVersionModel).where(
+            ProcessModelBpmnVersionModel.m8f_tenant_id == tenant_id,
+            ProcessModelBpmnVersionModel.process_model_identifier
+            == process_model_identifier,
+            ProcessModelBpmnVersionModel.bpmn_xml_hash == bpmn_xml_hash,
+        )
+    )
+    if snapshot is None:
+        snapshot = ProcessModelBpmnVersionModel(
+            m8f_tenant_id=tenant_id,
+            process_model_identifier=process_model_identifier,
+            bpmn_xml_hash=bpmn_xml_hash,
+            bpmn_xml_file_contents=normalized_bpmn_xml,
+            created_at_in_seconds=occurred_at,
+        )
+        session.add(snapshot)
+        session.flush()
+    return snapshot
 
 
 def _select_process_identifier(
@@ -398,10 +528,180 @@ def _restore_workflow(serialized_state: str) -> BpmnWorkflow:
 
 
 def _persist_workflow_state(
+    session: Session,
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
+    *,
+    occurred_at: int,
 ) -> None:
-    process_instance.workflow_state_json = _WORKFLOW_SERIALIZER.serialize_json(workflow)
+    serialized_state = _WORKFLOW_SERIALIZER.serialize_json(workflow)
+    process_instance.spiff_serializer_version = _WORKFLOW_STATE_SERIALIZER_VERSION
+    serialized_workflow = _serialize_workflow_dict(workflow)
+    _sync_process_definition_from_workflow(
+        session,
+        process_instance=process_instance,
+        serialized_workflow=serialized_workflow,
+        occurred_at=occurred_at,
+    )
+    _sync_bpmn_process_from_workflow(
+        session,
+        process_instance=process_instance,
+        serialized_workflow=serialized_workflow,
+        serialized_state=serialized_state,
+    )
+    _sync_task_models_from_workflow(
+        session,
+        process_instance=process_instance,
+        serialized_workflow=serialized_workflow,
+        occurred_at=occurred_at,
+    )
+
+
+def _serialize_workflow_dict(workflow: BpmnWorkflow) -> dict[str, Any]:
+    serialized_workflow = _WORKFLOW_SERIALIZER.to_dict(workflow)
+    if not isinstance(serialized_workflow, dict):
+        raise ValidationError("Workflow serializer did not produce a dictionary")
+    if serialized_workflow.get("serializer_version") is None:
+        serialized_workflow["serializer_version"] = _WORKFLOW_STATE_SERIALIZER_VERSION
+    return serialized_workflow
+
+
+def _sync_process_definition_from_workflow(
+    session: Session,
+    *,
+    process_instance: ProcessInstanceModel,
+    serialized_workflow: Mapping[str, Any],
+    occurred_at: int,
+) -> None:
+    process_definition = process_instance.bpmn_process_definition
+    if process_definition is None:
+        return
+
+    serialized_spec = serialized_workflow.get("spec")
+    if not isinstance(serialized_spec, Mapping):
+        raise ValidationError("Serialized workflow is missing the top-level spec")
+    serialized_process_identifier = serialized_spec.get("name")
+    if not isinstance(serialized_process_identifier, str):
+        raise ValidationError("Serialized workflow spec is missing its name")
+
+    task_specs = serialized_spec.get("task_specs")
+    spec_payload = dict(serialized_spec)
+    spec_payload.pop("task_specs", None)
+
+    if process_definition.explicit_process_model_identifier is None:
+        process_definition.process_model_identifier = (
+            process_instance.process_model_identifier
+        )
+    process_definition.bpmn_identifier = serialized_process_identifier
+    existing_properties = dict(process_definition.properties_json or {})
+    merged_properties = dict(spec_payload)
+    for key, value in existing_properties.items():
+        if key.startswith("__m8f_") or key not in merged_properties:
+            merged_properties[key] = value
+    process_definition.properties_json = merged_properties
+    process_definition.updated_at_in_seconds = occurred_at
+
+    if not isinstance(task_specs, Mapping):
+        raise ValidationError("Serialized workflow spec is missing task specs")
+    for task_name, task_spec_payload in task_specs.items():
+        if not isinstance(task_spec_payload, Mapping):
+            continue
+        _upsert_task_definition_from_payload(
+            session,
+            tenant_id=process_instance.m8f_tenant_id,
+            process_definition_id=process_definition.id,
+            task_identifier=str(task_name),
+            task_spec_payload=task_spec_payload,
+            occurred_at=occurred_at,
+        )
+
+
+def _sync_bpmn_process_from_workflow(
+    session: Session,
+    *,
+    process_instance: ProcessInstanceModel,
+    serialized_workflow: Mapping[str, Any],
+    serialized_state: str,
+) -> None:
+    bpmn_process = process_instance.bpmn_process
+    if bpmn_process is None:
+        return
+
+    process_payload = {
+        key: value
+        for key, value in serialized_workflow.items()
+        if key
+        not in {
+            "serializer_version",
+            "spec",
+            "subprocess_specs",
+            "subprocesses",
+            "tasks",
+            "data",
+        }
+    }
+    bpmn_process.properties_json = process_payload
+
+    serialized_data = serialized_workflow.get("data")
+    persisted_workflow_data = (
+        dict(serialized_data)
+        if isinstance(serialized_data, Mapping)
+        else {}
+    )
+    persisted_workflow_data[WORKFLOW_STATE_JSON_DATA_KEY] = serialized_state
+    bpmn_process.json_data_hash = JsonDataModel.create_or_update_from_payload(
+        session,
+        persisted_workflow_data,
+    )
+
+
+def _sync_task_models_from_workflow(
+    session: Session,
+    *,
+    process_instance: ProcessInstanceModel,
+    serialized_workflow: Mapping[str, Any],
+    occurred_at: int,
+) -> None:
+    serialized_tasks = serialized_workflow.get("tasks")
+    if not isinstance(serialized_tasks, Mapping):
+        raise ValidationError("Serialized workflow is missing task rows")
+    if process_instance.bpmn_process_definition_id is None:
+        raise ValidationError(
+            "Process instance is missing a BPMN process definition"
+        )
+
+    task_definitions = {
+        task_definition.bpmn_identifier: task_definition
+        for task_definition in session.scalars(
+            select(TaskDefinitionModel).where(
+                TaskDefinitionModel.m8f_tenant_id == process_instance.m8f_tenant_id,
+                TaskDefinitionModel.bpmn_process_definition_id
+                == process_instance.bpmn_process_definition_id,
+            )
+        ).all()
+    }
+
+    for task_guid, task_payload in serialized_tasks.items():
+        if not isinstance(task_payload, Mapping):
+            continue
+        task_spec_identifier = task_payload.get("task_spec")
+        if not isinstance(task_spec_identifier, str):
+            raise ValidationError(
+                f"Serialized task {task_guid!r} is missing its task spec identifier"
+            )
+        task_definition = task_definitions.get(task_spec_identifier)
+        if task_definition is None:
+            raise ValidationError(
+                f"Task definition {task_spec_identifier!r} was not found for "
+                f"process definition {process_instance.bpmn_process_definition_id}"
+            )
+        _upsert_task_model_from_payload(
+            session,
+            process_instance=process_instance,
+            task_definition=task_definition,
+            task_payload=task_payload,
+            occurred_at=occurred_at,
+        )
 
 
 def _seed_runtime_definitions(
@@ -417,17 +717,12 @@ def _seed_runtime_definitions(
             "Process instance is missing a BPMN process definition"
         )
 
-    for task_spec in workflow.spec.task_specs.values():
-        bpmn_identifier = getattr(task_spec, "bpmn_id", None)
-        if not bpmn_identifier:
-            continue
-        _upsert_task_definition(
-            session,
-            tenant_id=tenant_id,
-            process_definition_id=process_instance.bpmn_process_definition_id,
-            task_spec=task_spec,
-            occurred_at=occurred_at,
-        )
+    _sync_process_definition_from_workflow(
+        session,
+        process_instance=process_instance,
+        serialized_workflow=_serialize_workflow_dict(workflow),
+        occurred_at=occurred_at,
+    )
 
 
 def _upsert_task_definition(
@@ -438,52 +733,79 @@ def _upsert_task_definition(
     task_spec: object,
     occurred_at: int,
 ) -> TaskDefinitionModel:
-    bpmn_identifier = getattr(task_spec, "bpmn_id", None)
-    if not bpmn_identifier:
-        raise ValidationError("Task spec is missing a BPMN identifier")
+    task_spec_payload = _WORKFLOW_SERIALIZER.to_dict(task_spec)
+    if not isinstance(task_spec_payload, Mapping):
+        raise ValidationError("Task spec serializer did not produce a dictionary")
+    task_identifier = getattr(task_spec, "name", None)
+    if not isinstance(task_identifier, str) or not task_identifier:
+        raise ValidationError("Task spec is missing its serialized identifier")
+    return _upsert_task_definition_from_payload(
+        session,
+        tenant_id=tenant_id,
+        process_definition_id=process_definition_id,
+        task_identifier=task_identifier,
+        task_spec_payload=task_spec_payload,
+        occurred_at=occurred_at,
+    )
 
+
+def _upsert_task_definition_from_payload(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_definition_id: int,
+    task_identifier: str,
+    task_spec_payload: Mapping[str, Any],
+    occurred_at: int,
+) -> TaskDefinitionModel:
     task_definition = session.scalar(
         select(TaskDefinitionModel).where(
             TaskDefinitionModel.m8f_tenant_id == tenant_id,
             TaskDefinitionModel.bpmn_process_definition_id == process_definition_id,
-            TaskDefinitionModel.bpmn_identifier == bpmn_identifier,
+            TaskDefinitionModel.bpmn_identifier == task_identifier,
         )
     )
-    task_properties = _task_definition_properties(task_spec)
+    serialized_payload = dict(task_spec_payload)
+    task_name = serialized_payload.get("bpmn_name")
+    task_typename = serialized_payload.get("typename")
+    if not isinstance(task_typename, str) or not task_typename:
+        raise ValidationError(
+            f"Task definition {task_identifier!r} is missing its typename"
+        )
     if task_definition is None:
         task_definition = TaskDefinitionModel(
             m8f_tenant_id=tenant_id,
             bpmn_process_definition_id=process_definition_id,
-            bpmn_identifier=bpmn_identifier,
-            bpmn_name=getattr(task_spec, "bpmn_name", None),
-            typename=task_spec.__class__.__name__,
-            properties_json=task_properties,
+            bpmn_identifier=task_identifier,
+            bpmn_name=task_name if isinstance(task_name, str) else None,
+            typename=task_typename,
+            properties_json=serialized_payload,
             created_at_in_seconds=occurred_at,
             updated_at_in_seconds=occurred_at,
         )
         session.add(task_definition)
     else:
-        task_definition.bpmn_name = getattr(task_spec, "bpmn_name", None)
-        task_definition.typename = task_spec.__class__.__name__
-        task_definition.properties_json = task_properties
+        task_definition.bpmn_name = task_name if isinstance(task_name, str) else None
+        task_definition.typename = task_typename
+        task_definition.properties_json = serialized_payload
         task_definition.updated_at_in_seconds = occurred_at
 
     session.flush()
     return task_definition
 
 
-def _task_definition_properties(task_spec: object) -> dict[str, Any]:
-    extensions = getattr(task_spec, "extensions", {})
-    properties: dict[str, Any] = {
-        "description": getattr(task_spec, "description", None),
-        "lane": getattr(task_spec, "lane", None),
-        "manual": getattr(task_spec, "manual", False),
-        "extensions": extensions,
+def _process_start_authorization_metadata(
+    *,
+    process_definition: BpmnProcessDefinitionModel,
+    requested_bpmn_process_id: str | None,
+) -> dict[str, object]:
+    return {
+        "bpmn_process_definition_id": process_definition.id,
+        "process_model_identifier": process_definition.process_model_identifier,
+        "bpmn_identifier": process_definition.bpmn_identifier,
+        "bpmn_name": process_definition.bpmn_name,
+        "requested_bpmn_process_id": requested_bpmn_process_id,
     }
-    script = getattr(task_spec, "script", None)
-    if script is not None:
-        properties["script"] = script
-    return properties
 
 
 def _materialize_ready_manual_tasks(
@@ -602,35 +924,49 @@ def _upsert_task_model(
     task: object,
     occurred_at: int,
 ) -> TaskModel:
-    task_guid = str(task.id)
+    serialized_task = _WORKFLOW_SERIALIZER.to_dict(task)
+    if not isinstance(serialized_task, Mapping):
+        raise ValidationError("Task serializer did not produce a dictionary")
+    return _upsert_task_model_from_payload(
+        session,
+        process_instance=process_instance,
+        task_definition=task_definition,
+        task_payload=serialized_task,
+        occurred_at=occurred_at,
+    )
+
+
+def _upsert_task_model_from_payload(
+    session: Session,
+    *,
+    process_instance: ProcessInstanceModel,
+    task_definition: TaskDefinitionModel,
+    task_payload: Mapping[str, Any],
+    occurred_at: int,
+) -> TaskModel:
+    task_guid = task_payload.get("id")
+    if not isinstance(task_guid, str) or not task_guid:
+        raise ValidationError("Serialized task is missing its guid")
     task_model = session.get(TaskModel, task_guid)
-    properties_json = {
-        "task_spec": task.task_spec.name,
-        "task_spec_type": task.task_spec.__class__.__name__,
-        "lane": getattr(task.task_spec, "lane", None),
-        "extensions": getattr(task.task_spec, "extensions", {}),
-        "task_definition_properties": task_definition.properties_json,
-    }
-    json_data_hash = _hash_payload(
-        {
-            "task_guid": task_guid,
-            "task_spec": task.task_spec.name,
-            "task_data": getattr(task, "data", {}),
-        }
+    properties_json = dict(task_payload)
+    task_data = properties_json.pop("data", {})
+    json_data_hash = JsonDataModel.create_or_update_from_payload(
+        session,
+        task_data if isinstance(task_data, Mapping) else {},
     )
-    python_env_data_hash = _hash_payload(
-        {
-            "process_instance_id": process_instance.id,
-            "task_guid": task_guid,
-            "task_spec": task.task_spec.name,
-        }
-    )
+    python_env_data_hash = JsonDataModel.create_or_update_from_payload(session, {})
+
+    serialized_state = properties_json.get("state")
+    if not isinstance(serialized_state, int):
+        raise ValidationError(f"Serialized task {task_guid!r} is missing its state")
+    task_state_name = TaskState.get_name(serialized_state)
     runtime_info = {
         "spiff_task_id": task_guid,
-        "spiff_task_state": TaskState.get_name(task.state),
-        "manual": task.task_spec.manual,
-        "lane": getattr(task.task_spec, "lane", None),
+        "spiff_task_state": task_state_name,
+        "manual": task_definition.properties_json.get("manual", False),
+        "lane": task_definition.properties_json.get("lane"),
     }
+    task_is_terminal = task_state_name in {"COMPLETED", "CANCELLED", "ERROR"}
 
     if task_model is None:
         task_model = TaskModel(
@@ -641,13 +977,13 @@ def _upsert_task_model(
             else _raise_value_error("Process instance is missing a BPMN process"),
             process_instance_id=process_instance.id,
             task_definition_id=task_definition.id,
-            state=TaskState.get_name(task.state),
+            state=task_state_name,
             properties_json=properties_json,
             json_data_hash=json_data_hash,
             python_env_data_hash=python_env_data_hash,
             runtime_info=runtime_info,
-            start_in_seconds=occurred_at,
-            end_in_seconds=None,
+            start_in_seconds=float(occurred_at),
+            end_in_seconds=float(occurred_at) if task_is_terminal else None,
         )
         session.add(task_model)
     else:
@@ -658,17 +994,19 @@ def _upsert_task_model(
         )
         task_model.process_instance_id = process_instance.id
         task_model.task_definition_id = task_definition.id
-        task_model.state = TaskState.get_name(task.state)
+        task_model.state = task_state_name
         task_model.properties_json = properties_json
         task_model.json_data_hash = json_data_hash
         task_model.python_env_data_hash = python_env_data_hash
         task_model.runtime_info = runtime_info
         task_model.start_in_seconds = (
-            occurred_at
+            float(occurred_at)
             if task_model.start_in_seconds is None
             else task_model.start_in_seconds
         )
-        task_model.end_in_seconds = None
+        task_model.end_in_seconds = (
+            float(occurred_at) if task_is_terminal else None
+        )
 
     session.flush()
     return task_model
@@ -691,17 +1029,21 @@ def _upsert_human_task(
         )
     )
     lane_name = getattr(task.task_spec, "lane", None)
+    lane_group_id = _lane_group_id(session, lane_name)
     human_task_payload = _human_task_payload(task, task_definition)
     if human_task is None:
         human_task = HumanTaskModel(
             m8f_tenant_id=process_instance.m8f_tenant_id,
             process_instance_id=process_instance.id,
+            task_id=task_model.guid,
             task_guid=task_model.guid,
-            lane_assignment_id=(
-                resolve_lane_assignment_id(lane_name) if lane_name else None
-            ),
+            lane_assignment_id=lane_group_id,
             completed_by_user_id=None,
             actual_owner_id=None,
+            form_file_name=None,
+            ui_form_file_name=None,
+            updated_at_in_seconds=occurred_at,
+            created_at_in_seconds=occurred_at,
             task_name=task.task_spec.name,
             task_title=getattr(task.task_spec, "bpmn_name", None),
             task_type=task_definition.typename,
@@ -714,10 +1056,10 @@ def _upsert_human_task(
         )
         session.add(human_task)
     else:
+        human_task.task_id = task_model.guid
         human_task.task_guid = task_model.guid
-        human_task.lane_assignment_id = (
-            resolve_lane_assignment_id(lane_name) if lane_name else None
-        )
+        human_task.lane_assignment_id = lane_group_id
+        human_task.updated_at_in_seconds = occurred_at
         human_task.task_name = task.task_spec.name
         human_task.task_title = getattr(task.task_spec, "bpmn_name", None)
         human_task.task_type = task_definition.typename
@@ -732,8 +1074,29 @@ def _upsert_human_task(
         human_task.completed_by_user_id = None
         human_task.actual_owner_id = None
 
+    process_instance.task_updated_at_in_seconds = occurred_at
     session.flush()
     return human_task
+
+
+def _lane_group_id(session: Session, lane_name: str | None) -> int | None:
+    if lane_name is None:
+        return None
+    if re.match(r"(process.?)initiator", lane_name, re.IGNORECASE):
+        return None
+
+    lane_group_id = resolve_lane_assignment_id(lane_name)
+    lane_group = session.get(GroupModel, lane_group_id)
+    if lane_group is None:
+        lane_group = GroupModel(
+            id=lane_group_id,
+            name=lane_name,
+            identifier=lane_name,
+            source_is_open_id=False,
+        )
+        session.add(lane_group)
+        session.flush()
+    return lane_group.id
 
 
 def _sync_human_task_assignments(
@@ -865,6 +1228,8 @@ def _update_process_instance_status_from_workflow(
         process_instance.status = ProcessInstanceStatus.complete.value
         process_instance.end_in_seconds = occurred_at
         process_instance.updated_at_in_seconds = occurred_at
+        if process_instance.bpmn_process is not None:
+            process_instance.bpmn_process.end_in_seconds = float(occurred_at)
         _archive_completed_workflow_runtime_state(
             process_instance, occurred_at=occurred_at
         )
@@ -878,6 +1243,13 @@ def _update_process_instance_status_from_workflow(
         process_instance.status = ProcessInstanceStatus.running.value
     process_instance.end_in_seconds = None
     process_instance.updated_at_in_seconds = occurred_at
+    process_instance.task_updated_at_in_seconds = occurred_at
+    if process_instance.bpmn_process is not None:
+        if process_instance.bpmn_process.start_in_seconds is None:
+            process_instance.bpmn_process.start_in_seconds = float(
+                process_instance.start_in_seconds or occurred_at
+            )
+        process_instance.bpmn_process.end_in_seconds = None
 
 
 def _archive_completed_workflow_runtime_state(

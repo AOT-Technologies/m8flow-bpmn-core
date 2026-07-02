@@ -6,11 +6,13 @@ from m8flow_bpmn_core.models.bpmn_process_definition import (
 )
 from m8flow_bpmn_core.models.future_task import FutureTaskModel
 from m8flow_bpmn_core.models.human_task import HumanTaskModel
+from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.services.authorization import ROLE_USER, ensure_v1_role
 from m8flow_bpmn_core.services.tasks import claim_task, complete_task, get_pending_tasks
 
 
@@ -29,6 +31,12 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
 
     session.add_all([tenant, user])
     session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_USER,
+        user_ids=[user.id],
+    )
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
@@ -78,7 +86,6 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        process_version=3,
         created_at_in_seconds=1_000,
         updated_at_in_seconds=1_000,
     )
@@ -117,6 +124,15 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
         completed=False,
     )
     session.add(human_task)
+    session.flush()
+    session.add(
+        HumanTaskUserModel(
+            m8f_tenant_id=tenant.id,
+            human_task_id=human_task.id,
+            user_id=user.id,
+            added_by="manual",
+        )
+    )
     session.flush()
 
     FutureTaskModel.insert_or_update(

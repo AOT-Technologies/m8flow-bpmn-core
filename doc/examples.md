@@ -35,14 +35,41 @@ Both examples:
 - list pending tasks for the requester, manager, reviewer, and finance users
 - claim and complete tasks through the public API
 - attach the form payload to task completion through `CompleteTaskCommand`
+- exercise the built-in V1 RBAC checks for `process_definition.import`,
+  `process.start`, `task.claim`, and `task.complete`
 
 The rejection variant changes the manager decision to `Rejected`, so the flow
 ends before the Finance lane is activated.
 
 ## Launchers
 
-The repository also includes shell launchers that use a local Postgres instance
-when one is reachable and otherwise start a temporary Docker container.
+The repository also includes shell launchers that first try the shared local
+Postgres database used by a nearby m8flow instance on `localhost:6843/postgres`.
+When that shared database is reachable, the interactive example asks for
+confirmation before proceeding, keeps the demo data in place after the run,
+reuses existing seed rows with warnings instead of failing. In that shared-DB
+mode, the conditional-approval example also tries to publish its BPMN and DMN
+files into the local m8flow backend process-model catalog so the model appears
+in the m8flow UI. It also provisions the example tenants and demo users in the
+local Keycloak shared realm (`http://localhost:6842/realms/m8flow` by default)
+through `m8flow_bpmn_core.utils.keycloak`, then mirrors the local `user`
+records to the shared-realm issuer and Keycloak user ids so the same accounts
+work in both the example and the UI. In that mode the example also aligns the
+local `m8flow_tenant.id` values to the Keycloak organization UUIDs, because the
+m8flow backend resolves the active tenant from those organization ids during
+shared-realm login finalization. New Keycloak demo users default to
+password `poc-demo-password` unless `M8FLOW_EXAMPLE_KEYCLOAK_PASSWORD` is set.
+If the tenant, users, or deployed process model already exist, the example
+warns and leaves the existing Keycloak/backend data in place. If the shared
+database is not reachable, the launchers start a temporary Docker container
+instead. If the prompt appears and you decline the shared database, the Python
+example also starts the same temporary Docker fallback. When the shared m8flow
+backend is in use, the example stores the
+process model identifier as
+`m8flow-bpmn-core-examples/conditional-approval-poc` so process instance links
+resolve to the deployed model in the UI. In that shared-DB mode you can watch
+the process instance progress and audit it live in the m8flow UI while
+`conditional_approval_poc.py` is still running.
 
 - PowerShell:
 
@@ -69,6 +96,14 @@ running after the example exits.
   mapping.
 - User membership is validated against the tenant before user-scoped actions
   run.
+- Command-level RBAC is enforced through `permission_target.command` for the
+  API's currently covered workflow actions, including
+  `process_definition.import`, `process.start`, `task.claim`,
+  `task.complete`, `process.suspend`, `process.resume`, `process.retry`, and
+  `process.terminate`.
+- When the example uses the shared local m8flow database, the running process
+  instance can be inspected in the m8flow UI at the same time as the terminal
+  walkthrough.
 
 ## Parallel Review
 

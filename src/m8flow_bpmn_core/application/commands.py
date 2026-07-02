@@ -51,6 +51,7 @@ class CreateProcessInstanceCommand:
 class ImportBpmnProcessDefinitionCommand:
     tenant_id: str
     bpmn_identifier: str
+    user_id: int
     source_bpmn_xml: str | bytes
     source_dmn_xml: str | bytes | None = None
     bpmn_name: str | None = None
@@ -99,7 +100,7 @@ class UpsertProcessInstanceMetadataCommand:
 class SuspendProcessInstanceCommand:
     tenant_id: str
     process_instance_id: int
-    user_id: int | None = None
+    user_id: int
     suspended_at_in_seconds: int | None = None
 
 
@@ -107,7 +108,7 @@ class SuspendProcessInstanceCommand:
 class ResumeProcessInstanceCommand:
     tenant_id: str
     process_instance_id: int
-    user_id: int | None = None
+    user_id: int
     resumed_at_in_seconds: int | None = None
 
 
@@ -123,7 +124,7 @@ class ErrorProcessInstanceCommand:
 class RetryProcessInstanceCommand:
     tenant_id: str
     process_instance_id: int
-    user_id: int | None = None
+    user_id: int
     retried_at_in_seconds: int | None = None
 
 
@@ -131,5 +132,5 @@ class RetryProcessInstanceCommand:
 class TerminateProcessInstanceCommand:
     tenant_id: str
     process_instance_id: int
-    user_id: int | None = None
+    user_id: int
     terminated_at_in_seconds: int | None = None

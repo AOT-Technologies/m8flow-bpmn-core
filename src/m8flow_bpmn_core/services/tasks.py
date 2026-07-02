@@ -19,6 +19,11 @@ from m8flow_bpmn_core.models.process_instance import (
     ProcessInstanceStatus,
 )
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.services.authorization import (
+    TASK_CLAIM_COMMAND,
+    TASK_COMPLETE_COMMAND,
+    require_command_authorization,
+)
 from m8flow_bpmn_core.services.process_instances import (
     record_process_instance_event,
     upsert_process_instance_metadata,
@@ -77,30 +82,39 @@ def claim_task(
     human_task = _load_human_task(
         session, tenant_id=tenant_id, human_task_id=human_task_id
     )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        command_key=TASK_CLAIM_COMMAND,
+        target_uri=f"/tasks/{human_task.id}",
+        target_id=human_task.id,
+        metadata=_task_authorization_metadata(human_task),
+    )
     if human_task.completed:
         raise InvalidStateError("Cannot claim a completed task")
 
-    assignment = session.scalar(
-        select(HumanTaskUserModel).where(
-            HumanTaskUserModel.m8f_tenant_id == tenant_id,
-            HumanTaskUserModel.human_task_id == human_task_id,
-            HumanTaskUserModel.user_id == user_id,
-        )
-    )
-    if assignment is None:
-        session.add(
-            HumanTaskUserModel(
-                m8f_tenant_id=tenant_id,
-                human_task_id=human_task_id,
-                user_id=user_id,
-                added_by=added_by,
-            )
-        )
+    if not _user_is_assigned_to_task(
+        session,
+        tenant_id=tenant_id,
+        human_task_id=human_task_id,
+        user_id=user_id,
+    ):
+        raise AuthorizationError("User is not assigned to this task")
+    if (
+        human_task.actual_owner_id is not None
+        and human_task.actual_owner_id != user_id
+    ):
+        raise AuthorizationError("Task is already claimed by another user")
 
+    claimed_at = round(time.time())
+    human_task.task_id = human_task.task_id or human_task.task_guid
     human_task.actual_owner_id = user_id
     human_task.task_status = "CLAIMED"
-    if human_task.task_model is not None and human_task.task_model.state != "COMPLETED":
-        human_task.task_model.state = "CLAIMED"
+    human_task.updated_at_in_seconds = claimed_at
+    process_instance = session.get(ProcessInstanceModel, human_task.process_instance_id)
+    if process_instance is not None:
+        process_instance.task_updated_at_in_seconds = claimed_at
     session.flush()
     return human_task
 
@@ -122,13 +136,29 @@ def complete_task(
     human_task = _load_human_task(
         session, tenant_id=tenant_id, human_task_id=human_task_id
     )
+    require_command_authorization(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=user_id,
+        command_key=TASK_COMPLETE_COMMAND,
+        target_uri=f"/tasks/{human_task.id}",
+        target_id=human_task.id,
+        metadata=_task_authorization_metadata(human_task),
+    )
     if human_task.completed:
         raise InvalidStateError("Task is already completed")
 
-    if not _user_can_complete_task(
-        session, tenant_id=tenant_id, human_task_id=human_task_id, user_id=user_id
+    if not _user_is_assigned_to_task(
+        session,
+        tenant_id=tenant_id,
+        human_task_id=human_task_id,
+        user_id=user_id,
     ):
         raise AuthorizationError("User is not assigned to this task")
+    if human_task.actual_owner_id is None:
+        raise InvalidStateError("Task must be claimed before completion")
+    if human_task.actual_owner_id != user_id:
+        raise AuthorizationError("User does not own this task")
 
     completed_at = (
         completed_at_in_seconds
@@ -147,10 +177,12 @@ def complete_task(
     human_task.completed_by_user_id = user_id
     human_task.actual_owner_id = user_id
     human_task.task_status = "COMPLETED"
+    human_task.task_id = human_task.task_id or human_task.task_guid
+    human_task.updated_at_in_seconds = completed_at
 
     if human_task.task_model is not None:
         human_task.task_model.state = "COMPLETED"
-        human_task.task_model.end_in_seconds = completed_at
+        human_task.task_model.end_in_seconds = float(completed_at)
 
     if human_task.task_guid is not None:
         future_task = session.get(FutureTaskModel, human_task.task_guid)
@@ -158,6 +190,8 @@ def complete_task(
             future_task.completed = True
 
     process_instance = session.get(ProcessInstanceModel, human_task.process_instance_id)
+    if process_instance is not None:
+        process_instance.task_updated_at_in_seconds = completed_at
     if (
         process_instance is not None
         and process_instance.workflow_state_json is not None
@@ -209,7 +243,7 @@ def _load_human_task(
     return human_task
 
 
-def _user_can_complete_task(
+def _user_is_assigned_to_task(
     session: Session, *, tenant_id: str, human_task_id: int, user_id: int
 ) -> bool:
     assignment = session.scalar(
@@ -219,17 +253,7 @@ def _user_can_complete_task(
             HumanTaskUserModel.user_id == user_id,
         )
     )
-    if assignment is not None:
-        return True
-
-    human_task = session.scalar(
-        select(HumanTaskModel).where(
-            HumanTaskModel.m8f_tenant_id == tenant_id,
-            HumanTaskModel.id == human_task_id,
-            HumanTaskModel.actual_owner_id == user_id,
-        )
-    )
-    return human_task is not None
+    return assignment is not None
 
 
 def _persist_task_payload(
@@ -253,3 +277,19 @@ def _persist_task_payload(
             updated_at_in_seconds=completed_at_in_seconds,
             created_at_in_seconds=completed_at_in_seconds,
         )
+
+
+def _task_authorization_metadata(
+    human_task: HumanTaskModel,
+) -> dict[str, object]:
+    return {
+        "human_task_id": human_task.id,
+        "process_instance_id": human_task.process_instance_id,
+        "task_guid": human_task.task_guid,
+        "task_name": human_task.task_name,
+        "task_status": human_task.task_status,
+        "actual_owner_id": human_task.actual_owner_id,
+        "lane_name": human_task.lane_name,
+        "lane_assignment_id": human_task.lane_assignment_id,
+        "completed": human_task.completed,
+    }

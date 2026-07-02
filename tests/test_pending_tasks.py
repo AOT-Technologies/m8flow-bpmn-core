@@ -112,7 +112,6 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
         bpmn_process_definition_id=definition_a.id,
         bpmn_process_id=bpmn_process_a.id,
         status="running",
-        process_version=3,
         created_at_in_seconds=1_000,
         updated_at_in_seconds=1_000,
     )
@@ -124,7 +123,6 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
         bpmn_process_definition_id=definition_b.id,
         bpmn_process_id=bpmn_process_b.id,
         status="running",
-        process_version=3,
         created_at_in_seconds=2_000,
         updated_at_in_seconds=2_000,
     )

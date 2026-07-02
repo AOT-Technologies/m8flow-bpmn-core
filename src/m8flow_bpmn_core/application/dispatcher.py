@@ -142,6 +142,7 @@ def execute_command(
                 ),
                 single_process_hash=command.single_process_hash,
                 full_process_model_hash=command.full_process_model_hash,
+                user_id=command.user_id,
                 created_at_in_seconds=command.created_at_in_seconds,
                 updated_at_in_seconds=command.updated_at_in_seconds,
             )

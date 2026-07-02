@@ -54,6 +54,25 @@ Only the columns documented in this file are part of the stable contract;
 internal columns and relationships may change without a major-version
 bump.
 
+## Authorization Model
+
+The library now includes a minimal V1 RBAC layer for workflow commands.
+
+- Command authorization is evaluated through stable command keys stored in
+  `permission_target.command`.
+- The current built-in command keys are `process_definition.import`,
+  `process.start`, `task.claim`, `task.complete`, `process.suspend`,
+  `process.resume`, `process.retry`, and `process.terminate`.
+- Authorization still depends on tenant scoping: user-scoped operations first
+  validate tenant membership, then evaluate command permission, then apply
+  runtime checks such as task assignment or claimed-task ownership.
+- A `permission_target` row is matched by URI plus optional command. A row with
+  `command = NULL` behaves like a URI-only target; a row with a command is
+  specific to that command key.
+- Custom policies can extend or replace the built-in database-backed policy via
+  `authorization_policy_scope(...)` or
+  `set_default_authorization_policy_factory(...)`.
+
 ---
 
 ## Commands (write side)
@@ -68,6 +87,7 @@ Persist BPMN (and optional DMN) XML as a process definition.
 | --- | --- | --- | --- |
 | `tenant_id` | `str` | yes | |
 | `bpmn_identifier` | `str` | yes | Stable identifier for the definition. |
+| `user_id` | `int` | yes | Actor who must belong to the tenant and hold `process_definition.import`. |
 | `source_bpmn_xml` | `str \| bytes` | yes | |
 | `source_dmn_xml` | `str \| bytes \| None` | no | |
 | `bpmn_name` | `str \| None` | no | |
@@ -83,8 +103,10 @@ Persist BPMN (and optional DMN) XML as a process definition.
 
 **Raises**: `ValidationError` when `source_bpmn_xml` (or `source_dmn_xml`,
 if supplied) is not parseable or does not contain at least one executable
-process. Validation runs before anything is persisted, so a rejected
-import never leaves a partial row behind.
+process, `AuthorizationError` when `user_id` is outside the tenant or lacks
+the tenant-scoped `process_definition.import` permission. Validation runs
+before anything is persisted, so a rejected import never leaves a partial row
+behind.
 
 ### `InitializeProcessInstanceFromDefinitionCommand`
 
@@ -105,7 +127,8 @@ Create a process instance from a stored definition and start the workflow.
 
 **Raises**: `ValidationError` (definition missing source XML, ambiguous
 process id), `NotFoundError` (definition or initiator missing),
-`AuthorizationError` (initiator not in tenant).
+`AuthorizationError` (initiator not in tenant or lacks the
+tenant-scoped `process.start` permission).
 
 ### `InitializeProcessInstanceWorkflowCommand`
 
@@ -158,7 +181,9 @@ Claim a pending human task for a user.
 **Returns**: `HumanTaskModel`.
 
 **Raises**: `NotFoundError` (task missing), `AuthorizationError`
-(user not in tenant), `InvalidStateError` (task already completed).
+(user not in tenant, lacks the tenant-scoped `task.claim` permission,
+is not assigned to the task, or tries to claim a task already owned by
+another user), `InvalidStateError` (task already completed).
 
 ### `CompleteTaskCommand`
 
@@ -175,8 +200,10 @@ Complete a claimed task and advance the workflow.
 **Returns**: `HumanTaskModel`.
 
 **Raises**: `NotFoundError`, `AuthorizationError`
-(user not in tenant or not assigned to the task), `InvalidStateError`
-(task already completed).
+(user not in tenant, lacks the tenant-scoped `task.complete`
+permission, is not assigned to the task, or does not own the claimed
+task), `InvalidStateError` (task already completed or has not been
+claimed yet).
 
 ### `UpsertProcessInstanceMetadataCommand`
 
@@ -214,29 +241,44 @@ and does not belong to the tenant).
 ### Lifecycle commands
 
 `SuspendProcessInstanceCommand`, `ResumeProcessInstanceCommand`,
-`ErrorProcessInstanceCommand`, `RetryProcessInstanceCommand`,
-`TerminateProcessInstanceCommand` all share the same input shape:
+`RetryProcessInstanceCommand`, and `TerminateProcessInstanceCommand` share the
+same input shape:
 
 | Field | Type | Required |
 | --- | --- | --- |
 | `tenant_id` | `str` | yes |
 | `process_instance_id` | `int` | yes |
-| `user_id` | `int \| None` | no — tenant-checked when supplied |
+| `user_id` | `int` | yes |
 | `<verb>_at_in_seconds` | `int \| None` | no |
 
-All return `ProcessInstanceModel`. Each enforces a state machine:
+Each returns `ProcessInstanceModel`, requires tenant membership, and enforces
+the matching tenant-scoped command permission before checking the state
+machine:
 
 | Command | Allowed transitions | Raises `InvalidStateError` for… |
 | --- | --- | --- |
 | `SuspendProcessInstanceCommand` | non-terminal → `suspended` | terminal instances |
 | `ResumeProcessInstanceCommand` | `suspended` → `running` | non-suspended, terminal |
-| `ErrorProcessInstanceCommand` | non-terminal → `error` | `complete`, `terminated` |
 | `RetryProcessInstanceCommand` | `error` → `running` | non-errored |
 | `TerminateProcessInstanceCommand` | non-terminal → `terminated` | `complete`, `error` |
 
 Suspending an already-suspended instance (and similar idempotent calls
 like terminating a terminated one or erroring an errored one) is a
 no-op — the existing instance is returned unchanged.
+
+`ErrorProcessInstanceCommand` remains separate:
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `tenant_id` | `str` | yes |
+| `process_instance_id` | `int` | yes |
+| `user_id` | `int \| None` | no — tenant-checked when supplied |
+| `errored_at_in_seconds` | `int \| None` | no |
+
+It returns `ProcessInstanceModel` and allows non-terminal → `error`. It
+raises `InvalidStateError` for `complete` and `terminated`. Unlike the covered
+admin lifecycle commands above, `process.error` is not yet part of the built-in
+V1 command-permission set.
 
 ---
 
@@ -321,7 +363,7 @@ BpmnCoreError
 | --- | --- | --- |
 | `ValidationError` | Inputs are malformed (e.g. ambiguous `bpmn_process_id`, missing definition XML) | `Initialize*`, `Import*` commands |
 | `InvalidStateError` | The target entity is in a state that does not permit the operation (e.g. suspending a terminal instance, claiming a completed task) | Task and lifecycle commands |
-| `AuthorizationError` | The supplied user does not belong to the tenant, or is not assigned to the target task | Any command/query that accepts `user_id` |
+| `AuthorizationError` | The supplied user does not belong to the tenant, lacks a required command permission, is not assigned to the target task, or does not own the target task | Any command/query that accepts `user_id` |
 | `NotFoundError` | The requested entity (tenant, user, task, process instance, definition, lane owner) does not exist for the supplied tenant | All commands/queries |
 
 Catch by either the domain class or the matching builtin — both work.
@@ -329,6 +371,42 @@ Catch by either the domain class or the matching builtin — both work.
 See [`examples.md`](examples.md#errors-demo) for a runnable walkthrough
 (`examples/errors_demo.py`) that triggers each class through the public
 API and asserts the contract above.
+
+---
+
+## Authorization Hooks
+
+Custom policy engines can plug into command authorization through the public
+hook surface:
+
+- `AuthorizationPolicy` — protocol with
+  `authorize(session, request) -> AuthorizationDecision`
+- `AuthorizationPolicyFactory` — callable returning an `AuthorizationPolicy`
+- `AuthorizationRequest` — carries `tenant_id`, `actor_user_id`,
+  `command_key`, `permission`, `target_uri`, `target_id`, and optional
+  `metadata`
+- `AuthorizationDecision` — `{allowed: bool, reason: str | None}`
+- `DatabaseAuthorizationPolicy` — the built-in role/grant policy used by default
+- `authorization_policy_scope(policy_or_factory)` — temporary override, useful
+  for tests or request-scoped policy composition
+- `set_default_authorization_policy_factory(factory)` — process-wide default
+  policy override
+
+Stable V1 command keys are re-exported from `m8flow_bpmn_core.api`:
+
+- `PROCESS_DEFINITION_IMPORT_COMMAND == "process_definition.import"`
+- `PROCESS_START_COMMAND == "process.start"`
+- `PROCESS_SUSPEND_COMMAND == "process.suspend"`
+- `PROCESS_RESUME_COMMAND == "process.resume"`
+- `PROCESS_RETRY_COMMAND == "process.retry"`
+- `PROCESS_TERMINATE_COMMAND == "process.terminate"`
+- `TASK_CLAIM_COMMAND == "task.claim"`
+- `TASK_COMPLETE_COMMAND == "task.complete"`
+
+The current task and process-start enforcement points also attach request
+metadata so future policy engines can make richer decisions without changing
+the command shape. Examples include task lane/owner context and process
+definition identifiers.
 
 ---
 

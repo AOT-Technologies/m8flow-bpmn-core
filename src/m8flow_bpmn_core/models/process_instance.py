@@ -3,11 +3,20 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
+from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy.orm import (
+    Mapped,
+    mapped_column,
+    object_session,
+    relationship,
+    validates,
+)
 
 from m8flow_bpmn_core.models.base import Base
+from m8flow_bpmn_core.models.json_data import JsonDataModel
 from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantScoped
+
+WORKFLOW_STATE_JSON_DATA_KEY = "__m8f_workflow_state_json"
 
 
 class ProcessInstanceStatus(StrEnum):
@@ -32,8 +41,8 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
         String(255), index=True, nullable=False
     )
     summary: Mapped[str | None] = mapped_column(String(255))
-    process_initiator_id: Mapped[int | None] = mapped_column(
-        ForeignKey("user.id"), index=True
+    process_initiator_id: Mapped[int] = mapped_column(
+        ForeignKey("user.id"), index=True, nullable=False
     )
     bpmn_process_definition_id: Mapped[int | None] = mapped_column(
         ForeignKey("bpmn_process_definition.id"),
@@ -43,15 +52,24 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
         ForeignKey("bpmn_process.id"),
         index=True,
     )
-    process_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    spiff_serializer_version: Mapped[str | None] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(
         String(50), index=True, nullable=False, default="running"
     )
     start_in_seconds: Mapped[int | None] = mapped_column(Integer, index=True)
     end_in_seconds: Mapped[int | None] = mapped_column(Integer, index=True)
+    task_updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
     updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
     created_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
-    workflow_state_json: Mapped[str | None] = mapped_column(Text)
+    bpmn_version_control_type: Mapped[str | None] = mapped_column(String(50))
+    bpmn_version_control_identifier: Mapped[str | None] = mapped_column(String(255))
+    last_milestone_bpmn_name: Mapped[str | None] = mapped_column(
+        String(255), index=True
+    )
+    bpmn_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("process_model_bpmn_version.id"),
+        index=True,
+    )
 
     process_initiator = relationship("UserModel")
     bpmn_process_definition = relationship("BpmnProcessDefinitionModel")
@@ -124,3 +142,16 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
     @validates("status")
     def validate_status(self, key: str, value: Any) -> Any:
         return ProcessInstanceStatus(value).value
+
+    @property
+    def workflow_state_json(self) -> str | None:
+        if self.bpmn_process is None:
+            return None
+        session = object_session(self)
+        if session is None:
+            return None
+        json_data = session.get(JsonDataModel, self.bpmn_process.json_data_hash)
+        if json_data is None:
+            return None
+        value = json_data.data.get(WORKFLOW_STATE_JSON_DATA_KEY)
+        return value if isinstance(value, str) else None
