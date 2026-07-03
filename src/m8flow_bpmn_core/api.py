@@ -44,6 +44,7 @@ from m8flow_bpmn_core.errors import (
     BpmnCoreError,
     InvalidStateError,
     NotFoundError,
+    ServiceTaskExecutionError,
     ValidationError,
 )
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceStatus
@@ -65,6 +66,12 @@ from m8flow_bpmn_core.services.authorization import (
     authorization_policy_scope,
     set_default_authorization_policy_factory,
 )
+from m8flow_bpmn_core.services.connector_proxy_service_tasks import (
+    ConnectorProxyServiceTaskConnector,
+    build_connector_proxy_service_task_connectors,
+    build_connector_proxy_service_task_registry,
+    fetch_connector_proxy_command_definitions,
+)
 from m8flow_bpmn_core.services.process_instances import (
     create_process_instance,
     error_process_instance,
@@ -85,6 +92,20 @@ from m8flow_bpmn_core.services.process_instances import (
 )
 from m8flow_bpmn_core.services.scheduler_runtime import (
     run_due_scheduler_jobs as _run_due_scheduler_jobs,
+)
+from m8flow_bpmn_core.services.service_tasks import (
+    ServiceTaskCommandDefinition,
+    ServiceTaskConnector,
+    ServiceTaskContext,
+    ServiceTaskParameterDefinition,
+    ServiceTaskRegistry,
+    ServiceTaskRegistryFactory,
+    ServiceTaskRequest,
+    ServiceTaskResult,
+    build_service_task_operation_id,
+    service_task_registry_scope,
+    set_default_service_task_registry_factory,
+    split_service_task_operation_id,
 )
 from m8flow_bpmn_core.services.tasks import (
     claim_task,
@@ -123,6 +144,7 @@ __all__ = [
     "BpmnCoreError",
     "ClaimTaskCommand",
     "CompleteTaskCommand",
+    "ConnectorProxyServiceTaskConnector",
     "CreateProcessInstanceCommand",
     "DatabaseAuthorizationPolicy",
     "ErrorProcessInstanceCommand",
@@ -151,6 +173,15 @@ __all__ = [
     "ResumeProcessInstanceCommand",
     "RetryProcessInstanceCommand",
     "ScheduleProcessInstanceRetryCommand",
+    "ServiceTaskCommandDefinition",
+    "ServiceTaskConnector",
+    "ServiceTaskContext",
+    "ServiceTaskExecutionError",
+    "ServiceTaskParameterDefinition",
+    "ServiceTaskRegistry",
+    "ServiceTaskRegistryFactory",
+    "ServiceTaskRequest",
+    "ServiceTaskResult",
     "SuspendProcessInstanceCommand",
     "TASK_CLAIM_COMMAND",
     "TASK_COMPLETE_COMMAND",
@@ -159,12 +190,16 @@ __all__ = [
     "ValidationError",
     "advance_process_instance_workflow",
     "authorization_policy_scope",
+    "build_connector_proxy_service_task_connectors",
+    "build_connector_proxy_service_task_registry",
+    "build_service_task_operation_id",
     "claim_task",
     "complete_task",
     "create_process_instance",
     "error_process_instance",
     "execute_command",
     "execute_query",
+    "fetch_connector_proxy_command_definitions",
     "get_pending_tasks",
     "get_process_instance",
     "get_process_instance_events",
@@ -179,7 +214,10 @@ __all__ = [
     "resume_process_instance",
     "retry_process_instance",
     "schedule_process_instance_retry",
+    "service_task_registry_scope",
     "set_default_authorization_policy_factory",
+    "set_default_service_task_registry_factory",
+    "split_service_task_operation_id",
     "suspend_process_instance",
     "terminate_process_instance",
     "upsert_process_instance_metadata",

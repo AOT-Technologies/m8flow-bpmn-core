@@ -6,11 +6,13 @@ import json
 import math
 import re
 import time
+import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from SpiffWorkflow.bpmn.script_engine.python_engine import PythonScriptEngine
 from SpiffWorkflow.bpmn.serializer.workflow import BpmnWorkflowSerializer
 from SpiffWorkflow.bpmn.specs.event_definitions.timer import TimerEventDefinition
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
@@ -24,6 +26,7 @@ from sqlalchemy.orm import Session
 from m8flow_bpmn_core.errors import (
     InvalidStateError,
     NotFoundError,
+    ServiceTaskExecutionError,
     ValidationError,
 )
 from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
@@ -60,6 +63,7 @@ from m8flow_bpmn_core.services.authorization import (
 )
 from m8flow_bpmn_core.services.process_instances import (
     create_process_instance,
+    error_process_instance,
     get_process_instance_metadata,
     record_process_instance_event,
     upsert_process_instance_metadata,
@@ -68,6 +72,11 @@ from m8flow_bpmn_core.services.scheduler_jobs import (
     build_scheduler_job_key,
     delete_scheduler_job,
     upsert_scheduler_job,
+)
+from m8flow_bpmn_core.services.service_tasks import (
+    ServiceTaskContext,
+    ServiceTaskRequest,
+    resolve_service_task_registry,
 )
 from m8flow_bpmn_core.services.tenant_users import (
     ensure_user_belongs_to_tenant,
@@ -106,6 +115,91 @@ class _RuntimeSpiffBpmnParser(SpiffBpmnParser):
         return _NoopDMNEngine(decision_ref)
 
 
+class _RuntimeServiceTaskScriptEngine(PythonScriptEngine):
+    """Script engine that routes Spiff service tasks through the registry."""
+
+    def __init__(
+        self,
+        *,
+        tenant_id: str,
+        process_instance_id: int | None,
+        process_definition_id: int | None,
+    ) -> None:
+        super().__init__()
+        self._tenant_id = tenant_id
+        self._process_instance_id = process_instance_id
+        self._process_definition_id = process_definition_id
+
+    def evaluate(
+        self,
+        task: object,
+        expression: str,
+        external_context: Mapping[str, object] | None = None,
+    ) -> object:
+        merged_context: dict[str, object] = {}
+        workflow_data = getattr(getattr(task, "workflow", None), "data", None)
+        if isinstance(workflow_data, Mapping):
+            merged_context.update(dict(workflow_data))
+        if external_context:
+            merged_context.update(dict(external_context))
+        return super().evaluate(
+            task,
+            expression,
+            external_context=merged_context or None,
+        )
+
+    def call_service(self, task: object, **kwargs: Any) -> str:
+        operation_name = kwargs.get("operation_name")
+        operation_params = kwargs.get("operation_params")
+        if not isinstance(operation_name, str) or not operation_name.strip():
+            raise ServiceTaskExecutionError(
+                "Service task execution is missing its operator id"
+            )
+        if not isinstance(operation_params, Mapping):
+            raise ServiceTaskExecutionError(
+                f"Service task {operation_name!r} is missing its parameters"
+            )
+
+        request = ServiceTaskRequest(
+            operation_id=operation_name,
+            parameters=_service_task_parameter_values(
+                operation_name=operation_name,
+                operation_params=operation_params,
+            ),
+            context=ServiceTaskContext(
+                tenant_id=self._tenant_id,
+                process_instance_id=self._process_instance_id,
+                process_definition_id=self._process_definition_id,
+                task_guid=str(getattr(task, "id", "")) or None,
+                task_name=getattr(getattr(task, "task_spec", None), "name", None),
+                task_type=type(getattr(task, "task_spec", object())).__name__,
+                metadata={
+                    "result_variable": getattr(
+                        getattr(task, "task_spec", None),
+                        "result_variable",
+                        None,
+                    ),
+                },
+            ),
+            task_data=_service_task_task_data(task),
+            metadata={
+                "parameter_types": _service_task_parameter_types(operation_params),
+            },
+        )
+
+        try:
+            result = resolve_service_task_registry().execute(request)
+            return json.dumps(result.payload)
+        except ServiceTaskExecutionError:
+            raise
+        except Exception as exc:
+            raise ServiceTaskExecutionError(
+                "Service task "
+                f"{operation_name!r} failed for process instance "
+                f"{self._process_instance_id or 'unknown'}"
+            ) from exc
+
+
 def resolve_lane_assignment_id(lane_name: str) -> int:
     """Return a stable lane identifier that fits m8flow's integer group ids."""
     normalized_lane = lane_name.strip().lower()
@@ -139,6 +233,11 @@ def initialize_process_instance_workflow(
         bpmn_xml=bpmn_xml,
         dmn_xml=dmn_xml,
         bpmn_process_id=bpmn_process_id,
+        service_task_context=_service_task_execution_context(
+            tenant_id=tenant_id,
+            process_instance_id=process_instance.id,
+            process_definition_id=process_instance.bpmn_process_definition_id,
+        ),
     )
     _seed_runtime_definitions(
         session,
@@ -155,7 +254,13 @@ def initialize_process_instance_workflow(
             process_instance_id=process_instance_id,
         ),
     )
-    workflow.run_all(halt_on_manual=True)
+    _run_workflow_with_service_task_failure_handling(
+        session,
+        tenant_id=tenant_id,
+        process_instance=process_instance,
+        workflow=workflow,
+        occurred_at=occurred_at,
+    )
 
     return _finalize_initialized_process_instance_workflow(
         session,
@@ -267,6 +372,11 @@ def _initialize_process_instance_from_timer_start_definition(
         bpmn_xml=process_definition.source_bpmn_xml,
         dmn_xml=process_definition.source_dmn_xml,
         bpmn_process_id=selected_process_id,
+        service_task_context=_service_task_execution_context(
+            tenant_id=tenant_id,
+            process_instance_id=process_instance.id,
+            process_definition_id=process_definition.id,
+        ),
     )
     _seed_runtime_definitions(
         session,
@@ -283,7 +393,13 @@ def _initialize_process_instance_from_timer_start_definition(
             process_instance_id=process_instance.id,
         ),
     )
-    workflow.run_all(halt_on_manual=True)
+    _run_workflow_with_service_task_failure_handling(
+        session,
+        tenant_id=tenant_id,
+        process_instance=process_instance,
+        workflow=workflow,
+        occurred_at=occurred_at,
+    )
     forced_due = _force_waiting_timer_start_task_due(
         workflow,
         timer_start_task_spec_name=timer_start_task_spec_name,
@@ -291,7 +407,13 @@ def _initialize_process_instance_from_timer_start_definition(
     if forced_due:
         workflow.refresh_waiting_tasks()
         if not workflow.get_tasks(state=TaskState.READY, manual=True):
-            workflow.run_all(halt_on_manual=True)
+            _run_workflow_with_service_task_failure_handling(
+                session,
+                tenant_id=tenant_id,
+                process_instance=process_instance,
+                workflow=workflow,
+                occurred_at=occurred_at,
+            )
 
     return _finalize_initialized_process_instance_workflow(
         session,
@@ -321,7 +443,14 @@ def advance_process_instance_workflow(
         return process_instance
 
     occurred_at = _resolve_timestamp(completed_at_in_seconds)
-    workflow = _restore_workflow(process_instance.workflow_state_json)
+    workflow = _restore_workflow(
+        process_instance.workflow_state_json,
+        service_task_context=_service_task_execution_context(
+            tenant_id=tenant_id,
+            process_instance_id=process_instance.id,
+            process_definition_id=process_instance.bpmn_process_definition_id,
+        ),
+    )
     completed_task = workflow.get_task_from_id(UUID(completed_task_guid))
     _apply_metadata_to_task(
         workflow,
@@ -333,7 +462,13 @@ def advance_process_instance_workflow(
         ),
     )
     completed_task.complete()
-    workflow.run_all(halt_on_manual=True)
+    _run_workflow_with_service_task_failure_handling(
+        session,
+        tenant_id=tenant_id,
+        process_instance=process_instance,
+        workflow=workflow,
+        occurred_at=occurred_at,
+    )
 
     _persist_workflow_state(
         session,
@@ -488,6 +623,84 @@ def _finalize_initialized_process_instance_workflow(
     return process_instance
 
 
+def retry_errored_service_task_workflow_if_needed(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_instance_id: int,
+    occurred_at: int | None = None,
+) -> ProcessInstanceModel:
+    process_instance = _load_process_instance(
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance_id,
+    )
+    serialized_state = process_instance.workflow_state_json
+    if serialized_state is None:
+        return process_instance
+
+    timestamp = _resolve_timestamp(occurred_at)
+    workflow = _restore_workflow(
+        serialized_state,
+        service_task_context=_service_task_execution_context(
+            tenant_id=tenant_id,
+            process_instance_id=process_instance.id,
+            process_definition_id=process_instance.bpmn_process_definition_id,
+        ),
+    )
+    metadata = _load_process_instance_metadata_payload(
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance.id,
+    )
+    _apply_metadata_to_workflow(workflow, metadata)
+
+    errored_service_task_ids = [
+        task.id for task in _errored_service_tasks(workflow)
+    ]
+    if not errored_service_task_ids:
+        return process_instance
+
+    retry_task_data = dict(workflow.data)
+    retry_task_data.update(metadata)
+    for task_id in errored_service_task_ids:
+        workflow.reset_from_task_id(task_id, data=retry_task_data)
+
+    _run_workflow_with_service_task_failure_handling(
+        session,
+        tenant_id=tenant_id,
+        process_instance=process_instance,
+        workflow=workflow,
+        occurred_at=timestamp,
+    )
+    _persist_workflow_state(
+        session,
+        process_instance,
+        workflow,
+        occurred_at=timestamp,
+    )
+    _sync_inactive_human_tasks(
+        session,
+        process_instance=process_instance,
+        workflow=workflow,
+        occurred_at=timestamp,
+    )
+    _materialize_ready_manual_tasks(
+        session,
+        process_instance=process_instance,
+        workflow=workflow,
+        occurred_at=timestamp,
+    )
+    _update_process_instance_status_from_workflow(
+        process_instance,
+        workflow,
+        occurred_at=timestamp,
+    )
+
+    session.flush()
+    return process_instance
+
+
 def _refresh_waiting_process_instance_workflow(
     session: Session,
     *,
@@ -506,9 +719,22 @@ def _refresh_waiting_process_instance_workflow(
         return process_instance
 
     timestamp = _resolve_timestamp(occurred_at)
-    workflow = _restore_workflow(process_instance.workflow_state_json)
+    workflow = _restore_workflow(
+        process_instance.workflow_state_json,
+        service_task_context=_service_task_execution_context(
+            tenant_id=tenant_id,
+            process_instance_id=process_instance.id,
+            process_definition_id=process_instance.bpmn_process_definition_id,
+        ),
+    )
     workflow.refresh_waiting_tasks()
-    workflow.run_all(halt_on_manual=True)
+    _run_workflow_with_service_task_failure_handling(
+        session,
+        tenant_id=tenant_id,
+        process_instance=process_instance,
+        workflow=workflow,
+        occurred_at=timestamp,
+    )
 
     _persist_workflow_state(
         session,
@@ -554,7 +780,14 @@ def repair_process_instance_runtime_representation(
     if serialized_state is None:
         return process_instance
 
-    workflow = _restore_workflow(serialized_state)
+    workflow = _restore_workflow(
+        serialized_state,
+        service_task_context=_service_task_execution_context(
+            tenant_id=tenant_id,
+            process_instance_id=process_instance.id,
+            process_definition_id=process_instance.bpmn_process_definition_id,
+        ),
+    )
     timestamp = _resolve_timestamp(occurred_at)
     process_instance.spiff_serializer_version = _WORKFLOW_STATE_SERIALIZER_VERSION
     _persist_workflow_state(
@@ -565,6 +798,89 @@ def repair_process_instance_runtime_representation(
     )
     session.flush()
     return process_instance
+
+
+def _run_workflow_with_service_task_failure_handling(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_instance: ProcessInstanceModel,
+    workflow: BpmnWorkflow,
+    occurred_at: int,
+) -> None:
+    try:
+        workflow.run_all(halt_on_manual=True)
+    except ServiceTaskExecutionError:
+        _transition_process_instance_to_error_for_service_task_failure(
+            session,
+            tenant_id=tenant_id,
+            process_instance=process_instance,
+            workflow=workflow,
+            occurred_at=occurred_at,
+        )
+        raise
+
+
+def _transition_process_instance_to_error_for_service_task_failure(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_instance: ProcessInstanceModel,
+    workflow: BpmnWorkflow,
+    occurred_at: int,
+) -> None:
+    errored_service_tasks = _errored_service_tasks(workflow)
+    failed_task_guid = (
+        str(errored_service_tasks[0].id) if errored_service_tasks else None
+    )
+
+    _persist_workflow_state(
+        session,
+        process_instance,
+        workflow,
+        occurred_at=occurred_at,
+    )
+    _sync_inactive_human_tasks(
+        session,
+        process_instance=process_instance,
+        workflow=workflow,
+        occurred_at=occurred_at,
+    )
+
+    if failed_task_guid is not None:
+        record_process_instance_event(
+            session,
+            tenant_id=tenant_id,
+            process_instance_id=process_instance.id,
+            event_type=ProcessInstanceEventType.task_failed,
+            timestamp=float(occurred_at),
+            task_guid=failed_task_guid,
+            user_id=None,
+        )
+
+    if process_instance.start_in_seconds is None:
+        process_instance.start_in_seconds = occurred_at
+    if process_instance.bpmn_process is not None:
+        if process_instance.bpmn_process.start_in_seconds is None:
+            process_instance.bpmn_process.start_in_seconds = float(occurred_at)
+        process_instance.bpmn_process.end_in_seconds = float(occurred_at)
+
+    error_process_instance(
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance.id,
+        user_id=None,
+        errored_at_in_seconds=occurred_at,
+    )
+    session.flush()
+
+
+def _errored_service_tasks(workflow: BpmnWorkflow) -> list[object]:
+    return [
+        task
+        for task in workflow.get_tasks(state=TaskState.ERROR)
+        if type(getattr(task, "task_spec", object())).__name__ == "ServiceTask"
+    ]
 
 
 def _load_process_definition(
@@ -688,6 +1004,7 @@ def _build_workflow(
     bpmn_xml: str | bytes,
     dmn_xml: str | bytes | None,
     bpmn_process_id: str | None,
+    service_task_context: ServiceTaskContext | None = None,
 ) -> BpmnWorkflow:
     parser = _RuntimeSpiffBpmnParser(
         validator=None,
@@ -715,11 +1032,21 @@ def _build_workflow(
 
     spec = parser.get_spec(selected_process_id)
     subprocess_specs = parser.get_subprocess_specs(selected_process_id)
-    return BpmnWorkflow(spec, subprocess_specs)
+    return BpmnWorkflow(
+        spec,
+        subprocess_specs,
+        script_engine=_service_task_script_engine(service_task_context),
+    )
 
 
-def _restore_workflow(serialized_state: str) -> BpmnWorkflow:
-    return _WORKFLOW_SERIALIZER.deserialize_json(serialized_state)
+def _restore_workflow(
+    serialized_state: str,
+    *,
+    service_task_context: ServiceTaskContext | None = None,
+) -> BpmnWorkflow:
+    workflow = _WORKFLOW_SERIALIZER.deserialize_json(serialized_state)
+    workflow.script_engine = _service_task_script_engine(service_task_context)
+    return workflow
 
 
 def _persist_workflow_state(
@@ -1741,6 +2068,8 @@ def _collect_timer_start_payloads_for_definition(
     source_bpmn_xml = process_definition.source_bpmn_xml
     if source_bpmn_xml is None:
         return []
+    if not _definition_contains_timer_start_event(source_bpmn_xml):
+        return []
 
     workflow = _build_workflow(
         bpmn_xml=source_bpmn_xml,
@@ -1749,6 +2078,17 @@ def _collect_timer_start_payloads_for_definition(
     )
     workflow.run_all(halt_on_manual=True)
     return _collect_timer_start_payloads(workflow)
+
+
+def _definition_contains_timer_start_event(source_bpmn_xml: str | bytes) -> bool:
+    root = ET.fromstring(_coerce_xml_bytes(source_bpmn_xml))
+    namespace = {"bpmn": "http://www.omg.org/spec/BPMN/20100524/MODEL"}
+    return bool(
+        root.findall(
+            ".//bpmn:startEvent[bpmn:timerEventDefinition]",
+            namespace,
+        )
+    )
 
 
 def _collect_intermediate_timer_payloads(
@@ -1959,6 +2299,76 @@ def _coerce_xml_bytes(xml: str | bytes) -> bytes:
     if isinstance(xml, bytes):
         return xml
     return xml.encode("utf-8")
+
+
+def _service_task_execution_context(
+    *,
+    tenant_id: str,
+    process_instance_id: int | None,
+    process_definition_id: int | None,
+) -> ServiceTaskContext:
+    return ServiceTaskContext(
+        tenant_id=tenant_id,
+        process_instance_id=process_instance_id,
+        process_definition_id=process_definition_id,
+    )
+
+
+def _service_task_script_engine(
+    service_task_context: ServiceTaskContext | None,
+) -> PythonScriptEngine:
+    if service_task_context is None:
+        return PythonScriptEngine()
+    return _RuntimeServiceTaskScriptEngine(
+        tenant_id=service_task_context.tenant_id,
+        process_instance_id=service_task_context.process_instance_id,
+        process_definition_id=service_task_context.process_definition_id,
+    )
+
+
+def _service_task_parameter_values(
+    *,
+    operation_name: str,
+    operation_params: Mapping[str, object],
+) -> dict[str, object]:
+    values: dict[str, object] = {}
+    for name, raw_definition in operation_params.items():
+        if not isinstance(raw_definition, Mapping):
+            raise ServiceTaskExecutionError(
+                "Service task "
+                f"{operation_name!r} parameter {name!r} is not a mapping"
+            )
+        if "value" not in raw_definition:
+            raise ServiceTaskExecutionError(
+                "Service task "
+                f"{operation_name!r} parameter {name!r} is missing its value"
+            )
+        values[str(name)] = raw_definition["value"]
+    return values
+
+
+def _service_task_parameter_types(
+    operation_params: Mapping[str, object],
+) -> dict[str, object]:
+    parameter_types: dict[str, object] = {}
+    for name, raw_definition in operation_params.items():
+        if not isinstance(raw_definition, Mapping):
+            continue
+        parameter_types[str(name)] = raw_definition.get("type")
+    return parameter_types
+
+
+def _service_task_task_data(task: object) -> dict[str, object] | None:
+    merged_task_data: dict[str, object] = {}
+    workflow_data = getattr(getattr(task, "workflow", None), "data", None)
+    if isinstance(workflow_data, Mapping):
+        merged_task_data.update(dict(workflow_data))
+
+    task_data = getattr(task, "data", None)
+    if isinstance(task_data, Mapping):
+        merged_task_data.update(dict(task_data))
+
+    return merged_task_data or None
 
 
 def _load_process_instance(

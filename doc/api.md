@@ -38,6 +38,57 @@ if you prefer to skip the dispatch step. The semantics are identical.
 
 ---
 
+## Service Task Hooks
+
+```python
+from m8flow_bpmn_core import api
+
+registry = api.ServiceTaskRegistry()
+registry.register_connector(my_connector)
+```
+
+The service-task execution layer is a stable extension seam and is now wired
+into real workflow execution paths.
+
+- `ServiceTaskConnector` - protocol with `connector_key`,
+  `list_commands()`, and `execute(request)`.
+- `ServiceTaskCommandDefinition` - stable connector command metadata.
+- `ServiceTaskParameterDefinition` - stable parameter metadata for one command.
+- `ServiceTaskContext` - tenant/process/task execution context passed to a connector.
+- `ServiceTaskRequest` - one service-task invocation, identified by an
+  operation id such as `http/GetRequestV2`.
+- `ServiceTaskResult` - connector result payload returned to the runtime.
+- `ServiceTaskRegistry` - in-process registry that resolves operation ids to
+  registered connectors.
+- `ConnectorProxyServiceTaskConnector` - concrete connector implementation
+  that executes commands through `m8flow-connector-proxy`.
+- `build_service_task_operation_id(...)` /
+  `split_service_task_operation_id(...)` - helper functions for the stable
+  `<connector_key>/<command_name>` identifier format.
+- `fetch_connector_proxy_command_definitions(...)` - fetches the live proxy
+  command catalog and normalizes it into stable command definitions.
+- `build_connector_proxy_service_task_connectors(...)` - groups the live proxy
+  catalog into one connector object per connector key.
+- `build_connector_proxy_service_task_registry(...)` - convenience helper that
+  builds a ready-to-use `ServiceTaskRegistry` from a live connector-proxy base URL.
+- `service_task_registry_scope(...)` and
+  `set_default_service_task_registry_factory(...)` - hooks for request-scoped,
+  test-scoped, or process-wide registry overrides.
+
+This seam is intentionally aligned to the current `m8flow-connector-proxy`
+catalog shape, where operators look like `http/GetRequestV2`,
+`smtp/SendHTMLEmail`, or `postgres_v2/DoSQL`.
+
+See [`service_tasks.md`](service_tasks.md) for the connector-proxy contract and
+the intended adapter direction.
+
+During process execution, synchronous service-task failures surface as
+`ServiceTaskExecutionError`. The library also persists the failed workflow
+snapshot, records `task_failed`, and transitions the process instance to
+`error` so the same instance can be retried later.
+
+---
+
 ## Scheduler Service Function
 
 ```python
@@ -355,7 +406,10 @@ library retries that same process instance through the normal
 `process.retry` lifecycle. That means the instance returns from `error` to
 `running`, `end_in_seconds` is cleared, terminated runtime tasks are reopened,
 terminated human tasks are reset back to `READY`, and the consumed scheduler
-row is deleted. If the instance is no longer in `error` when the worker
+row is deleted. If the errored instance failed on a synchronous service task,
+the retry path also restores the persisted workflow snapshot, resets the
+errored service-task branch, and reruns it immediately. If the instance is no
+longer in `error` when the worker
 reaches the due row, the stale scheduler row is deleted without forcing a
 retry.
 
@@ -435,7 +489,8 @@ BpmnCoreError
 ├── ValidationError                 (also: ValueError)
 │     └── InvalidStateError          # bad state transition
 ├── AuthorizationError              (also: PermissionError)
-└── NotFoundError                   (also: LookupError)
+├── NotFoundError                   (also: LookupError)
+└── ServiceTaskExecutionError       (also: RuntimeError)
 ```
 
 | Error | When | Public sources |
@@ -444,6 +499,7 @@ BpmnCoreError
 | `InvalidStateError` | The target entity is in a state that does not permit the operation (e.g. suspending a terminal instance, claiming a completed task) | Task and lifecycle commands |
 | `AuthorizationError` | The supplied user does not belong to the tenant, lacks a required command permission, is not assigned to the target task, or does not own the target task | Any command/query that accepts `user_id` |
 | `NotFoundError` | The requested entity (tenant, user, task, process instance, definition, lane owner) does not exist for the supplied tenant | All commands/queries |
+| `ServiceTaskExecutionError` | A registered service task connector or proxy adapter fails while executing a BPMN service task | Service-task runtime execution paths |
 
 Catch by either the domain class or the matching builtin — both work.
 

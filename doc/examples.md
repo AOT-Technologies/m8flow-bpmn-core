@@ -1,6 +1,6 @@
 # Example Workflows
 
-The repository ships nine runnable examples:
+The repository ships ten runnable examples:
 
 | File | Purpose | Database |
 | --- | --- | --- |
@@ -11,6 +11,7 @@ The repository ships nine runnable examples:
 | `examples/scheduled_boundary_timer_poc.py` | Interactive boundary-timer workflow that interrupts an active user task through inline polling. | PostgreSQL |
 | `examples/scheduled_cycle_timer_poc.py` | Interactive recurring timer-start workflow with `timeCycle` rescheduling and m8flow audit support. | PostgreSQL |
 | `examples/scheduled_retry_poc.py` | Interactive delayed-retry workflow with inline polling and m8flow audit support. | PostgreSQL |
+| `examples/service_task_connector_poc.py` | Interactive connector-proxy workflow with real BPMN service tasks and m8flow audit support. | PostgreSQL |
 | `examples/parallel_review_poc.py` | Non-interactive purchase-order flow that exercises a parallel gateway and script tasks. | In-memory SQLite |
 | `examples/errors_demo.py` | Non-interactive walk through every public error class. | In-memory SQLite |
 
@@ -353,6 +354,55 @@ This is the shortest end-to-end example of how an application can use
 `m8flow_bpmn_core` to manage delayed retry without adding Celery or another
 external scheduler dependency.
 
+## Service Task Connector
+
+`examples/service_task_connector_poc.py` is the connector-proxy counterpart to
+the timer and retry examples above. It demonstrates a BPMN model with two real
+`ServiceTask` nodes, builds a live registry from the local
+`m8flow-connector-proxy` catalog, and then executes those service tasks through
+the public runtime while keeping the workflow auditable in m8flow.
+
+Run it with:
+
+```bash
+uv run python examples/service_task_connector_poc.py
+```
+
+Or on PowerShell:
+
+```powershell
+.\examples\service_task_connector_poc.ps1
+```
+
+Or on Bash:
+
+```bash
+bash examples/service_task_connector_poc.sh
+```
+
+The example:
+
+- creates or connects to a Postgres database
+- reuses the shared local m8flow database when available, or starts a
+  temporary Postgres container otherwise
+- provisions a dedicated demo tenant and users for the service-task example
+- deploys the BPMN into the local m8flow backend catalog when the shared DB
+  is in use, so the model can be audited in the UI
+- queries the live `m8flow-connector-proxy` `/v1/commands` catalog and builds
+  a `ServiceTaskRegistry` from it
+- starts a host-side demo HTTP endpoint and points the BPMN service tasks at
+  that endpoint through the proxy using `http/GetRequestV2`
+- starts the process instance through the public API, which executes the first
+  service task immediately
+- stops at a user task, then claims and completes it through the public API
+- executes the second service task after the user task is completed
+- prints the captured external requests and the persisted workflow data so the
+  connector results can be inspected after the run
+
+This is the shortest end-to-end example of how an application can use
+`m8flow_bpmn_core` to execute real BPMN service tasks through m8flow's current
+connector-proxy direction while still keeping the workflow logic in-process.
+
 ## Launchers
 
 The repository also includes shell launchers that first try the shared local
@@ -401,6 +451,8 @@ the process instance progress and audit it live in the m8flow UI while
 
   `.\examples\scheduled_retry_poc.ps1`
 
+  `.\examples\service_task_connector_poc.ps1`
+
 - Bash:
 
   `bash examples/conditional_approval_poc.sh`
@@ -418,6 +470,8 @@ the process instance progress and audit it live in the m8flow UI while
   `bash examples/scheduled_cycle_timer_poc.sh`
 
   `bash examples/scheduled_retry_poc.sh`
+
+  `bash examples/service_task_connector_poc.sh`
 
 Add `-UseDocker` or `--docker` to force the temporary container. Add
 `-KeepContainer` or `--keep-container` if you want to leave the container

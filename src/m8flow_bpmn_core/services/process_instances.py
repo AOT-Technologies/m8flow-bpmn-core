@@ -384,6 +384,10 @@ def retry_process_instance(
     user_id: int,
     retried_at_in_seconds: int | None = None,
 ) -> ProcessInstanceModel:
+    from m8flow_bpmn_core.services.workflow_runtime import (
+        retry_errored_service_task_workflow_if_needed,
+    )
+
     ensure_user_belongs_to_tenant(
         session,
         tenant_id=tenant_id,
@@ -423,6 +427,12 @@ def retry_process_instance(
         event_type=ProcessInstanceEventType.process_instance_retried,
         timestamp=float(occurred_at),
         user_id=user_id,
+    )
+    retry_errored_service_task_workflow_if_needed(
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance.id,
+        occurred_at=occurred_at,
     )
     session.flush()
     return process_instance

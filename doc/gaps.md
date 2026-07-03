@@ -48,15 +48,25 @@ Examples of missing permission features:
 
 ## Service Task Integrations
 
-The library does not yet cover external service task execution.
+The library now includes the service-task execution seam and synchronous
+runtime integration for BPMN `ServiceTask` nodes.
+
+Available today:
+
+- stable operation ids in the `<connector_key>/<command_name>` format
+- a public connector protocol and in-process registry
+- synchronous BPMN `ServiceTask` execution for real process-instance runtime paths
+- process-wide and scoped hooks for installing connector registries
+- documentation of the current connector-proxy catalog and execution contract
+- the HTTP adapter for `m8flow-connector-proxy`
+- retry integration for synchronous service-task failures
+- an end-to-end connector-proxy POC that uses the shared m8flow database/UI path
 
 Missing pieces include:
 
-- worker or connector infrastructure
-- outbound calls to external systems
-- inbound callbacks and task completion notifications
-- retry policies for failed service task executions
+- delayed backoff policies for repeated service-task failures
 - dead-letter or manual intervention handling
+- async callback/correlation handling for long-running connector executions
 
 ## Timers And Scheduling
 
