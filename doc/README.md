@@ -19,6 +19,7 @@ Start here:
 - [Usage guide](usage.md)
 - [Example workflows](examples.md)
 - [Packaging and dependency use](package.md)
+- [Sample app integration plan](sample_app.md)
 - [Scheduling architecture](scheduling.md)
 - [Service task architecture](service_tasks.md)
 - [Current gaps](gaps.md)

@@ -17,3 +17,4 @@ dist/
 *.sqlite
 reference/
 .*
+sample_app/vendor/*.whl

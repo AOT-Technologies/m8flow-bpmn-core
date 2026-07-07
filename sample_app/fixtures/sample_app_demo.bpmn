@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+  id="Definitions_sample_app_demo"
+  targetNamespace="http://bpmn.io/schema/bpmn"
+  exporter="m8flow-bpmn-core"
+  exporterVersion="1.0">
+  <bpmn:collaboration id="Collaboration_sample_app_demo">
+    <bpmn:participant
+      id="Participant_sample_app_demo"
+      name="Sample App Demo Workflow"
+      processRef="Process_sample_app_demo"
+    />
+  </bpmn:collaboration>
+  <bpmn:process
+    id="Process_sample_app_demo"
+    name="Sample App Demo Workflow"
+    isExecutable="true">
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_operations" name="Operations">
+        <bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_prepare</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_review" name="Review">
+        <bpmn:flowNodeRef>Task_review</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_1</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="StartEvent_1" name="Start">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_prepare" name="Prepare Request">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_review" name="Review Request">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="EndEvent_1" name="Done">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow
+      id="Flow_1"
+      sourceRef="StartEvent_1"
+      targetRef="Task_prepare"
+    />
+    <bpmn:sequenceFlow
+      id="Flow_2"
+      sourceRef="Task_prepare"
+      targetRef="Task_review"
+    />
+    <bpmn:sequenceFlow
+      id="Flow_3"
+      sourceRef="Task_review"
+      targetRef="EndEvent_1"
+    />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane
+      id="BPMNPlane_1"
+      bpmnElement="Collaboration_sample_app_demo">
+      <bpmndi:BPMNShape
+        id="Participant_sample_app_demo_di"
+        bpmnElement="Participant_sample_app_demo"
+        isHorizontal="true">
+        <dc:Bounds x="120" y="100" width="860" height="240" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape
+        id="Lane_operations_di"
+        bpmnElement="Lane_operations"
+        isHorizontal="true">
+        <dc:Bounds x="150" y="100" width="830" height="120" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape
+        id="Lane_review_di"
+        bpmnElement="Lane_review"
+        isHorizontal="true">
+        <dc:Bounds x="150" y="220" width="830" height="120" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="220" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="218" y="185" width="40" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_prepare_di" bpmnElement="Task_prepare">
+        <dc:Bounds x="320" y="120" width="180" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_review_di" bpmnElement="Task_review">
+        <dc:Bounds x="590" y="240" width="180" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="850" y="262" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="855" y="305" width="26" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="256" y="160" />
+        <di:waypoint x="320" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <di:waypoint x="500" y="160" />
+        <di:waypoint x="545" y="160" />
+        <di:waypoint x="545" y="280" />
+        <di:waypoint x="590" y="280" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
+        <di:waypoint x="770" y="280" />
+        <di:waypoint x="850" y="280" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
