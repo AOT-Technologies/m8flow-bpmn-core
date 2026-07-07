@@ -83,6 +83,7 @@ def run_due_scheduler_jobs(
         tenant_id=tenant_id,
     )
     processed_count = 0
+    batch_errors: list[tuple[str, BpmnCoreError]] = []
 
     for job in claimed_jobs:
         try:
@@ -91,23 +92,31 @@ def run_due_scheduler_jobs(
                 job=job,
                 occurred_at=occurred_at,
             )
-        except BpmnCoreError:
+        except BpmnCoreError as exc:
             _release_scheduler_job_lock(
                 session,
                 job=job,
                 updated_at_in_seconds=occurred_at,
             )
-            raise
+            batch_errors.append((job.job_key, exc))
         except Exception as exc:
             _release_scheduler_job_lock(
                 session,
                 job=job,
                 updated_at_in_seconds=occurred_at,
             )
-            raise BpmnCoreError(
+            wrapped_error = BpmnCoreError(
                 f"Scheduled job {job.job_key!r} failed during execution"
-            ) from exc
-        processed_count += 1
+            )
+            wrapped_error.__cause__ = exc
+            batch_errors.append((job.job_key, wrapped_error))
+        else:
+            processed_count += 1
+
+    if len(batch_errors) == 1:
+        raise batch_errors[0][1]
+    if batch_errors:
+        raise _build_scheduler_batch_error(batch_errors)
 
     return processed_count
 
@@ -293,6 +302,20 @@ def _release_scheduler_job_lock(
     existing_job.locked_at_in_seconds = None
     existing_job.updated_at_in_seconds = updated_at_in_seconds
     session.flush()
+
+
+def _build_scheduler_batch_error(
+    batch_errors: list[tuple[str, BpmnCoreError]],
+) -> BpmnCoreError:
+    error_details = ", ".join(
+        f"{job_key}: {type(error).__name__}: {error}"
+        for job_key, error in batch_errors
+    )
+    summary_error = BpmnCoreError(
+        f"{len(batch_errors)} scheduler jobs failed in one batch: {error_details}"
+    )
+    summary_error.__cause__ = batch_errors[0][1]
+    return summary_error
 
 
 def _normalize_worker_id(worker_id: str) -> str:
