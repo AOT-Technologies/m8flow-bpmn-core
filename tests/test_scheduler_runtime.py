@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,7 +24,12 @@ from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.services import scheduler_runtime
 from m8flow_bpmn_core.services.authorization import ROLE_ADMIN, ensure_v1_role
+from m8flow_bpmn_core.services.scheduler_jobs import (
+    delete_scheduler_job,
+    upsert_scheduler_job,
+)
 
 INTERMEDIATE_TIMER_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions
@@ -696,6 +702,146 @@ def test_run_due_scheduler_jobs_reschedules_recurring_timer_start_job(
             "task_spec_type": "StartEvent",
         },
     }
+
+
+def test_run_due_scheduler_jobs_continues_batch_after_job_error(
+    session: Session,
+    monkeypatch,
+) -> None:
+    tenant, _user = _seed_timer_actor(session)
+    first_job = upsert_scheduler_job(
+        session,
+        tenant_id=tenant.id,
+        job_key="process_retry|pi:1|q:first",
+        job_type="process_retry",
+        process_instance_id=1,
+        run_at_in_seconds=10,
+        payload_json={"requested_by_user_id": 1},
+        updated_at_in_seconds=10,
+        created_at_in_seconds=10,
+    )
+    second_job = upsert_scheduler_job(
+        session,
+        tenant_id=tenant.id,
+        job_key="process_retry|pi:2|q:second",
+        job_type="process_retry",
+        process_instance_id=2,
+        run_at_in_seconds=10,
+        payload_json={"requested_by_user_id": 1},
+        updated_at_in_seconds=10,
+        created_at_in_seconds=10,
+    )
+
+    executed_job_keys: list[str] = []
+
+    def _execute_with_first_failure(session, *, job, occurred_at) -> None:
+        executed_job_keys.append(job.job_key)
+        if job.id == first_job.id:
+            raise api.ValidationError("boom")
+        delete_scheduler_job(
+            session,
+            tenant_id=job.m8f_tenant_id,
+            job_key=job.job_key,
+        )
+
+    monkeypatch.setattr(
+        scheduler_runtime,
+        "_execute_claimed_scheduler_job",
+        _execute_with_first_failure,
+    )
+
+    with pytest.raises(api.ValidationError, match="boom"):
+        api.run_due_scheduler_jobs(
+            session,
+            now_in_seconds=10,
+            worker_id="inline-failure-worker",
+            tenant_id=tenant.id,
+        )
+
+    session.expire_all()
+    first_job = session.get(SchedulerJobModel, first_job.id)
+    second_job = session.get(SchedulerJobModel, second_job.id)
+    assert first_job is not None
+    assert second_job is None
+    assert executed_job_keys == [
+        "process_retry|pi:1|q:first",
+        "process_retry|pi:2|q:second",
+    ]
+    assert first_job.locked_by is None
+    assert first_job.locked_at_in_seconds is None
+
+
+def test_run_due_scheduler_jobs_raises_summary_for_multiple_job_errors(
+    session: Session,
+    monkeypatch,
+) -> None:
+    tenant, _user = _seed_timer_actor(session)
+    first_job = upsert_scheduler_job(
+        session,
+        tenant_id=tenant.id,
+        job_key="process_retry|pi:11|q:first",
+        job_type="process_retry",
+        process_instance_id=11,
+        run_at_in_seconds=10,
+        payload_json={"requested_by_user_id": 1},
+        updated_at_in_seconds=10,
+        created_at_in_seconds=10,
+    )
+    second_job = upsert_scheduler_job(
+        session,
+        tenant_id=tenant.id,
+        job_key="process_retry|pi:12|q:second",
+        job_type="process_retry",
+        process_instance_id=12,
+        run_at_in_seconds=10,
+        payload_json={"requested_by_user_id": 1},
+        updated_at_in_seconds=10,
+        created_at_in_seconds=10,
+    )
+
+    executed_job_keys: list[str] = []
+
+    def _fail_both_jobs(session, *, job, occurred_at) -> None:
+        executed_job_keys.append(job.job_key)
+        if job.id == first_job.id:
+            raise api.ValidationError("first failure")
+        if job.id == second_job.id:
+            raise api.NotFoundError("second failure")
+
+    monkeypatch.setattr(
+        scheduler_runtime,
+        "_execute_claimed_scheduler_job",
+        _fail_both_jobs,
+    )
+
+    with pytest.raises(api.BpmnCoreError) as exc_info:
+        api.run_due_scheduler_jobs(
+            session,
+            now_in_seconds=10,
+            worker_id="inline-failure-worker",
+            tenant_id=tenant.id,
+        )
+
+    session.expire_all()
+    first_job = session.get(SchedulerJobModel, first_job.id)
+    second_job = session.get(SchedulerJobModel, second_job.id)
+    assert first_job is not None
+    assert second_job is not None
+    assert executed_job_keys == [
+        "process_retry|pi:11|q:first",
+        "process_retry|pi:12|q:second",
+    ]
+    assert first_job.locked_by is None
+    assert first_job.locked_at_in_seconds is None
+    assert second_job.locked_by is None
+    assert second_job.locked_at_in_seconds is None
+    assert (
+        str(exc_info.value)
+        == "2 scheduler jobs failed in one batch: "
+        "process_retry|pi:11|q:first: ValidationError: first failure, "
+        "process_retry|pi:12|q:second: NotFoundError: second failure"
+    )
+    assert isinstance(exc_info.value.__cause__, api.ValidationError)
 
 
 def _seed_timer_actor(

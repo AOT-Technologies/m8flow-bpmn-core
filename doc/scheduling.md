@@ -314,6 +314,12 @@ Current V1 note:
   single-poller execution model
 - the same persisted rows can later feed a Celery dispatcher without changing
   the storage model
+- if one claimed due job fails, the runtime releases that job's lock, keeps
+  executing the other claimed jobs from the same batch, and only raises after
+  the batch finishes
+- if the batch had one failure, that original scheduler error is re-raised;
+  if the batch had multiple failures, the runtime raises one summary
+  `BpmnCoreError` with the failed job keys and error details
 
 ### Celery-Backed Execution
 
