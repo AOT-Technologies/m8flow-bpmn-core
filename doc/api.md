@@ -121,7 +121,20 @@ worker loop, not issuing a business command on behalf of an end user.
   one scheduler loop per tenant.
 - **Return value** - `int`, the number of due jobs processed in that call.
 - **Raises** - `ValidationError` for invalid `limit` or blank `worker_id`;
-  `BpmnCoreError` if a claimed job fails during execution.
+  `BpmnCoreError` if one or more claimed jobs fail during execution.
+
+The scheduler loop is batch-continuing, not fail-fast per claimed row:
+
+- if one claimed job fails, the library releases that job's lock
+- it still attempts the remaining claimed jobs from that same polling batch
+- after the batch finishes:
+  - if exactly one job failed, it re-raises that original scheduler error
+  - if multiple jobs failed, it raises one summary `BpmnCoreError` that lists
+    the failed job keys and error details
+
+Because the caller owns the transaction boundary, a host application that
+passes a caller-owned `Session` or `Connection` must still decide whether to
+commit the successful jobs from that batch or roll the whole transaction back.
 
 Current V1 coverage includes waiting intermediate catch events, interrupting
 timer boundary events, timer start events, and scheduled process retries. The
