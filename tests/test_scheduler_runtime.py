@@ -708,26 +708,40 @@ def test_run_due_scheduler_jobs_continues_batch_after_job_error(
     session: Session,
     monkeypatch,
 ) -> None:
-    tenant, _user = _seed_timer_actor(session)
+    tenant, user = _seed_timer_actor(session)
+    first_process_instance = _create_stub_process_instance(
+        session,
+        tenant_id=tenant.id,
+        user_id=user.id,
+        process_model_identifier="scheduler-runtime-first",
+    )
+    first_job_key = f"process_retry|pi:{first_process_instance.id}|q:first"
+    second_process_instance = _create_stub_process_instance(
+        session,
+        tenant_id=tenant.id,
+        user_id=user.id,
+        process_model_identifier="scheduler-runtime-second",
+    )
+    second_job_key = f"process_retry|pi:{second_process_instance.id}|q:second"
     first_job = upsert_scheduler_job(
         session,
         tenant_id=tenant.id,
-        job_key="process_retry|pi:1|q:first",
+        job_key=first_job_key,
         job_type="process_retry",
-        process_instance_id=1,
+        process_instance_id=first_process_instance.id,
         run_at_in_seconds=10,
-        payload_json={"requested_by_user_id": 1},
+        payload_json={"requested_by_user_id": user.id},
         updated_at_in_seconds=10,
         created_at_in_seconds=10,
     )
     second_job = upsert_scheduler_job(
         session,
         tenant_id=tenant.id,
-        job_key="process_retry|pi:2|q:second",
+        job_key=second_job_key,
         job_type="process_retry",
-        process_instance_id=2,
+        process_instance_id=second_process_instance.id,
         run_at_in_seconds=10,
-        payload_json={"requested_by_user_id": 1},
+        payload_json={"requested_by_user_id": user.id},
         updated_at_in_seconds=10,
         created_at_in_seconds=10,
     )
@@ -763,10 +777,7 @@ def test_run_due_scheduler_jobs_continues_batch_after_job_error(
     second_job = session.get(SchedulerJobModel, second_job.id)
     assert first_job is not None
     assert second_job is None
-    assert executed_job_keys == [
-        "process_retry|pi:1|q:first",
-        "process_retry|pi:2|q:second",
-    ]
+    assert executed_job_keys == [first_job_key, second_job_key]
     assert first_job.locked_by is None
     assert first_job.locked_at_in_seconds is None
 
@@ -775,26 +786,40 @@ def test_run_due_scheduler_jobs_raises_summary_for_multiple_job_errors(
     session: Session,
     monkeypatch,
 ) -> None:
-    tenant, _user = _seed_timer_actor(session)
+    tenant, user = _seed_timer_actor(session)
+    first_process_instance = _create_stub_process_instance(
+        session,
+        tenant_id=tenant.id,
+        user_id=user.id,
+        process_model_identifier="scheduler-runtime-summary-first",
+    )
+    first_job_key = f"process_retry|pi:{first_process_instance.id}|q:first"
+    second_process_instance = _create_stub_process_instance(
+        session,
+        tenant_id=tenant.id,
+        user_id=user.id,
+        process_model_identifier="scheduler-runtime-summary-second",
+    )
+    second_job_key = f"process_retry|pi:{second_process_instance.id}|q:second"
     first_job = upsert_scheduler_job(
         session,
         tenant_id=tenant.id,
-        job_key="process_retry|pi:11|q:first",
+        job_key=first_job_key,
         job_type="process_retry",
-        process_instance_id=11,
+        process_instance_id=first_process_instance.id,
         run_at_in_seconds=10,
-        payload_json={"requested_by_user_id": 1},
+        payload_json={"requested_by_user_id": user.id},
         updated_at_in_seconds=10,
         created_at_in_seconds=10,
     )
     second_job = upsert_scheduler_job(
         session,
         tenant_id=tenant.id,
-        job_key="process_retry|pi:12|q:second",
+        job_key=second_job_key,
         job_type="process_retry",
-        process_instance_id=12,
+        process_instance_id=second_process_instance.id,
         run_at_in_seconds=10,
-        payload_json={"requested_by_user_id": 1},
+        payload_json={"requested_by_user_id": user.id},
         updated_at_in_seconds=10,
         created_at_in_seconds=10,
     )
@@ -827,10 +852,7 @@ def test_run_due_scheduler_jobs_raises_summary_for_multiple_job_errors(
     second_job = session.get(SchedulerJobModel, second_job.id)
     assert first_job is not None
     assert second_job is not None
-    assert executed_job_keys == [
-        "process_retry|pi:11|q:first",
-        "process_retry|pi:12|q:second",
-    ]
+    assert executed_job_keys == [first_job_key, second_job_key]
     assert first_job.locked_by is None
     assert first_job.locked_at_in_seconds is None
     assert second_job.locked_by is None
@@ -838,8 +860,8 @@ def test_run_due_scheduler_jobs_raises_summary_for_multiple_job_errors(
     assert (
         str(exc_info.value)
         == "2 scheduler jobs failed in one batch: "
-        "process_retry|pi:11|q:first: ValidationError: first failure, "
-        "process_retry|pi:12|q:second: NotFoundError: second failure"
+        f"{first_job_key}: ValidationError: first failure, "
+        f"{second_job_key}: NotFoundError: second failure"
     )
     assert isinstance(exc_info.value.__cause__, api.ValidationError)
 
@@ -870,6 +892,30 @@ def _seed_timer_actor(
         user_ids=[user.id],
     )
     return tenant, user
+
+
+def _create_stub_process_instance(
+    session: Session,
+    *,
+    tenant_id: str,
+    user_id: int,
+    process_model_identifier: str,
+) -> ProcessInstanceModel:
+    process_instance = ProcessInstanceModel(
+        m8f_tenant_id=tenant_id,
+        process_model_identifier=process_model_identifier,
+        process_model_display_name=process_model_identifier,
+        process_initiator_id=user_id,
+        status=api.ProcessInstanceStatus.error.value,
+        start_in_seconds=10,
+        end_in_seconds=10,
+        task_updated_at_in_seconds=10,
+        created_at_in_seconds=10,
+        updated_at_in_seconds=10,
+    )
+    session.add(process_instance)
+    session.flush()
+    return process_instance
 
 
 def _initialize_waiting_timer_process(
