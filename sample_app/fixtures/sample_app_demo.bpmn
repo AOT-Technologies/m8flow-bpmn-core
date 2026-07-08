@@ -3,6 +3,7 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:spiffworkflow="http://spiffworkflow.org/bpmn/schema/1.0/core"
   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
   id="Definitions_sample_app_demo"
@@ -23,40 +24,202 @@
     <bpmn:laneSet id="LaneSet_1">
       <bpmn:lane id="Lane_operations" name="Operations">
         <bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>Task_prepare</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_submit_request</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_amount_threshold</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_finance" name="Finance">
+        <bpmn:flowNodeRef>Task_finance_review</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_finance_decision</bpmn:flowNodeRef>
       </bpmn:lane>
       <bpmn:lane id="Lane_review" name="Review">
         <bpmn:flowNodeRef>Task_review</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_system" name="System">
+        <bpmn:flowNodeRef>Task_prepare_email</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_send_email</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>EndEvent_1</bpmn:flowNodeRef>
       </bpmn:lane>
     </bpmn:laneSet>
     <bpmn:startEvent id="StartEvent_1" name="Start">
-      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+      <bpmn:outgoing>Flow_start_to_submit</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:userTask id="Task_prepare" name="Prepare Request">
-      <bpmn:incoming>Flow_1</bpmn:incoming>
-      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    <bpmn:userTask
+      id="Task_submit_request"
+      name="Submit Reimbursement Request">
+      <bpmn:incoming>Flow_start_to_submit</bpmn:incoming>
+      <bpmn:outgoing>Flow_submit_to_gateway</bpmn:outgoing>
     </bpmn:userTask>
+    <bpmn:exclusiveGateway
+      id="Gateway_amount_threshold"
+      name="Amount &gt; $1000?">
+      <bpmn:incoming>Flow_submit_to_gateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_gateway_to_finance</bpmn:outgoing>
+      <bpmn:outgoing>Flow_gateway_to_review</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_finance_review" name="Finance Review">
+      <bpmn:incoming>Flow_gateway_to_finance</bpmn:incoming>
+      <bpmn:outgoing>Flow_finance_to_decision</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway
+      id="Gateway_finance_decision"
+      name="Finance Approved?">
+      <bpmn:incoming>Flow_finance_to_decision</bpmn:incoming>
+      <bpmn:outgoing>Flow_finance_approved_to_review</bpmn:outgoing>
+      <bpmn:outgoing>Flow_finance_rejected_to_prepare_email</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
     <bpmn:userTask id="Task_review" name="Review Request">
-      <bpmn:incoming>Flow_2</bpmn:incoming>
-      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+      <bpmn:incoming>Flow_gateway_to_review</bpmn:incoming>
+      <bpmn:incoming>Flow_finance_approved_to_review</bpmn:incoming>
+      <bpmn:outgoing>Flow_review_to_prepare_email</bpmn:outgoing>
     </bpmn:userTask>
+    <bpmn:scriptTask id="Task_prepare_email" name="Prepare Outcome Email">
+      <bpmn:incoming>Flow_finance_rejected_to_prepare_email</bpmn:incoming>
+      <bpmn:incoming>Flow_review_to_prepare_email</bpmn:incoming>
+      <bpmn:outgoing>Flow_prepare_email_to_send_email</bpmn:outgoing>
+      <bpmn:script><![CDATA[
+if str(globals().get("finance_recommendation", "")).strip().lower() not in {"", "approve", "approved"}:
+    outcome_label = "rejected"
+    decision_comment = (
+        str(globals().get("finance_comment", "")).strip()
+        or "Rejected during finance review."
+    )
+elif str(globals().get("review_outcome", "")).strip().lower() in {"approve", "approved"}:
+    outcome_label = "approved"
+    decision_comment = (
+        str(globals().get("review_comment", "")).strip()
+        or "Approved after policy review."
+    )
+elif str(globals().get("review_outcome", "")).strip().lower() in {"reject", "rejected"}:
+    outcome_label = "rejected"
+    decision_comment = (
+        str(globals().get("review_comment", "")).strip()
+        or "Rejected during policy review."
+    )
+elif str(globals().get("review_outcome", "")).strip():
+    outcome_label = str(globals().get("review_outcome", "")).strip().lower()
+    decision_comment = (
+        str(globals().get("review_comment", "")).strip()
+        or "Review completed."
+    )
+else:
+    outcome_label = "approved"
+    decision_comment = (
+        str(globals().get("finance_comment", "")).strip()
+        or "Approved during finance review."
+    )
+email_subject = (
+    f"Reimbursement request {outcome_label}: "
+    f"${float(globals().get('amount', 0)):,.2f} for "
+    f"{(str(globals().get('requester_name', '')).strip() or 'Requester')}"
+)
+email_body_html = (
+    f"<p>Hello {(str(globals().get('requester_name', '')).strip() or 'Requester')},</p>"
+    f"<p>Your reimbursement request for <strong>${float(globals().get('amount', 0)):,.2f}</strong> "
+    f"was <strong>{outcome_label}</strong>.</p>"
+    f"<p>Expense description: "
+    f"{(str(globals().get('expense_description', '')).strip() or 'No description provided.')}<br />"
+    f"Requester email: {(str(globals().get('requester_email', '')).strip() or 'Not provided')}<br />"
+    f"Decision comment: {decision_comment}</p>"
+    + (
+        f"<p>Finance recommendation: {str(globals().get('finance_recommendation', '')).strip()}<br />"
+        f"Finance comment: {(str(globals().get('finance_comment', '')).strip() or 'No finance comment provided.')}</p>"
+        if str(globals().get('finance_recommendation', '')).strip()
+        else ""
+    )
+)
+]]></bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:serviceTask id="Task_send_email" name="Send Outcome Email">
+      <bpmn:incoming>Flow_prepare_email_to_send_email</bpmn:incoming>
+      <bpmn:outgoing>Flow_send_email_to_end</bpmn:outgoing>
+      <bpmn:extensionElements>
+        <spiffworkflow:serviceTaskOperator
+          id="smtp/SendHTMLEmail"
+          resultVariable="email_delivery_result">
+          <spiffworkflow:parameters>
+            <spiffworkflow:parameter
+              id="email_to"
+              type="str"
+              value="requester_email"
+            />
+            <spiffworkflow:parameter
+              id="email_subject"
+              type="str"
+              value="email_subject"
+            />
+            <spiffworkflow:parameter
+              id="email_body"
+              type="str"
+              value="email_body_html"
+            />
+            <spiffworkflow:parameter
+              id="email_body_html"
+              type="str"
+              value="email_body_html"
+            />
+          </spiffworkflow:parameters>
+        </spiffworkflow:serviceTaskOperator>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
     <bpmn:endEvent id="EndEvent_1" name="Done">
-      <bpmn:incoming>Flow_3</bpmn:incoming>
+      <bpmn:incoming>Flow_send_email_to_end</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:sequenceFlow
-      id="Flow_1"
+      id="Flow_start_to_submit"
       sourceRef="StartEvent_1"
-      targetRef="Task_prepare"
+      targetRef="Task_submit_request"
     />
     <bpmn:sequenceFlow
-      id="Flow_2"
-      sourceRef="Task_prepare"
-      targetRef="Task_review"
+      id="Flow_submit_to_gateway"
+      sourceRef="Task_submit_request"
+      targetRef="Gateway_amount_threshold"
     />
     <bpmn:sequenceFlow
-      id="Flow_3"
+      id="Flow_gateway_to_finance"
+      name="Amount &gt; $1000"
+      sourceRef="Gateway_amount_threshold"
+      targetRef="Task_finance_review">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">amount &gt; 1000</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow
+      id="Flow_gateway_to_review"
+      name="Amount &lt;= $1000"
+      sourceRef="Gateway_amount_threshold"
+      targetRef="Task_review">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">amount &lt;= 1000</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow
+      id="Flow_finance_to_decision"
+      sourceRef="Task_finance_review"
+      targetRef="Gateway_finance_decision"
+    />
+    <bpmn:sequenceFlow
+      id="Flow_finance_approved_to_review"
+      name="Finance Approved"
+      sourceRef="Gateway_finance_decision"
+      targetRef="Task_review">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">str(globals().get("finance_recommendation", "")).strip().lower() in {"approve", "approved"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow
+      id="Flow_finance_rejected_to_prepare_email"
+      name="Finance Rejected"
+      sourceRef="Gateway_finance_decision"
+      targetRef="Task_prepare_email">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">str(globals().get("finance_recommendation", "")).strip().lower() not in {"approve", "approved"}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow
+      id="Flow_review_to_prepare_email"
       sourceRef="Task_review"
+      targetRef="Task_prepare_email"
+    />
+    <bpmn:sequenceFlow
+      id="Flow_prepare_email_to_send_email"
+      sourceRef="Task_prepare_email"
+      targetRef="Task_send_email"
+    />
+    <bpmn:sequenceFlow
+      id="Flow_send_email_to_end"
+      sourceRef="Task_send_email"
       targetRef="EndEvent_1"
     />
   </bpmn:process>
@@ -68,20 +231,34 @@
         id="Participant_sample_app_demo_di"
         bpmnElement="Participant_sample_app_demo"
         isHorizontal="true">
-        <dc:Bounds x="120" y="100" width="860" height="240" />
+        <dc:Bounds x="120" y="100" width="1840" height="520" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape
         id="Lane_operations_di"
         bpmnElement="Lane_operations"
         isHorizontal="true">
-        <dc:Bounds x="150" y="100" width="830" height="120" />
+        <dc:Bounds x="150" y="100" width="1810" height="120" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape
+        id="Lane_finance_di"
+        bpmnElement="Lane_finance"
+        isHorizontal="true">
+        <dc:Bounds x="150" y="220" width="1810" height="120" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape
         id="Lane_review_di"
         bpmnElement="Lane_review"
         isHorizontal="true">
-        <dc:Bounds x="150" y="220" width="830" height="120" />
+        <dc:Bounds x="150" y="340" width="1810" height="120" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape
+        id="Lane_system_di"
+        bpmnElement="Lane_system"
+        isHorizontal="true">
+        <dc:Bounds x="150" y="460" width="1810" height="160" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
@@ -90,33 +267,135 @@
           <dc:Bounds x="218" y="185" width="40" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Task_prepare_di" bpmnElement="Task_prepare">
-        <dc:Bounds x="320" y="120" width="180" height="80" />
+      <bpmndi:BPMNShape
+        id="Task_submit_request_di"
+        bpmnElement="Task_submit_request">
+        <dc:Bounds x="320" y="120" width="190" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape
+        id="Gateway_amount_threshold_di"
+        bpmnElement="Gateway_amount_threshold"
+        isMarkerVisible="true">
+        <dc:Bounds x="580" y="135" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="548" y="190" width="115" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape
+        id="Task_finance_review_di"
+        bpmnElement="Task_finance_review">
+        <dc:Bounds x="700" y="240" width="190" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape
+        id="Gateway_finance_decision_di"
+        bpmnElement="Gateway_finance_decision"
+        isMarkerVisible="true">
+        <dc:Bounds x="960" y="255" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="930" y="310" width="111" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_review_di" bpmnElement="Task_review">
-        <dc:Bounds x="590" y="240" width="180" height="80" />
+        <dc:Bounds x="1090" y="360" width="190" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape
+        id="Task_prepare_email_di"
+        bpmnElement="Task_prepare_email">
+        <dc:Bounds x="1390" y="500" width="190" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_send_email_di" bpmnElement="Task_send_email">
+        <dc:Bounds x="1650" y="500" width="190" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
-        <dc:Bounds x="850" y="262" width="36" height="36" />
+        <dc:Bounds x="1900" y="522" width="36" height="36" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="855" y="305" width="26" height="14" />
+          <dc:Bounds x="1905" y="565" width="26" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+      <bpmndi:BPMNEdge
+        id="Flow_start_to_submit_di"
+        bpmnElement="Flow_start_to_submit">
         <di:waypoint x="256" y="160" />
         <di:waypoint x="320" y="160" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
-        <di:waypoint x="500" y="160" />
-        <di:waypoint x="545" y="160" />
-        <di:waypoint x="545" y="280" />
-        <di:waypoint x="590" y="280" />
+      <bpmndi:BPMNEdge
+        id="Flow_submit_to_gateway_di"
+        bpmnElement="Flow_submit_to_gateway">
+        <di:waypoint x="510" y="160" />
+        <di:waypoint x="580" y="160" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
-        <di:waypoint x="770" y="280" />
-        <di:waypoint x="850" y="280" />
+      <bpmndi:BPMNEdge
+        id="Flow_gateway_to_finance_di"
+        bpmnElement="Flow_gateway_to_finance">
+        <di:waypoint x="605" y="185" />
+        <di:waypoint x="605" y="280" />
+        <di:waypoint x="700" y="280" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="610" y="220" width="86" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge
+        id="Flow_gateway_to_review_di"
+        bpmnElement="Flow_gateway_to_review">
+        <di:waypoint x="630" y="160" />
+        <di:waypoint x="965" y="160" />
+        <di:waypoint x="965" y="400" />
+        <di:waypoint x="1090" y="400" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="780" y="165" width="88" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge
+        id="Flow_finance_to_decision_di"
+        bpmnElement="Flow_finance_to_decision">
+        <di:waypoint x="890" y="280" />
+        <di:waypoint x="960" y="280" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge
+        id="Flow_finance_approved_to_review_di"
+        bpmnElement="Flow_finance_approved_to_review">
+        <di:waypoint x="985" y="305" />
+        <di:waypoint x="985" y="400" />
+        <di:waypoint x="1090" y="400" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="990" y="340" width="98" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge
+        id="Flow_finance_rejected_to_prepare_email_di"
+        bpmnElement="Flow_finance_rejected_to_prepare_email">
+        <di:waypoint x="1010" y="280" />
+        <di:waypoint x="1270" y="280" />
+        <di:waypoint x="1270" y="540" />
+        <di:waypoint x="1390" y="540" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1080" y="285" width="93" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge
+        id="Flow_review_to_prepare_email_di"
+        bpmnElement="Flow_review_to_prepare_email">
+        <di:waypoint x="1280" y="400" />
+        <di:waypoint x="1335" y="400" />
+        <di:waypoint x="1335" y="540" />
+        <di:waypoint x="1390" y="540" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge
+        id="Flow_prepare_email_to_send_email_di"
+        bpmnElement="Flow_prepare_email_to_send_email">
+        <di:waypoint x="1580" y="540" />
+        <di:waypoint x="1650" y="540" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge
+        id="Flow_send_email_to_end_di"
+        bpmnElement="Flow_send_email_to_end">
+        <di:waypoint x="1840" y="540" />
+        <di:waypoint x="1900" y="540" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

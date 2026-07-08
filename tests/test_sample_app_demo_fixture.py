@@ -33,10 +33,28 @@ def test_sample_app_demo_bpmn_contains_diagram_metadata() -> None:
     assert {
         "Participant_sample_app_demo",
         "Lane_operations",
+        "Lane_finance",
         "Lane_review",
+        "Lane_system",
         "StartEvent_1",
-        "Task_prepare",
+        "Task_submit_request",
+        "Gateway_amount_threshold",
         "Task_review",
+        "Task_finance_review",
+        "Gateway_finance_decision",
+        "Task_prepare_email",
+        "Task_send_email",
         "EndEvent_1",
     }.issubset(shape_ids)
-    assert {"Flow_1", "Flow_2", "Flow_3"}.issubset(edge_ids)
+    assert {
+        "Flow_start_to_submit",
+        "Flow_submit_to_gateway",
+        "Flow_gateway_to_finance",
+        "Flow_gateway_to_review",
+        "Flow_finance_to_decision",
+        "Flow_finance_approved_to_review",
+        "Flow_finance_rejected_to_prepare_email",
+        "Flow_review_to_prepare_email",
+        "Flow_prepare_email_to_send_email",
+        "Flow_send_email_to_end",
+    }.issubset(edge_ids)

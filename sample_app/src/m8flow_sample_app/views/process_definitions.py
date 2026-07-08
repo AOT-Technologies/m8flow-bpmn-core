@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from html import escape
 
-from flask import Flask, flash, redirect, request, url_for
+from flask import Flask, current_app, flash, redirect, request, url_for
 
 from m8flow_bpmn_core import api
 from m8flow_sample_app.auth import get_active_identity
 from m8flow_sample_app.db import session_scope
+from m8flow_sample_app.shared_m8flow import (
+    SHARED_M8FLOW_AUDIT_CONTEXT_KEY,
+    BackendCatalogPublishResult,
+    SharedM8flowAuditContext,
+)
 from m8flow_sample_app.ui import render_page
 from m8flow_sample_app.workflows.deploy import (
     DEFAULT_DEMO_BPMN_NAME,
@@ -64,6 +69,9 @@ def register_process_definition_routes(app: Flask) -> None:
             body = f"""
 <p>This screen stores workflow definitions in the library tables through
 <code>ImportBpmnProcessDefinitionCommand</code>.</p>
+<p>In shared m8flow audit mode, identifiers in
+<code>&lt;group&gt;/&lt;model&gt;</code> format are also published into the
+local m8flow backend process-model catalog so they appear in the m8flow UI.</p>
 <form method="post" action="{escape(url_for("deploy_demo_definition_action"))}">
   <label for="process_model_identifier">Process model identifier</label><br />
   <input
@@ -81,9 +89,12 @@ def register_process_definition_routes(app: Flask) -> None:
   /><br /><br />
   <button type="submit">Deploy built-in demo workflow</button>
 </form>
-<p>The built-in demo uses a two-step user-task BPMN from
-<code>sample_app/fixtures/sample_app_demo.bpmn</code> and fills lane owners for
-the current tenant automatically.</p>
+<p>The built-in demo uses a reimbursement BPMN from
+<code>sample_app/fixtures/sample_app_demo.bpmn</code>. It routes amounts over
+1000 through Finance before the final review, skips the final review when
+Finance rejects the request, and sends an outcome HTML email through the
+connector-proxy SMTP service task using tenant-scoped Mailtrap
+secrets.</p>
 <h2>Stored definitions</h2>
 {definitions_html}
 """
@@ -107,12 +118,21 @@ the current tenant automatically.</p>
             bpmn_name = (
                 request.form.get("bpmn_name", "").strip() or DEFAULT_DEMO_BPMN_NAME
             )
+            audit_context = current_app.extensions.get(
+                SHARED_M8FLOW_AUDIT_CONTEXT_KEY
+            )
 
             try:
-                definition = deploy_demo_definition(
+                deployment = deploy_demo_definition(
                     db_session,
                     tenant_id=identity.tenant.id,
+                    tenant_slug=identity.tenant.slug,
                     user_id=identity.user.id,
+                    audit_context=(
+                        audit_context
+                        if isinstance(audit_context, SharedM8flowAuditContext)
+                        else None
+                    ),
                     process_model_identifier=process_model_identifier,
                     bpmn_name=bpmn_name,
                 )
@@ -120,8 +140,43 @@ the current tenant automatically.</p>
                 flash(str(exc), "error")
             else:
                 flash(
-                    f"Definition {definition.id} deployed for process model "
+                    f"Definition {deployment.definition.id} deployed for process model "
                     f"{process_model_identifier}.",
                     "success",
                 )
+                _flash_backend_catalog_result(deployment.backend_catalog)
             return redirect(url_for("process_definitions_page"))
+
+
+def _flash_backend_catalog_result(
+    result: BackendCatalogPublishResult | None,
+) -> None:
+    if result is None:
+        return
+
+    model_identifier = (
+        f"{result.process_group_id}/{result.process_model_id}"
+        if result.process_group_id and result.process_model_id
+        else None
+    )
+    if result.status == "created" and model_identifier is not None:
+        flash(
+            "Published the workflow into the local m8flow backend catalog as "
+            f"'{model_identifier}' for tenant root '{result.tenant_root}'.",
+            "success",
+        )
+    elif result.status == "updated" and model_identifier is not None:
+        flash(
+            "Refreshed the local m8flow backend catalog entry "
+            f"'{model_identifier}' for tenant root '{result.tenant_root}'.",
+            "success",
+        )
+    elif result.status == "unchanged" and model_identifier is not None:
+        flash(
+            "The local m8flow backend catalog already matched "
+            f"'{model_identifier}' for tenant root '{result.tenant_root}'.",
+            "success",
+        )
+
+    for warning in result.warnings:
+        flash(warning, "warning")

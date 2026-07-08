@@ -11,16 +11,28 @@ from m8flow_sample_app.ui import post_button, render_page
 from m8flow_sample_app.workflows.tasks import (
     build_task_payload_from_json_text,
     claim_task,
+    complete_task,
     get_accessible_task,
     list_pending_tasks,
-    complete_task,
 )
 
 
-JSON_TEXT_EXAMPLE = """{
-  "note": "Completed from the sample app",
-  "approved": true
-}"""
+TASK_JSON_EXAMPLES = {
+    "Submit Reimbursement Request": """{
+  "requester_name": "Andre Example",
+  "requester_email": "andre@example.com",
+  "expense_description": "Conference hotel and travel",
+  "amount": 1250
+}""",
+    "Finance Review": """{
+  "finance_recommendation": "approved",
+  "finance_comment": "Budget is available for reimbursement."
+}""",
+    "Review Request": """{
+  "review_outcome": "approved",
+  "review_comment": "Approved after policy review."
+}""",
+}
 
 
 def register_task_routes(app: Flask) -> None:
@@ -137,14 +149,10 @@ tenant and user.</p>
                 else ""
             )
             complete_html = (
-                f"""
-<form method="post" action="{escape(url_for("complete_task_action", human_task_id=task.id))}">
-  <label for="task_payload_json">Task payload JSON</label><br />
-  <textarea id="task_payload_json" name="task_payload_json">{escape(JSON_TEXT_EXAMPLE)}</textarea><br /><br />
-  <button type="submit">Submit task payload and complete</button>
-</form>
-<p>All JSON values are persisted as strings through the library metadata API.</p>
-"""
+                _complete_task_form(
+                    task_name=task.task_title or task.task_name,
+                    task_id=task.id,
+                )
                 if can_complete
                 else "<p>Claim this task before submitting a payload.</p>"
             )
@@ -186,3 +194,33 @@ tenant and user.</p>
 
             flash(f"Task {human_task_id} completed.", "success")
             return redirect(url_for("tasks_page"))
+
+
+def _complete_task_form(*, task_name: str | None, task_id: int) -> str:
+    example_json = TASK_JSON_EXAMPLES.get(
+        task_name or "",
+        """{
+  "note": "Completed from the sample app"
+}""",
+    )
+    helper_text = (
+        "<p>Amounts greater than 1000 route to Finance before the final review. "
+        "If Finance rejects the request, the workflow skips the final review and goes "
+        "straight to the outcome email step.</p>"
+        if task_name == "Submit Reimbursement Request"
+        else (
+            "<p>If Finance rejects here, the workflow goes directly to the outcome "
+            "email step instead of creating a Review Request task.</p>"
+            if task_name == "Finance Review"
+            else ""
+        )
+    )
+    return f"""
+<form method="post" action="{escape(url_for("complete_task_action", human_task_id=task_id))}">
+  <label for="task_payload_json">Task payload JSON</label><br />
+  <textarea id="task_payload_json" name="task_payload_json">{escape(example_json)}</textarea><br /><br />
+  <button type="submit">Submit task payload and complete</button>
+</form>
+<p>All JSON values are persisted as strings through the library metadata API.</p>
+{helper_text}
+"""

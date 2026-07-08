@@ -5,6 +5,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 dist_dir="${1:-"$script_dir/../../dist"}"
 vendor_dir="$script_dir/../vendor"
 pyproject_path="$script_dir/../pyproject.toml"
+uv_lock_path="$script_dir/../uv.lock"
+metadata_script="$script_dir/update_local_wheel_metadata.py"
 
 wheel_path="$(ls -1t "$dist_dir"/m8flow_bpmn_core-*.whl 2>/dev/null | head -n 1 || true)"
 
@@ -18,29 +20,12 @@ rm -f "$vendor_dir"/m8flow_bpmn_core-*.whl "$vendor_dir"/m8flow_bpmn_core.whl
 destination="$vendor_dir/$(basename "$wheel_path")"
 cp "$wheel_path" "$destination"
 
-relative_wheel_path="vendor/$(basename "$wheel_path")"
-python3 - "$pyproject_path" "$relative_wheel_path" <<'PY'
-from pathlib import Path
-import re
-import sys
-
-pyproject_path = Path(sys.argv[1])
-relative_wheel_path = sys.argv[2]
-original_text = pyproject_path.read_text(encoding="utf-8")
-pattern = r'm8flow-bpmn-core = \{ path = "vendor/[^"]+" \}'
-if re.search(pattern, original_text) is None:
-    raise SystemExit(
-        f"Could not update '{pyproject_path}' with the staged wheel path."
-    )
-updated_text = re.sub(
-    pattern,
-    f'm8flow-bpmn-core = {{ path = "{relative_wheel_path}" }}',
-    original_text,
-    count=1,
-)
-pyproject_path.write_text(updated_text, encoding="utf-8")
-PY
+python3 "$metadata_script" \
+  --pyproject-path "$pyproject_path" \
+  --uv-lock-path "$uv_lock_path" \
+  --wheel-path "$destination"
 
 echo "Staged wheel: $wheel_path"
 echo "Destination : $destination"
-echo "Updated source: $relative_wheel_path"
+echo "Updated source: vendor/$(basename "$wheel_path")"
+echo "Refreshed lock: sample_app/uv.lock"

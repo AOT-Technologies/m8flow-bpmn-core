@@ -23,11 +23,14 @@ Steps 1 and 2 are in place:
 - runtime app factory
 - startup `alembic upgrade head`
 - static tenant and user seed data
-- mocked tenant and user selection UI
+- tenant-first session UI with standalone local selection and shared
+  Keycloak browser redirect / callback sign-in
 
 Steps 3 and 4 are also in place:
 
 - built-in demo BPMN fixture
+- built-in reimbursement workflow with conditional Finance review and
+  connector-proxy SMTP email delivery
 - definition deployment screen
 - workflow start screen
 - pending task / claim / complete screens
@@ -46,6 +49,17 @@ Steps 5 through 7 are also complete:
 - documented comparison with the current m8flow-style workflow path
 - documented host-app integration gaps and migration notes
 
+Shared-m8flow audit mode follow-up work now includes:
+
+- shared-m8flow environment discovery scaffolding
+- startup wiring for audit-mode context
+- shared Keycloak organization and user provisioning
+- shared Keycloak browser-client provisioning
+- canonical tenant-id alignment to Keycloak organization ids
+- backend process-model catalog publishing for m8flow UI visibility
+- shared Keycloak redirect / callback login flow
+- documented settings for backend-catalog sync and shared credentials
+
 See [`../doc/sample_app.md`](../doc/sample_app.md) for the full runbook,
 behavior comparison, and integration findings.
 
@@ -57,6 +71,53 @@ stack:
 `postgresql+psycopg://postgres:postgres@localhost:6843/postgres`
 
 Override it with `M8FLOW_SAMPLE_APP_DATABASE_URL`.
+
+## Shared m8flow Audit Mode
+
+The sample app now includes shared-audit-mode support. It can detect when it
+is pointed at the default local m8flow Postgres
+database and now provisions the sample tenants and users into the shared
+Keycloak realm during startup. Shared mode also canonicalizes
+`m8flow_tenant.id` to the Keycloak organization id so the same workflow rows
+can be audited through m8flow UI.
+
+Current shared-mode behavior:
+
+- provision sample users in the shared Keycloak realm
+- reset existing shared-mode demo-user passwords so each password matches the
+  username
+- provision a public browser-login client in the shared Keycloak realm for the
+  sample app callback URL
+- align tenant ids to Keycloak organization ids
+- update sample-app `user.service` / `user.service_id` to the shared realm
+  issuer and real Keycloak user ids
+- redirect the browser to Keycloak for shared-mode sign-in and complete the
+  app session only after the callback resolves to the expected DB user
+- publish or refresh BPMN files in the local m8flow backend process-model
+  catalog when the process model identifier is in `<group>/<model>` format
+
+By default the app treats database name `postgres` as the shared m8flow
+database. Override the mode with:
+
+- `M8FLOW_SAMPLE_APP_M8FLOW_AUDIT_MODE=auto`
+- `M8FLOW_SAMPLE_APP_M8FLOW_AUDIT_MODE=off`
+- `M8FLOW_SAMPLE_APP_M8FLOW_AUDIT_MODE=shared`
+
+Useful supporting settings:
+
+- `M8FLOW_SAMPLE_APP_M8FLOW_SHARED_DATABASE_NAME`
+- `M8FLOW_SAMPLE_APP_M8FLOW_BACKEND_PROCESS_MODELS_DIR`
+- `M8FLOW_SAMPLE_APP_M8FLOW_BACKEND_CONTAINER_NAMES`
+- `M8FLOW_SAMPLE_APP_M8FLOW_BACKEND_PROCESS_MODELS_TARGET`
+- `M8FLOW_SAMPLE_APP_M8FLOW_BACKEND_TENANT_ROOT`
+- `M8FLOW_SAMPLE_APP_KEYCLOAK_LOGIN_CLIENT_ID`
+- `M8FLOW_SAMPLE_APP_KEYCLOAK_LOGIN_PUBLIC_BASE_URLS`
+- `M8FLOW_SAMPLE_APP_CONNECTOR_PROXY_BASE_URL`
+- `M8FLOW_SAMPLE_APP_CONNECTOR_PROXY_TIMEOUT_SECONDS`
+
+If shared mode is active and the local Keycloak admin API cannot be reached,
+startup now fails fast instead of silently seeding incompatible local-only
+identities into the shared m8flow database.
 
 ## Use The Local Wheel
 
@@ -83,6 +144,9 @@ Override it with `M8FLOW_SAMPLE_APP_DATABASE_URL`.
 
    `bash sample_app/scripts/stage_local_wheel.sh`
 
+   The staging helper also refreshes the `m8flow-bpmn-core` entry in
+   `sample_app/uv.lock` so the lockfile hash matches the rebuilt local wheel.
+
 3. Sync the sample app environment:
 
    `cd sample_app`
@@ -96,7 +160,35 @@ Override it with `M8FLOW_SAMPLE_APP_DATABASE_URL`.
 After the wheel is staged, the sample app resolves `m8flow-bpmn-core` from
 the exact versioned wheel under `sample_app/vendor/`. The staging helper also
 updates `sample_app/pyproject.toml` so `tool.uv.sources` points at that
-versioned filename.
+versioned filename and refreshes the matching wheel hash recorded in
+`sample_app/uv.lock`.
+
+If you ever see a `Hash mismatch for m8flow-bpmn-core` error after rebuilding
+the local wheel, rerun the staging helper or run:
+
+`cd sample_app && uv lock --refresh-package m8flow-bpmn-core`
+
+If you want one command that performs the whole build, stage, sync, and run
+flow:
+
+- PowerShell:
+
+  `.\sample_app\scripts\run_sample_app.ps1`
+
+- Bash:
+
+  `bash sample_app/scripts/run_sample_app.sh`
+
+Both scripts automatically switch to `uv --active` when the active virtual
+environment is the repo root `.venv`. You can also force that behavior:
+
+- PowerShell: `.\sample_app\scripts\run_sample_app.ps1 -UseActiveEnvironment`
+- Bash: `bash sample_app/scripts/run_sample_app.sh --active`
+
+Optional wrapper parameters:
+
+- PowerShell: `.\sample_app\scripts\run_sample_app.ps1 -BindHost 127.0.0.1 -Port 5010`
+- Bash: `bash sample_app/scripts/run_sample_app.sh 127.0.0.1 5010`
 
 ## Run The App
 
@@ -113,19 +205,33 @@ By default the app runs on `127.0.0.1:5010`.
 ## Demo Flow
 
 1. Open `/session/select` and choose `Sample Tenant Alpha`.
-2. Sign in as `alpha-admin`.
+2. In standalone mode, enter directly as `alpha-admin`. In shared audit mode,
+   choose `alpha-admin`, continue to Keycloak, and sign in there with
+   `alpha-admin` as both username and password.
 3. Go to `Process definitions` and deploy the built-in demo workflow.
 4. Go to `Start workflow` and create a new process instance.
-5. Switch identity to `alpha-operator`, claim `Prepare Request`, and submit a
-   JSON payload.
-6. Switch identity to `alpha-reviewer`, claim `Review Request`, and submit a
-   JSON payload.
-7. Open `Process instances` and inspect:
+5. Open `Secrets` and update `MAILTRAP_SMTP_PASSWORD` before running the email
+   step. Startup seeds these tenant-scoped defaults automatically:
+   - `MAILTRAP_SMTP_HOST`
+   - `MAILTRAP_SMTP_PORT`
+   - `MAILTRAP_SMTP_USERNAME`
+   - `MAILTRAP_SMTP_PASSWORD`
+   - `MAILTRAP_SMTP_STARTTLS`
+   - `MAILTRAP_EMAIL_FROM`
+6. Switch identity to `alpha-operator`, claim `Submit Reimbursement Request`,
+   and submit a JSON payload such as:
+   - `{"requester_name":"Andre Example","requester_email":"andre@example.com","expense_description":"Conference hotel and travel","amount":1250}`
+7. If the amount is greater than `1000`, switch identity to
+   `alpha-finance-reviewer`, claim `Finance Review`, and submit a JSON payload.
+   If Finance rejects the request, the workflow skips `Review Request` and goes
+   straight to the outcome email step.
+8. If Finance approved the request, switch identity to `alpha-reviewer`, claim
+   `Review Request`, and submit a JSON payload with the final outcome.
+9. Open `Process instances` and inspect:
    - final process status
    - persisted metadata
    - recorded event history
-8. Open `Secrets` to create or update tenant-scoped secrets using the app-owned
-   table.
+   - the service-task-driven HTML email outcome path
 
 ## Tests
 
@@ -143,8 +249,8 @@ The sample app demonstrates that a thin host application can:
 - consume `m8flow-bpmn-core` from a built wheel
 - own the Alembic migration history that creates both workflow and app tables
 - run workflow authorization and execution through the library
-- drive one workflow end to end with task claim, task completion, metadata
-  persistence, and event inspection
+- drive one workflow end to end with task claim, conditional routing, metadata
+  persistence, connector-backed email delivery, and event inspection
 - keep host-owned tables, such as `secret`, beside the library tables without
   folding app-specific concerns into the workflow package
 

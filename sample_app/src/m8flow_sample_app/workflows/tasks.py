@@ -9,6 +9,7 @@ from m8flow_bpmn_core import api
 from m8flow_bpmn_core.errors import NotFoundError
 from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
+from m8flow_sample_app import service_tasks as sample_app_service_tasks
 
 
 def list_pending_tasks(
@@ -51,15 +52,18 @@ def complete_task(
     human_task_id: int,
     task_payload: dict[str, object] | None,
 ) -> HumanTaskModel:
-    return api.execute_command(
-        session,
-        api.CompleteTaskCommand(
-            tenant_id=tenant_id,
-            human_task_id=human_task_id,
-            user_id=user_id,
-            task_payload=task_payload,
-        ),
-    )
+    with api.service_task_registry_scope(
+        sample_app_service_tasks.build_sample_app_service_task_registry
+    ):
+        return api.execute_command(
+            session,
+            api.CompleteTaskCommand(
+                tenant_id=tenant_id,
+                human_task_id=human_task_id,
+                user_id=user_id,
+                task_payload=task_payload,
+            ),
+        )
 
 
 def get_accessible_task(

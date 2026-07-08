@@ -13,7 +13,8 @@ workflow end to end through the public Python API.
   migration files.
 - The host app should default to PostgreSQL so the integration is easy to
   audit and compare with m8flow.
-- Authentication is mocked through a tenant and user picker, but workflow
+- Standalone mode can use a mocked tenant and user picker, but shared audit
+  mode should authenticate through the shared Keycloak realm while workflow
   authorization still runs through the library's tenant-aware RBAC checks.
 - Process definitions are stored in the database through
   `bpmn_process_definition`; the sample app does not need a filesystem template
@@ -21,6 +22,90 @@ workflow end to end through the public Python API.
 - App-owned tables such as secrets should stay separate from library-owned
   workflow tables, but should follow the same general schema style used by
   m8flow.
+
+## Shared Audit Mode Follow-up Plan
+
+This follow-up plan covers the extra work needed to make the sample app
+auditable in the existing m8flow UI instead of only running as a standalone
+host app.
+
+1. Add shared-m8flow audit-mode settings and environment discovery scaffolding.
+   Status: complete in this step.
+2. Provision sample organizations and users in the shared Keycloak realm.
+   Status: complete in this step.
+3. Realign sample-app tenant ids to Keycloak organization ids when the app
+   uses the shared m8flow database.
+   Status: complete in this step.
+4. Seed sample-app `user` rows from real Keycloak identities instead of fake
+   local `service` / `service_id` pairs in shared audit mode.
+   Status: complete as part of step 2 because tenant realignment and user
+   identity updates must happen together.
+5. Publish deployed BPMN files into the local m8flow backend process-model
+   catalog so the workflows are visible under `Processes` in m8flow UI.
+   Status: complete in this step.
+6. Add audit-mode diagnostics and final docs/tests.
+
+## Shared Audit Mode Settings
+
+Step 1 adds the startup settings and discovery helpers that later steps will
+reuse:
+
+- `M8FLOW_SAMPLE_APP_M8FLOW_AUDIT_MODE`
+  - `auto`: treat the configured shared database name as m8flow-compatible
+  - `off`: force standalone sample-app mode
+  - `shared`: force shared m8flow audit mode even if the database name does
+    not match
+- `M8FLOW_SAMPLE_APP_M8FLOW_SHARED_DATABASE_NAME`
+  - defaults to `postgres`
+- `M8FLOW_SAMPLE_APP_M8FLOW_BACKEND_PROCESS_MODELS_DIR`
+  - explicit local process-model catalog path override
+- `M8FLOW_SAMPLE_APP_M8FLOW_BACKEND_CONTAINER_NAMES`
+  - comma-separated Docker container candidates used to locate the backend
+    process-model mount
+- `M8FLOW_SAMPLE_APP_M8FLOW_BACKEND_PROCESS_MODELS_TARGET`
+  - backend in-container mount target, default `/app/data/process_models`
+- `M8FLOW_SAMPLE_APP_M8FLOW_BACKEND_TENANT_ROOT`
+  - optional override for the tenant root used when publishing models to the
+    backend catalog
+- `M8FLOW_SAMPLE_APP_KEYCLOAK_LOGIN_PUBLIC_BASE_URLS`
+  - optional comma-separated public base URLs allowed for the sample-app
+    Keycloak browser callback; when unset, the app derives local defaults from
+    `host` / `port`
+
+The app now computes a shared-audit context during startup and stores it in
+Flask app extensions.
+
+In shared mode, startup now also:
+
+- provisions the sample tenants as shared-realm Keycloak organizations
+- provisions the sample users in those organizations
+- resets existing shared demo-user passwords so each password matches the
+  username
+- provisions a public shared-realm browser client for the sample app callback
+  URLs
+- updates `m8flow_tenant.id` to the Keycloak organization id
+- updates sample-app `user.service` / `user.service_id` to the shared realm
+  issuer plus real Keycloak user ids
+
+If shared mode is active and Keycloak provisioning fails, app startup fails
+instead of silently seeding incompatible local-only identities into the shared
+database.
+
+When a process definition is deployed from the sample-app UI in shared mode,
+the app now also publishes or refreshes the BPMN files inside the local
+m8flow backend process-model catalog if:
+
+- the backend catalog root can be discovered or explicitly configured
+- the process model identifier is in `<group>/<model>` format
+
+Shared mode now redirects the browser into Keycloak and only opens the sample
+app session after the callback resolves back to the expected tenant user.
+The tenant/user page is still used as the host-app preselection screen, but it
+no longer collects credentials directly.
+
+The next major shared-audit gap is full logout/session lifecycle parity with
+the main m8flow frontend plus any additional UX polish around the tenant-first
+preselection screen.
 
 ## Step 1
 
@@ -90,7 +175,8 @@ Add the workflow-facing web screens backed by the library.
 Files:
 
 - `sample_app/fixtures/sample_app_demo.bpmn`
-  - Built-in two-step user-task workflow used by the sample app.
+  - Built-in reimbursement workflow with conditional Finance review and an
+    SMTP service task used by the sample app.
 - `sample_app/src/m8flow_sample_app/ui.py`
   - Shared page layout, navigation, flash rendering, and simple post-button
     helper.
@@ -190,24 +276,43 @@ Files:
 2. Stage the newest wheel into the sample app vendor path:
    - PowerShell: `.\sample_app\scripts\stage_local_wheel.ps1`
    - Bash: `bash sample_app/scripts/stage_local_wheel.sh`
+   - The staging helper also refreshes the `m8flow-bpmn-core` wheel hash
+     recorded in `sample_app/uv.lock`
 3. Sync the sample app environment:
    - `cd sample_app`
    - `uv sync`
    - If you are already inside the repo root `.venv`, use `uv sync --active`
      instead so uv targets the active environment instead of creating
      `sample_app/.venv`
+   - Or use the wrapper scripts to perform build, stage, sync, and run in one
+     step:
+     - PowerShell: `.\sample_app\scripts\run_sample_app.ps1`
+     - Bash: `bash sample_app/scripts/run_sample_app.sh`
+     - Optional host/port override:
+       `.\sample_app\scripts\run_sample_app.ps1 -BindHost 127.0.0.1 -Port 5010`
+       or `bash sample_app/scripts/run_sample_app.sh 127.0.0.1 5010`
 4. Start the app:
    - `uv run m8flow-sample-app`
    - If you are already inside the repo root `.venv`, use
      `uv run --active m8flow-sample-app`
 5. Open `http://127.0.0.1:5010/session/select`
-6. Sign in as `Sample Tenant Alpha / alpha-admin`
-7. Deploy the built-in demo workflow from `Process definitions`
-8. Start a workflow from `Start workflow`
-9. Switch to `alpha-operator` and complete `Prepare Request`
-10. Switch to `alpha-reviewer` and complete `Review Request`
-11. Inspect the completed instance, metadata, and events from `Process instances`
-12. Use `Secrets` to verify the app-owned secret CRUD flow
+6. Choose `Sample Tenant Alpha / alpha-admin`
+7. In shared audit mode, continue to Keycloak and sign in there with the demo
+   username itself as the password, for example `alpha-admin` /
+   `alpha-admin`
+8. Deploy the built-in demo workflow from `Process definitions`
+9. Start a workflow from `Start workflow`
+10. Open `Secrets` and update `MAILTRAP_SMTP_PASSWORD`
+11. Switch to `alpha-operator` and complete `Submit Reimbursement Request`
+12. If the amount is greater than `1000`, switch to
+    `alpha-finance-reviewer` and complete `Finance Review`
+13. If Finance approved the request, switch to `alpha-reviewer` and complete
+    `Review Request`
+14. Inspect the completed instance, metadata, and events from
+    `Process instances`
+15. Verify that the workflow sent the final outcome through the SMTP service
+    task backed by the tenant Mailtrap secrets. The email payload is generated
+    as HTML only.
 
 ## Integration Findings
 
@@ -221,7 +326,8 @@ Files:
 - The staged wheel must keep its versioned filename. `uv` rejects a renamed
   file such as `m8flow_bpmn_core.whl` because wheel filenames are required to
   include a normalized version. The staging helper now preserves the original
-  wheel filename and rewrites `tool.uv.sources` automatically.
+  wheel filename, rewrites `tool.uv.sources`, and refreshes the
+  `sample_app/uv.lock` hash for the rebuilt local wheel automatically.
 - On Windows, `uv build` can fail before packaging starts if its temporary
   trampoline executable is still locked by another process. That is an
   environment/tooling issue rather than a package metadata issue. For the
@@ -237,6 +343,12 @@ Files:
   - list instances
   - read metadata
   - read events
+- The sample app can also inject host-app service-task behavior without
+  changing the library contract:
+  - the BPMN calls `smtp/SendHTMLEmail`
+  - the host app wraps the SMTP connector with tenant-secret resolution
+  - the library still executes the service task synchronously inside workflow
+    advancement
 - Two read-side gaps still require direct ORM access in the host app:
   - listing stored process definitions by tenant
   - loading a single human task by id for the task-detail page
@@ -267,16 +379,20 @@ host application through the public library API.
 | Definition deployment | Imports BPMN into `bpmn_process_definition` through `ImportBpmnProcessDefinitionCommand`. | Matches the library-backed persistence model and keeps the workflow in the same DB tables m8flow expects. |
 | Process start | Starts instances through `InitializeProcessInstanceFromDefinitionCommand`. | Matches the in-process start contract and keeps tenant/user authorization inside the library. |
 | Task lifecycle | Lists pending work, claims tasks, and completes tasks through the public commands and queries. | Matches the expected user-task lifecycle used by m8flow-style host apps. |
+| Service task execution | Runs the reimbursement outcome email through a BPMN service task that calls the shared connector-proxy SMTP command. The sample app supplies tenant Mailtrap secrets through a host-side registry wrapper. | Proves that a host app can keep connector deployment in shared infrastructure while still executing service tasks through the library runtime. |
 | Metadata persistence | Reads `process_instance_metadata` after each task submission. | Matches current library behavior, including stringified metadata values. |
 | Event history | Reads `process_instance_event` for created, completed, and process-completed events. | Matches the auditable event trail required for host-app inspection. |
-| Secrets | Uses an app-owned `secret` table outside the library metadata. | Demonstrates that host-owned tables can coexist with the library schema while following the same schema style used by m8flow. |
-| Authentication UX | Uses a static tenant/user picker rather than Keycloak or the m8flow login flow. | Intentionally simpler than m8flow, but authorization still runs through the library's tenant-aware checks after identity selection. |
+| Secrets | Uses an app-owned `secret` table outside the library metadata and seeds Mailtrap defaults per tenant. | Demonstrates that host-owned tables can coexist with the library schema while following the same schema style used by m8flow. |
+| Authentication UX | Uses a tenant-first session page. In standalone mode it behaves like a local picker; in shared audit mode it redirects the browser to Keycloak, exchanges the authorization code on callback, and only opens the session when the returned identity matches the selected tenant user. | Much closer to the real m8flow login shape, though the sample app still keeps a pre-login tenant/user chooser instead of the full m8flow frontend flow. |
 | Process catalog UX | Deploys a built-in BPMN fixture from the app instead of browsing a model catalog. | Simpler than m8flow's full process-model management, but enough to prove import, start, and execution end to end. |
 
 ## Documented Host-App Integration Issues
 
 - The host app must own migrations for both library-owned and app-owned tables.
   The wheel does not ship Alembic revisions.
+- Shared audit mode now uses a browser redirect / callback OIDC flow, but the
+  sample app still starts from a tenant-first preselection screen and does not
+  yet mirror the full m8flow frontend login/logout lifecycle.
 - Two read-side use cases still rely on direct ORM access in the sample app:
   - listing stored process definitions by tenant
   - loading a single human task by id for the task detail page
@@ -297,5 +413,8 @@ editable source checkout.
   - demo BPMN deploys through the library
   - process instances start and complete through the web app
   - manual tasks can be claimed and completed through the library
+  - reimbursement requests over `1000` route through Finance before the final
+    review
+  - the final outcome is sent through the BPMN SMTP service task
   - process metadata and event history persist in the library tables
   - app-owned secrets CRUD works alongside the workflow tables

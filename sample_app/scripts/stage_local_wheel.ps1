@@ -4,6 +4,22 @@ param(
     [string]$PyprojectPath = (Join-Path $PSScriptRoot "..\pyproject.toml")
 )
 
+$ErrorActionPreference = "Stop"
+
+function Resolve-PythonExecutable {
+    $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+    if ($null -ne $pythonCommand) {
+        return $pythonCommand.Source
+    }
+
+    $pyCommand = Get-Command py -ErrorAction SilentlyContinue
+    if ($null -ne $pyCommand) {
+        return @($pyCommand.Source, "-3")
+    }
+
+    throw "Could not find 'python' or 'py'. Install Python before staging the sample-app wheel."
+}
+
 $resolvedDist = Resolve-Path -Path $DistDirectory -ErrorAction Stop
 $wheel = Get-ChildItem -Path $resolvedDist -Filter "m8flow_bpmn_core-*.whl" |
     Sort-Object LastWriteTimeUtc -Descending |
@@ -29,17 +45,26 @@ if (Test-Path -LiteralPath $legacyWheelPath) {
 
 Copy-Item -LiteralPath $wheel.FullName -Destination $destination -Force
 
-$pyproject = Get-Content -Path $PyprojectPath -Raw -ErrorAction Stop
-$relativeWheelPath = "vendor/$($wheel.Name)"
-$pattern = 'm8flow-bpmn-core = \{ path = "vendor/[^"]+" \}'
-if ($pyproject -notmatch $pattern) {
-    throw "Could not update '$PyprojectPath' with the staged wheel path."
+$pythonExecutable = Resolve-PythonExecutable
+$uvLockPath = Join-Path $PSScriptRoot "..\uv.lock"
+$metadataScript = Join-Path $PSScriptRoot "update_local_wheel_metadata.py"
+if ($pythonExecutable -is [array]) {
+    & $pythonExecutable[0] $pythonExecutable[1] $metadataScript `
+        --pyproject-path $PyprojectPath `
+        --uv-lock-path $uvLockPath `
+        --wheel-path $destination
 }
-
-$updatedPyproject = $pyproject -replace $pattern, "m8flow-bpmn-core = { path = `"$relativeWheelPath`" }"
-
-Set-Content -Path $PyprojectPath -Value $updatedPyproject -NoNewline
+else {
+    & $pythonExecutable $metadataScript `
+        --pyproject-path $PyprojectPath `
+        --uv-lock-path $uvLockPath `
+        --wheel-path $destination
+}
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to refresh sample_app/pyproject.toml and sample_app/uv.lock for the staged wheel."
+}
 
 Write-Host "Staged wheel:" $wheel.FullName
 Write-Host "Destination :" $destination
-Write-Host "Updated source:" $relativeWheelPath
+Write-Host "Updated source:" "vendor/$($wheel.Name)"
+Write-Host "Refreshed lock: sample_app/uv.lock"

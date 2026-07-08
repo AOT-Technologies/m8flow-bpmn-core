@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from html import escape
 
-from flask import get_flashed_messages, url_for
+from flask import current_app, get_flashed_messages, url_for
 
 from m8flow_sample_app.auth import ActiveIdentity
+from m8flow_sample_app.shared_m8flow import (
+    SHARED_M8FLOW_AUDIT_CONTEXT_KEY,
+    SharedM8flowAuditContext,
+)
 
 
 def render_page(
@@ -14,6 +18,7 @@ def render_page(
     identity: ActiveIdentity | None = None,
 ) -> str:
     nav_html = _navigation(identity)
+    audit_html = _audit_mode_banner(identity)
     flash_html = _flash_messages()
 
     return f"""<!doctype html>
@@ -61,6 +66,33 @@ def render_page(
         border: 1px solid #d67c73;
         padding: 0.75rem;
       }}
+      .flash-warning {{
+        background: #fff7e6;
+        border: 1px solid #e0b15b;
+        padding: 0.75rem;
+      }}
+      .audit-banner {{
+        margin: 1rem 0;
+        padding: 0.85rem 1rem;
+        border: 1px solid #cbd5e1;
+        background: #f8fafc;
+      }}
+      .audit-banner h2 {{
+        margin: 0 0 0.4rem;
+        font-size: 1rem;
+      }}
+      .audit-banner ul {{
+        margin: 0.35rem 0 0 1.25rem;
+        padding: 0;
+      }}
+      .audit-shared {{
+        border-color: #7fb77e;
+        background: #edf7ed;
+      }}
+      .audit-standalone {{
+        border-color: #94a3b8;
+        background: #f8fafc;
+      }}
       .identity {{
         margin: 0.75rem 0 1rem;
         color: #444;
@@ -77,6 +109,7 @@ def render_page(
   <body>
     <h1>{escape(title)}</h1>
     {nav_html}
+    {audit_html}
     {flash_html}
     {body}
   </body>
@@ -139,3 +172,60 @@ def _flash_messages() -> str:
         safe_message = escape(str(message))
         items.append(f'<div class="flash-{safe_category}">{safe_message}</div>')
     return "".join(items)
+
+
+def _audit_mode_banner(identity: ActiveIdentity | None) -> str:
+    audit_context = current_app.extensions.get(SHARED_M8FLOW_AUDIT_CONTEXT_KEY)
+    if not isinstance(audit_context, SharedM8flowAuditContext):
+        return ""
+
+    details: list[str] = []
+    if audit_context.uses_shared_m8flow:
+        banner_class = "audit-banner audit-shared"
+        title = "Shared m8flow Audit Mode"
+        details.append(
+            "This sample app is using the shared m8flow-compatible database "
+            "and shared Keycloak-backed user identities."
+        )
+        if identity is not None:
+            details.append(
+                "Current tenant slug "
+                f"'{identity.tenant.slug}' maps to tenant id "
+                f"'{identity.tenant.id}'."
+            )
+            details.append(
+                "Current user is backed by service "
+                f"'{identity.user.service}' with service id "
+                f"'{identity.user.service_id}'."
+            )
+        if audit_context.process_models_root is not None:
+            details.append(
+                "Local m8flow backend process-model catalog: "
+                f"{audit_context.process_models_root}"
+            )
+        else:
+            details.append(
+                "No local m8flow backend process-model catalog was discovered, "
+                "so deployed BPMN files cannot yet appear under Processes in "
+                "the m8flow UI."
+            )
+        if audit_context.backend_container_name:
+            details.append(
+                "Catalog discovery source: "
+                f"{audit_context.backend_container_name}"
+            )
+    else:
+        banner_class = "audit-banner audit-standalone"
+        title = "Standalone Sample-App Mode"
+        details.append(
+            "This sample app is running without shared m8flow audit mode. "
+            "Workflow execution works normally, but m8flow UI will not reuse "
+            "these local-only identities or process-model catalog files."
+        )
+
+    details.extend(audit_context.warnings)
+    items = "".join(f"<li>{escape(item)}</li>" for item in details)
+    return (
+        f'<section class="{escape(banner_class)}">'
+        f"<h2>{escape(title)}</h2><ul>{items}</ul></section>"
+    )
