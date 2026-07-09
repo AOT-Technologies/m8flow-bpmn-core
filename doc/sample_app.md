@@ -177,6 +177,9 @@ Files:
 - `sample_app/fixtures/sample_app_demo.bpmn`
   - Built-in reimbursement workflow with conditional Finance review and an
     SMTP service task used by the sample app.
+- `sample_app/fixtures/sample_app_review_timeout_escalation.bpmn`
+  - Built-in manual-review workflow with an interrupting boundary timer that
+    escalates the task to a supervisor lane after two minutes.
 - `sample_app/src/m8flow_sample_app/ui.py`
   - Shared page layout, navigation, flash rendering, and simple post-button
     helper.
@@ -197,6 +200,10 @@ Files:
 - `sample_app/src/m8flow_sample_app/workflows/instances.py`
   - Use `GetProcessInstanceQuery`, `GetProcessInstanceEventsQuery`,
     `GetProcessInstanceMetadataQuery`, and `ListProcessInstancesQuery`.
+- `sample_app/src/m8flow_sample_app/scheduler.py`
+  - Run a simple host-managed scheduler loop that polls
+    `run_due_scheduler_jobs(...)` so timer workflows can advance without
+    Celery.
 
 ## Step 4
 
@@ -379,6 +386,7 @@ host application through the public library API.
 | Definition deployment | Imports BPMN into `bpmn_process_definition` through `ImportBpmnProcessDefinitionCommand`. | Matches the library-backed persistence model and keeps the workflow in the same DB tables m8flow expects. |
 | Process start | Starts instances through `InitializeProcessInstanceFromDefinitionCommand`. | Matches the in-process start contract and keeps tenant/user authorization inside the library. |
 | Task lifecycle | Lists pending work, claims tasks, and completes tasks through the public commands and queries. | Matches the expected user-task lifecycle used by m8flow-style host apps. |
+| Timer execution | Runs a host-managed inline scheduler loop that polls `run_due_scheduler_jobs(...)`, including the built-in boundary-timer escalation flow. | Proves that a thin app can own timer execution itself instead of depending on an external worker stack. |
 | Service task execution | Runs the reimbursement outcome email through a BPMN service task that calls the shared connector-proxy SMTP command. The sample app supplies tenant Mailtrap secrets through a host-side registry wrapper. | Proves that a host app can keep connector deployment in shared infrastructure while still executing service tasks through the library runtime. |
 | Metadata persistence | Reads `process_instance_metadata` after each task submission. | Matches current library behavior, including stringified metadata values. |
 | Event history | Reads `process_instance_event` for created, completed, and process-completed events. | Matches the auditable event trail required for host-app inspection. |
@@ -415,6 +423,8 @@ editable source checkout.
   - manual tasks can be claimed and completed through the library
   - reimbursement requests over `1000` route through Finance before the final
     review
+  - an interrupting boundary timer can cancel a waiting manual task and
+    escalate it to the Supervisor lane through the sample app scheduler loop
   - the final outcome is sent through the BPMN SMTP service task
   - process metadata and event history persist in the library tables
   - app-owned secrets CRUD works alongside the workflow tables

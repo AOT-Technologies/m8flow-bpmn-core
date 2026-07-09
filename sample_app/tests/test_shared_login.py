@@ -36,6 +36,7 @@ def shared_app_client(
     )
     monkeypatch.setenv("M8FLOW_SAMPLE_APP_SECRET_KEY", "sample-app-test-secret")
     monkeypatch.setenv("M8FLOW_SAMPLE_APP_M8FLOW_AUDIT_MODE", "shared")
+    monkeypatch.setenv("M8FLOW_SAMPLE_APP_SCHEDULER_ENABLED", "false")
     monkeypatch.setattr(
         "m8flow_sample_app.seed.ensure_shared_realm_organizations_and_users",
         lambda **_: _fake_keycloak_context(),
@@ -274,6 +275,12 @@ def _fake_keycloak_context() -> ProvisionedKeycloakSharedRealmContext:
                 organization_id="org-alpha",
                 user_id="kc-alpha-reviewer",
             ),
+            "alpha-supervisor": _fake_keycloak_user(
+                username="alpha-supervisor",
+                organization_alias="sample-tenant-alpha",
+                organization_id="org-alpha",
+                user_id="kc-alpha-supervisor",
+            ),
             "beta-admin": _fake_keycloak_user(
                 username="beta-admin",
                 organization_alias="sample-tenant-beta",
@@ -297,6 +304,12 @@ def _fake_keycloak_context() -> ProvisionedKeycloakSharedRealmContext:
                 organization_alias="sample-tenant-beta",
                 organization_id="org-beta",
                 user_id="kc-beta-reviewer",
+            ),
+            "beta-supervisor": _fake_keycloak_user(
+                username="beta-supervisor",
+                organization_alias="sample-tenant-beta",
+                organization_id="org-beta",
+                user_id="kc-beta-supervisor",
             ),
         },
         warnings=(),

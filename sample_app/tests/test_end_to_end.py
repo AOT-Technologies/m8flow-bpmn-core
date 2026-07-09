@@ -13,16 +13,20 @@ from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
 from m8flow_bpmn_core.models.human_task import HumanTaskModel
+from m8flow_bpmn_core.models.json_data import JsonDataModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventModel
 from m8flow_bpmn_core.models.process_instance_metadata import (
     ProcessInstanceMetadataModel,
 )
+from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
+from m8flow_bpmn_core.models.process_instance import WORKFLOW_STATE_JSON_DATA_KEY
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_sample_app.app import create_app
 from m8flow_sample_app.db import session_scope
 from m8flow_sample_app.models import SecretModel
+from m8flow_sample_app.scheduler import run_scheduler_cycle
 from m8flow_sample_app.settings import get_settings
 
 
@@ -37,6 +41,7 @@ def app_client(
         f"sqlite+pysqlite:///{database_path}",
     )
     monkeypatch.setenv("M8FLOW_SAMPLE_APP_SECRET_KEY", "sample-app-test-secret")
+    monkeypatch.setenv("M8FLOW_SAMPLE_APP_SCHEDULER_ENABLED", "false")
 
     captured_smtp_requests: list[api.ServiceTaskRequest] = []
 
@@ -74,6 +79,7 @@ def test_high_value_request_routes_through_finance_and_sends_email(
         operator_user,
         finance_user,
         reviewer_user,
+        _supervisor_user,
     ) = _load_seeded_users()
     process_instance_id = _deploy_and_start_demo_workflow(
         app_client,
@@ -238,6 +244,7 @@ def test_high_value_request_rejected_by_finance_skips_review_and_sends_email(
         operator_user,
         finance_user,
         reviewer_user,
+        _supervisor_user,
     ) = _load_seeded_users()
     process_instance_id = _deploy_and_start_demo_workflow(
         app_client,
@@ -352,6 +359,7 @@ def test_low_value_request_skips_finance_review(
         operator_user,
         finance_user,
         reviewer_user,
+        _supervisor_user,
     ) = _load_seeded_users()
     process_instance_id = _deploy_and_start_demo_workflow(
         app_client,
@@ -442,6 +450,119 @@ def test_low_value_request_skips_finance_review(
     )
 
 
+def test_review_timeout_escalates_to_supervisor(
+    app_client: FlaskClient,
+) -> None:
+    (
+        tenant,
+        admin_user,
+        operator_user,
+        _finance_user,
+        _reviewer_user,
+        supervisor_user,
+    ) = _load_seeded_users()
+    process_instance_id = _deploy_and_start_timeout_escalation_workflow(
+        app_client,
+        tenant_id=tenant.id,
+        admin_user_id=admin_user.id,
+    )
+
+    _login(app_client, tenant_id=tenant.id, user_id=operator_user.id)
+    response = app_client.get("/tasks")
+    assert "Review Submitted Request" in response.get_data(as_text=True)
+
+    original_task_id = _task_id_for_title(tenant.id, "Review Submitted Request")
+    with session_scope() as db_session:
+        scheduler_job = db_session.scalars(
+            select(SchedulerJobModel)
+            .where(
+                SchedulerJobModel.m8f_tenant_id == tenant.id,
+                SchedulerJobModel.process_instance_id == process_instance_id,
+            )
+            .order_by(SchedulerJobModel.id.asc())
+        ).first()
+        assert scheduler_job is not None
+        timer_payloads = scheduler_job.payload_json.get("timer_tasks", [])
+        assert isinstance(timer_payloads, list) and timer_payloads
+        timer_task_payload = timer_payloads[0]
+        assert isinstance(timer_task_payload, dict)
+        timer_task_guid = timer_task_payload["task_guid"]
+        assert isinstance(timer_task_guid, str)
+        scheduler_job.run_at_in_seconds = 0
+        _force_waiting_timer_due(
+            db_session,
+            process_instance_id=process_instance_id,
+            task_guid=timer_task_guid,
+        )
+
+    processed_count = run_scheduler_cycle(
+        now_in_seconds=1,
+        worker_id="sample-app-test-scheduler",
+    )
+    assert processed_count == 1
+
+    _login(app_client, tenant_id=tenant.id, user_id=supervisor_user.id)
+    response = app_client.get("/tasks")
+    response_text = response.get_data(as_text=True)
+    assert "Supervisor Review" in response_text
+    assert "Review Submitted Request" not in response_text
+
+    supervisor_task_id = _task_id_for_title(tenant.id, "Supervisor Review")
+    app_client.post(f"/tasks/{supervisor_task_id}/claim", follow_redirects=True)
+    response = app_client.post(
+        f"/tasks/{supervisor_task_id}/complete",
+        data={
+            "task_payload_json": json.dumps(
+                {
+                    "supervisor_comment": "Reviewed after timeout escalation.",
+                }
+            )
+        },
+        follow_redirects=True,
+    )
+    assert "completed" in response.get_data(as_text=True)
+
+    with session_scope() as db_session:
+        process_instance = db_session.get(ProcessInstanceModel, process_instance_id)
+        assert process_instance is not None
+        assert process_instance.status == "complete"
+
+        original_task = db_session.get(HumanTaskModel, original_task_id)
+        assert original_task is not None
+        assert original_task.completed is True
+        assert original_task.task_status == "CANCELLED"
+
+        supervisor_task = db_session.get(HumanTaskModel, supervisor_task_id)
+        assert supervisor_task is not None
+        assert supervisor_task.completed is True
+        assert supervisor_task.task_status == "COMPLETED"
+
+        remaining_jobs = list(
+            db_session.scalars(
+                select(SchedulerJobModel).where(
+                    SchedulerJobModel.m8f_tenant_id == tenant.id,
+                    SchedulerJobModel.process_instance_id == process_instance_id,
+                )
+            )
+        )
+        assert remaining_jobs == []
+
+        event_types = [
+            event.event_type
+            for event in db_session.scalars(
+                select(ProcessInstanceEventModel)
+                .where(
+                    ProcessInstanceEventModel.m8f_tenant_id == tenant.id,
+                    ProcessInstanceEventModel.process_instance_id
+                    == process_instance_id,
+                )
+                .order_by(ProcessInstanceEventModel.id.asc())
+            )
+        ]
+        assert "task_cancelled" in event_types
+        assert event_types[-1] == "process_instance_completed"
+
+
 def test_session_selection_page_shows_standalone_mode_banner(
     app_client: FlaskClient,
 ) -> None:
@@ -452,7 +573,7 @@ def test_session_selection_page_shows_standalone_mode_banner(
 
 
 def test_secret_crud_works_through_the_sample_app(app_client: FlaskClient) -> None:
-    tenant, admin_user, _operator_user, _finance_user, _reviewer_user = (
+    tenant, admin_user, _operator_user, _finance_user, _reviewer_user, _supervisor = (
         _load_seeded_users()
     )
     _login(app_client, tenant_id=tenant.id, user_id=admin_user.id)
@@ -531,13 +652,48 @@ def _deploy_and_start_demo_workflow(
     tenant_id: str,
     admin_user_id: int,
 ) -> int:
+    return _deploy_and_start_workflow(
+        app_client,
+        tenant_id=tenant_id,
+        admin_user_id=admin_user_id,
+        deploy_path="/process-definitions/deploy-demo",
+        process_model_identifier="sample-app/e2e-demo",
+        bpmn_name="Sample App E2E Demo",
+    )
+
+
+def _deploy_and_start_timeout_escalation_workflow(
+    app_client: FlaskClient,
+    *,
+    tenant_id: str,
+    admin_user_id: int,
+) -> int:
+    return _deploy_and_start_workflow(
+        app_client,
+        tenant_id=tenant_id,
+        admin_user_id=admin_user_id,
+        deploy_path="/process-definitions/deploy-timeout-escalation",
+        process_model_identifier="sample-app/e2e-timeout-escalation",
+        bpmn_name="Sample App E2E Timeout Escalation",
+    )
+
+
+def _deploy_and_start_workflow(
+    app_client: FlaskClient,
+    *,
+    tenant_id: str,
+    admin_user_id: int,
+    deploy_path: str,
+    process_model_identifier: str,
+    bpmn_name: str,
+) -> int:
     _login(app_client, tenant_id=tenant_id, user_id=admin_user_id)
 
     response = app_client.post(
-        "/process-definitions/deploy-demo",
+        deploy_path,
         data={
-            "process_model_identifier": "sample-app/e2e-demo",
-            "bpmn_name": "Sample App E2E Demo",
+            "process_model_identifier": process_model_identifier,
+            "bpmn_name": bpmn_name,
         },
         follow_redirects=True,
     )
@@ -579,6 +735,7 @@ def _load_seeded_users() -> tuple[
     UserModel,
     UserModel,
     UserModel,
+    UserModel,
 ]:
     with session_scope() as db_session:
         tenant = db_session.scalar(
@@ -603,6 +760,7 @@ def _load_seeded_users() -> tuple[
             user_by_username["alpha-operator"],
             user_by_username["alpha-finance-reviewer"],
             user_by_username["alpha-reviewer"],
+            user_by_username["alpha-supervisor"],
         )
 
 
@@ -631,6 +789,33 @@ def _task_id_for_title(tenant_id: str, task_title: str) -> int:
         ).first()
         assert task is not None
         return task.id
+
+
+def _force_waiting_timer_due(
+    db_session,
+    *,
+    process_instance_id: int,
+    task_guid: str,
+) -> None:
+    process_instance = db_session.get(ProcessInstanceModel, process_instance_id)
+    assert process_instance is not None
+    assert process_instance.bpmn_process is not None
+
+    json_data = db_session.get(
+        JsonDataModel,
+        process_instance.bpmn_process.json_data_hash,
+    )
+    assert json_data is not None
+    payload = dict(json_data.data)
+    serialized_workflow = json.loads(payload[WORKFLOW_STATE_JSON_DATA_KEY])
+    serialized_workflow["tasks"][task_guid]["internal_data"]["event_value"] = (
+        "1970-01-01T00:00:00+00:00"
+    )
+    payload[WORKFLOW_STATE_JSON_DATA_KEY] = json.dumps(serialized_workflow)
+    process_instance.bpmn_process.json_data_hash = (
+        JsonDataModel.create_or_update_from_payload(db_session, payload)
+    )
+    db_session.flush()
 
 
 class _FakeSmtpConnector:

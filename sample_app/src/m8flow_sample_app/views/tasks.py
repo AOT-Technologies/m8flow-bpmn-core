@@ -32,6 +32,12 @@ TASK_JSON_EXAMPLES = {
   "review_outcome": "approved",
   "review_comment": "Approved after policy review."
 }""",
+    "Review Submitted Request": """{
+  "review_comment": "Reviewed within the initial two-minute SLA."
+}""",
+    "Supervisor Review": """{
+  "supervisor_comment": "Reviewed by supervisor after timeout escalation."
+}""",
 }
 
 
@@ -203,18 +209,29 @@ def _complete_task_form(*, task_name: str | None, task_id: int) -> str:
   "note": "Completed from the sample app"
 }""",
     )
-    helper_text = (
-        "<p>Amounts greater than 1000 route to Finance before the final review. "
-        "If Finance rejects the request, the workflow skips the final review and goes "
-        "straight to the outcome email step.</p>"
-        if task_name == "Submit Reimbursement Request"
-        else (
-            "<p>If Finance rejects here, the workflow goes directly to the outcome "
-            "email step instead of creating a Review Request task.</p>"
-            if task_name == "Finance Review"
-            else ""
+    helper_text = ""
+    if task_name == "Submit Reimbursement Request":
+        helper_text = (
+            "<p>Amounts greater than 1000 route to Finance before the final "
+            "review. If Finance rejects the request, the workflow skips the "
+            "final review and goes straight to the outcome email step.</p>"
         )
-    )
+    elif task_name == "Finance Review":
+        helper_text = (
+            "<p>If Finance rejects here, the workflow goes directly to the "
+            "outcome email step instead of creating a Review Request task.</p>"
+        )
+    elif task_name == "Review Submitted Request":
+        helper_text = (
+            "<p>If this task stays open for more than two minutes after the "
+            "process starts, the boundary timer cancels it and moves the "
+            "workflow to Supervisor Review.</p>"
+        )
+    elif task_name == "Supervisor Review":
+        helper_text = (
+            "<p>This task only appears when the initial manual review timed "
+            "out and the workflow escalated to the Supervisor lane.</p>"
+        )
     return f"""
 <form method="post" action="{escape(url_for("complete_task_action", human_task_id=task_id))}">
   <label for="task_payload_json">Task payload JSON</label><br />

@@ -8,6 +8,7 @@ from m8flow_sample_app.keycloak_login import (
     shared_login_client_redirect_uris,
     shared_login_client_web_origins,
 )
+from m8flow_sample_app.scheduler import SampleAppSchedulerPoller
 from m8flow_sample_app.seed import seed_static_reference_data
 from m8flow_sample_app.shared_m8flow import (
     SHARED_M8FLOW_AUDIT_CONTEXT_KEY,
@@ -38,6 +39,16 @@ def create_app() -> Flask:
         )
     with session_scope() as db_session:
         seed_static_reference_data(db_session, audit_context=audit_context)
+
+    if settings.scheduler_enabled:
+        scheduler_poller = SampleAppSchedulerPoller(
+            database_url=settings.database_url,
+            poll_seconds=settings.scheduler_poll_seconds,
+            batch_limit=settings.scheduler_batch_limit,
+            worker_id=settings.scheduler_worker_id,
+        )
+        scheduler_poller.start()
+        app.extensions["sample_app_scheduler_poller"] = scheduler_poller
 
     register_web_routes(app)
     return app

@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     keycloak_login_public_base_urls: str | None = None
     connector_proxy_base_url: str = "http://localhost:6844"
     connector_proxy_timeout_seconds: float = 10.0
+    scheduler_enabled: bool = True
+    scheduler_poll_seconds: float = 1.0
+    scheduler_batch_limit: int = 100
+    scheduler_worker_id: str = "sample-app-inline-scheduler"
 
 
 @lru_cache(maxsize=1)

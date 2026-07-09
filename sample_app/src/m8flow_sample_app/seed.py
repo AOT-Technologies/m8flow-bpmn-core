@@ -82,6 +82,14 @@ SEED_TENANTS = (
                 role_name=ROLE_MANAGER,
                 lane_name="Review",
             ),
+            SeedUserDefinition(
+                username="alpha-supervisor",
+                email="alpha-supervisor@example.com",
+                display_name="Alpha Supervisor",
+                service_id="alpha-supervisor",
+                role_name=ROLE_MANAGER,
+                lane_name="Supervisor",
+            ),
         ),
     ),
     SeedTenantDefinition(
@@ -119,6 +127,14 @@ SEED_TENANTS = (
                 service_id="beta-reviewer",
                 role_name=ROLE_MANAGER,
                 lane_name="Review",
+            ),
+            SeedUserDefinition(
+                username="beta-supervisor",
+                email="beta-supervisor@example.com",
+                display_name="Beta Supervisor",
+                service_id="beta-supervisor",
+                role_name=ROLE_MANAGER,
+                lane_name="Supervisor",
             ),
         ),
     ),
@@ -216,10 +232,16 @@ def lane_owner_usernames_for_tenant(
         for user in tenant_definition.users
         if user.lane_name == "Review"
     ]
+    supervisor_owners = [
+        user.username
+        for user in tenant_definition.users
+        if user.lane_name == "Supervisor"
+    ]
     return {
         "Operations": operations_owners,
         "Finance": finance_owners,
         "Review": review_owners,
+        "Supervisor": supervisor_owners,
     }
 
 

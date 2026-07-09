@@ -200,6 +200,7 @@ def test_shared_seed_realigns_legacy_tenant_and_user_rows(
             "alpha-finance-reviewer",
             "alpha-operator",
             "alpha-reviewer",
+            "alpha-supervisor",
         ]
         assert all(
             user.service == keycloak_context.service_issuer for user in alpha_users
@@ -318,6 +319,12 @@ def _fake_keycloak_context() -> ProvisionedKeycloakSharedRealmContext:
                 organization_id="org-alpha",
                 user_id="kc-alpha-reviewer",
             ),
+            "alpha-supervisor": _fake_keycloak_user(
+                username="alpha-supervisor",
+                organization_alias="sample-tenant-alpha",
+                organization_id="org-alpha",
+                user_id="kc-alpha-supervisor",
+            ),
             "beta-admin": _fake_keycloak_user(
                 username="beta-admin",
                 organization_alias="sample-tenant-beta",
@@ -341,6 +348,12 @@ def _fake_keycloak_context() -> ProvisionedKeycloakSharedRealmContext:
                 organization_alias="sample-tenant-beta",
                 organization_id="org-beta",
                 user_id="kc-beta-reviewer",
+            ),
+            "beta-supervisor": _fake_keycloak_user(
+                username="beta-supervisor",
+                organization_alias="sample-tenant-beta",
+                organization_id="org-beta",
+                user_id="kc-beta-supervisor",
             ),
         },
         warnings=(),

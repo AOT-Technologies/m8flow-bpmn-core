@@ -16,7 +16,10 @@ from m8flow_sample_app.ui import render_page
 from m8flow_sample_app.workflows.deploy import (
     DEFAULT_DEMO_BPMN_NAME,
     DEFAULT_DEMO_PROCESS_MODEL_IDENTIFIER,
+    DEFAULT_TIMEOUT_ESCALATION_BPMN_NAME,
+    DEFAULT_TIMEOUT_ESCALATION_PROCESS_MODEL_IDENTIFIER,
     deploy_demo_definition,
+    deploy_timeout_escalation_definition,
     list_process_definitions,
 )
 
@@ -72,6 +75,7 @@ def register_process_definition_routes(app: Flask) -> None:
 <p>In shared m8flow audit mode, identifiers in
 <code>&lt;group&gt;/&lt;model&gt;</code> format are also published into the
 local m8flow backend process-model catalog so they appear in the m8flow UI.</p>
+<h2>Built-in reimbursement workflow</h2>
 <form method="post" action="{escape(url_for("deploy_demo_definition_action"))}">
   <label for="process_model_identifier">Process model identifier</label><br />
   <input
@@ -95,6 +99,29 @@ local m8flow backend process-model catalog so they appear in the m8flow UI.</p>
 Finance rejects the request, and sends an outcome HTML email through the
 connector-proxy SMTP service task using tenant-scoped Mailtrap
 secrets.</p>
+<h2>Built-in timeout escalation workflow</h2>
+<form method="post" action="{escape(url_for("deploy_timeout_escalation_definition_action"))}">
+  <label for="timeout_process_model_identifier">Process model identifier</label><br />
+  <input
+    id="timeout_process_model_identifier"
+    name="process_model_identifier"
+    type="text"
+    value="{escape(DEFAULT_TIMEOUT_ESCALATION_PROCESS_MODEL_IDENTIFIER)}"
+  /><br /><br />
+  <label for="timeout_bpmn_name">Display name</label><br />
+  <input
+    id="timeout_bpmn_name"
+    name="bpmn_name"
+    type="text"
+    value="{escape(DEFAULT_TIMEOUT_ESCALATION_BPMN_NAME)}"
+  /><br /><br />
+  <button type="submit">Deploy built-in timeout escalation workflow</button>
+</form>
+<p>The timeout escalation workflow uses
+<code>sample_app/fixtures/sample_app_review_timeout_escalation.bpmn</code>.
+It starts with an Operations manual review task and uses an interrupting
+boundary timer to escalate the work to the Supervisor lane if the initial
+review is still open two minutes after process start.</p>
 <h2>Stored definitions</h2>
 {definitions_html}
 """
@@ -124,6 +151,50 @@ secrets.</p>
 
             try:
                 deployment = deploy_demo_definition(
+                    db_session,
+                    tenant_id=identity.tenant.id,
+                    tenant_slug=identity.tenant.slug,
+                    user_id=identity.user.id,
+                    audit_context=(
+                        audit_context
+                        if isinstance(audit_context, SharedM8flowAuditContext)
+                        else None
+                    ),
+                    process_model_identifier=process_model_identifier,
+                    bpmn_name=bpmn_name,
+                )
+            except api.BpmnCoreError as exc:
+                flash(str(exc), "error")
+            else:
+                flash(
+                    f"Definition {deployment.definition.id} deployed for process model "
+                    f"{process_model_identifier}.",
+                    "success",
+                )
+                _flash_backend_catalog_result(deployment.backend_catalog)
+            return redirect(url_for("process_definitions_page"))
+
+    @app.post("/process-definitions/deploy-timeout-escalation")
+    def deploy_timeout_escalation_definition_action():
+        with session_scope() as db_session:
+            identity = get_active_identity(db_session)
+            if identity is None:
+                return redirect(url_for("select_identity"))
+
+            process_model_identifier = (
+                request.form.get("process_model_identifier", "").strip()
+                or DEFAULT_TIMEOUT_ESCALATION_PROCESS_MODEL_IDENTIFIER
+            )
+            bpmn_name = (
+                request.form.get("bpmn_name", "").strip()
+                or DEFAULT_TIMEOUT_ESCALATION_BPMN_NAME
+            )
+            audit_context = current_app.extensions.get(
+                SHARED_M8FLOW_AUDIT_CONTEXT_KEY
+            )
+
+            try:
+                deployment = deploy_timeout_escalation_definition(
                     db_session,
                     tenant_id=identity.tenant.id,
                     tenant_slug=identity.tenant.slug,

@@ -28,9 +28,10 @@ Steps 1 and 2 are in place:
 
 Steps 3 and 4 are also in place:
 
-- built-in demo BPMN fixture
+- built-in BPMN fixtures for reimbursement and timeout escalation
 - built-in reimbursement workflow with conditional Finance review and
   connector-proxy SMTP email delivery
+- built-in manual-review timeout workflow with supervisor escalation
 - definition deployment screen
 - workflow start screen
 - pending task / claim / complete screens
@@ -38,6 +39,7 @@ Steps 3 and 4 are also in place:
 - app-owned `secret` table aligned to the current m8flow secret schema
 - list/create/edit/delete secret screens
 - dedicated Alembic revision for the secret table
+- host-side inline scheduler poller for timer workflows
 
 When the sample app points at the shared local m8flow PostgreSQL database, it
 reuses the existing compatible `secret` table if that table is already present.
@@ -59,6 +61,9 @@ Shared-m8flow audit mode follow-up work now includes:
 - backend process-model catalog publishing for m8flow UI visibility
 - shared Keycloak redirect / callback login flow
 - documented settings for backend-catalog sync and shared credentials
+
+Local sample-app docs now live under [`docs/`](./docs/README.md), including a
+dedicated scheduler note at [`docs/scheduler.md`](./docs/scheduler.md).
 
 See [`../doc/sample_app.md`](../doc/sample_app.md) for the full runbook,
 behavior comparison, and integration findings.
@@ -114,6 +119,10 @@ Useful supporting settings:
 - `M8FLOW_SAMPLE_APP_KEYCLOAK_LOGIN_PUBLIC_BASE_URLS`
 - `M8FLOW_SAMPLE_APP_CONNECTOR_PROXY_BASE_URL`
 - `M8FLOW_SAMPLE_APP_CONNECTOR_PROXY_TIMEOUT_SECONDS`
+- `M8FLOW_SAMPLE_APP_SCHEDULER_ENABLED`
+- `M8FLOW_SAMPLE_APP_SCHEDULER_POLL_SECONDS`
+- `M8FLOW_SAMPLE_APP_SCHEDULER_BATCH_LIMIT`
+- `M8FLOW_SAMPLE_APP_SCHEDULER_WORKER_ID`
 
 If shared mode is active and the local Keycloak admin API cannot be reached,
 startup now fails fast instead of silently seeding incompatible local-only
@@ -233,6 +242,23 @@ By default the app runs on `127.0.0.1:5010`.
    - recorded event history
    - the service-task-driven HTML email outcome path
 
+## Timeout Escalation Flow
+
+1. Go to `Process definitions` and deploy the built-in timeout escalation
+   workflow.
+2. Go to `Start workflow` and create a new process instance from that
+   definition.
+3. Switch identity to `alpha-operator` and observe the initial
+   `Review Submitted Request` manual task.
+4. Leave the task open for more than two minutes. The sample app runs a
+   simple inline scheduler loop and will execute the interrupting boundary
+   timer automatically.
+5. Switch identity to `alpha-supervisor`, claim `Supervisor Review`, and
+   complete it.
+6. Open `Process instances` and inspect the event history to confirm the
+   original manual task was cancelled and the supervisor task completed the
+   workflow.
+
 ## Tests
 
 The sample app has its own integration smoke test suite:
@@ -251,6 +277,7 @@ The sample app demonstrates that a thin host application can:
 - run workflow authorization and execution through the library
 - drive one workflow end to end with task claim, conditional routing, metadata
   persistence, connector-backed email delivery, and event inspection
+- drive timer-based workflow escalation from a host-managed scheduler loop
 - keep host-owned tables, such as `secret`, beside the library tables without
   folding app-specific concerns into the workflow package
 
