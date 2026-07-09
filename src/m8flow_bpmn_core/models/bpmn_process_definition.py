@@ -52,6 +52,11 @@ class BpmnProcessDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
         back_populates="bpmn_process_definition",
         cascade="all, delete-orphan",
     )
+    scheduler_jobs = relationship(
+        "SchedulerJobModel",
+        back_populates="bpmn_process_definition",
+        cascade="all, delete-orphan",
+    )
 
     @property
     def source_bpmn_xml(self) -> str | None:

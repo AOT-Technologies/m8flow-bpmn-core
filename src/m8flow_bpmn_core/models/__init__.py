@@ -35,6 +35,10 @@ from m8flow_bpmn_core.models.process_instance_metadata import (
 from m8flow_bpmn_core.models.process_model_bpmn_version import (
     ProcessModelBpmnVersionModel,
 )
+from m8flow_bpmn_core.models.scheduler_job import (
+    SchedulerJobModel,
+    SchedulerJobType,
+)
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
@@ -66,6 +70,8 @@ __all__ = [
     "ProcessInstanceMetadataModel",
     "ProcessModelBpmnVersionModel",
     "ProcessInstanceStatus",
+    "SchedulerJobModel",
+    "SchedulerJobType",
     "TaskModel",
     "TaskDefinitionModel",
     "TenantScoped",

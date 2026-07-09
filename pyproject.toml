@@ -19,6 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 postgresql = ["psycopg[binary]>=3.2,<4.0"]
 mysql = ["pymysql>=1.1,<2.0"]
+celery = ["celery[redis]>=5.4,<6.0"]
 
 [dependency-groups]
 dev = [

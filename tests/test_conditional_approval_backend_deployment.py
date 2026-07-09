@@ -532,6 +532,35 @@ def test_extract_process_models_mount_source_prefers_backend_env_target() -> Non
     )
 
 
+def test_extract_process_models_mount_source_normalizes_docker_desktop_host_mnt(
+) -> None:
+    inspect_payload = [
+        {
+            "Config": {
+                "Env": [
+                    "M8FLOW_BACKEND_BPMN_SPEC_ABSOLUTE_DIR=/app/process-models",
+                ]
+            },
+            "Mounts": [
+                {
+                    "Destination": "/app/process-models",
+                    "Source": "\\host_mnt\\c\\dev\\repos\\m8flow\\data\\process_models",
+                }
+            ],
+        }
+    ]
+
+    assert example_poc._extract_process_models_mount_source(inspect_payload) == (
+        "C:\\dev\\repos\\m8flow\\data\\process_models"
+    )
+
+
+def test_normalize_docker_desktop_mount_source_handles_slash_form() -> None:
+    assert example_poc._normalize_docker_desktop_mount_source(
+        "/host_mnt/c/dev/repos/m8flow/data/process_models"
+    ) == "C:\\dev\\repos\\m8flow\\data\\process_models"
+
+
 def test_realign_existing_example_process_model_identifiers_updates_rows(
     session: Session,
 ) -> None:

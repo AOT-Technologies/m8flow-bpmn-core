@@ -129,6 +129,15 @@ class RetryProcessInstanceCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class ScheduleProcessInstanceRetryCommand:
+    tenant_id: str
+    process_instance_id: int
+    user_id: int
+    retry_at_in_seconds: int
+    scheduled_at_in_seconds: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class TerminateProcessInstanceCommand:
     tenant_id: str
     process_instance_id: int

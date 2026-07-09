@@ -16,6 +16,7 @@ Start here:
 - [Usage guide](usage.md)
 - [Example workflows](examples.md)
 - [Packaging and dependency use](package.md)
+- [Scheduling architecture](scheduling.md)
 - [Current gaps](gaps.md)
 
 The library is imported directly from Python. It is not exposed as an HTTP

@@ -102,6 +102,11 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
         back_populates="process_instance",
         cascade="all, delete-orphan",
     )
+    scheduler_jobs = relationship(
+        "SchedulerJobModel",
+        back_populates="process_instance",
+        cascade="all, delete-orphan",
+    )
 
     def can_submit_task(self) -> bool:
         return not self.has_terminal_status() and self.status != "suspended"
