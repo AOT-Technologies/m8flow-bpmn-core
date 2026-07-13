@@ -194,6 +194,18 @@ environment is the repo root `.venv`. You can also force that behavior:
 - PowerShell: `.\sample_app\scripts\run_sample_app.ps1 -UseActiveEnvironment`
 - Bash: `bash sample_app/scripts/run_sample_app.sh --active`
 
+On Windows, the PowerShell wrapper now retries the known transient
+`uv-trampoline-*.exe` helper failures during `uv sync` and quietly falls back
+to `python -m build --wheel --no-isolation` when `uv build --wheel` cannot
+recover from that same class of issue. This covers the common temp-file lock
+and PE-resource update failures. The raw `uv` error output is only shown when
+recovery fails.
+
+If `uv sync --active` cannot update the repo-root `.venv` because an installed
+executable such as `celery.exe` is locked by another running process, the
+PowerShell wrapper now falls back to syncing `sample_app/.venv` and starts the
+app from there automatically.
+
 Optional wrapper parameters:
 
 - PowerShell: `.\sample_app\scripts\run_sample_app.ps1 -BindHost 127.0.0.1 -Port 5010`
@@ -219,14 +231,17 @@ By default the app runs on `127.0.0.1:5010`.
    `alpha-admin` as both username and password.
 3. Go to `Process definitions` and deploy the built-in demo workflow.
 4. Go to `Start workflow` and create a new process instance.
-5. Open `Secrets` and update `MAILTRAP_SMTP_PASSWORD` before running the email
-   step. Startup seeds these tenant-scoped defaults automatically:
-   - `MAILTRAP_SMTP_HOST`
-   - `MAILTRAP_SMTP_PORT`
-   - `MAILTRAP_SMTP_USERNAME`
-   - `MAILTRAP_SMTP_PASSWORD`
-   - `MAILTRAP_SMTP_STARTTLS`
-   - `MAILTRAP_EMAIL_FROM`
+5. Open `Secrets` and update `SMTP_PASSWORD` before running the email step.
+   The seeded value is intentionally `CHANGE_ME_IN_SECRETS_UI`; the sample app
+   now fails fast with a clear validation error if that placeholder is still in
+   use.
+   Startup seeds these tenant-scoped SMTP defaults automatically:
+   - `SMTP_HOST`
+   - `SMTP_PORT`
+   - `SMTP_USER`
+   - `SMTP_PASSWORD`
+   - `SMTP_STARTTLS`
+   - `SMTP_FROM_EMAIL`
 6. Switch identity to `alpha-operator`, claim `Submit Reimbursement Request`,
    and submit a JSON payload such as:
    - `{"requester_name":"Andre Example","requester_email":"andre@example.com","expense_description":"Conference hotel and travel","amount":1250}`

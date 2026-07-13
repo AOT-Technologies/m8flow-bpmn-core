@@ -14,7 +14,7 @@ from m8flow_sample_app.secrets import (
     list_secrets,
     update_secret,
 )
-from m8flow_sample_app.ui import post_button, render_page
+from m8flow_sample_app.ui import format_timestamp, post_button, render_page
 
 
 def register_secret_routes(app: Flask) -> None:
@@ -33,7 +33,7 @@ def register_secret_routes(app: Flask) -> None:
   <td>{escape(item.secret.key)}</td>
   <td>(stored)</td>
   <td>{escape((item.user.display_name or item.user.username) if item.user else '')}</td>
-  <td>{item.secret.updated_at_in_seconds or ''}</td>
+  <td>{format_timestamp(item.secret.updated_at_in_seconds)}</td>
   <td class="actions">
     <a href="{escape(url_for("edit_secret_page", secret_id=item.secret.id))}">Edit</a>
     {post_button(url_for("delete_secret_action", secret_id=item.secret.id), "Delete")}

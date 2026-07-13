@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import ast
-from collections.abc import Sequence
+import re
+from collections.abc import Mapping, Sequence
+from dataclasses import replace
 
 from sqlalchemy import select
 
@@ -11,60 +13,62 @@ from m8flow_sample_app.db import session_scope
 from m8flow_sample_app.models import SecretModel
 from m8flow_sample_app.settings import get_settings
 
-SMTP_SECRET_KEYS = {
-    "smtp_host": "MAILTRAP_SMTP_HOST",
-    "smtp_port": "MAILTRAP_SMTP_PORT",
-    "smtp_user": "MAILTRAP_SMTP_USERNAME",
-    "smtp_password": "MAILTRAP_SMTP_PASSWORD",
-    "smtp_starttls": "MAILTRAP_SMTP_STARTTLS",
-    "email_from": "MAILTRAP_EMAIL_FROM",
-}
+M8FLOW_SECRET_REFERENCE_RE = re.compile(r"M8FLOW_SECRET:(?P<name>\w+)")
+UNCONFIGURED_SECRET_PLACEHOLDER = "CHANGE_ME_IN_SECRETS_UI"
 
 
-class TenantSecretBackedSmtpConnector:
-    connector_key = "smtp"
-
+class TenantSecretResolvingConnector:
     def __init__(self, *, delegate: api.ServiceTaskConnector) -> None:
         self._delegate = delegate
+        self.connector_key = delegate.connector_key
 
     def list_commands(self) -> Sequence[api.ServiceTaskCommandDefinition]:
         return self._delegate.list_commands()
 
     def execute(self, request: api.ServiceTaskRequest) -> api.ServiceTaskResult:
+        parameters = dict(request.parameters or {})
+        referenced_secret_keys = _collect_referenced_secret_keys(parameters)
+        if not referenced_secret_keys:
+            return self._delegate.execute(request)
+
         tenant_id = request.context.tenant_id if request.context is not None else None
         if tenant_id is None:
             raise ServiceTaskExecutionError(
-                "SMTP service tasks require a tenant_id in the execution context."
+                "Service tasks that reference M8FLOW_SECRET values require a "
+                "tenant_id in the execution context."
             )
 
-        parameters = dict(request.parameters or {})
         tenant_secrets = _load_tenant_secret_map(tenant_id=tenant_id)
-        missing_secret_keys: list[str] = []
-        for parameter_name, secret_key in SMTP_SECRET_KEYS.items():
-            if parameter_name in parameters:
-                continue
-            secret_value = tenant_secrets.get(secret_key)
-            if secret_value is None:
-                missing_secret_keys.append(secret_key)
-                continue
-            parameters[parameter_name] = _coerce_secret_value(secret_value)
-
-        if missing_secret_keys:
-            joined_secret_keys = ", ".join(sorted(missing_secret_keys))
-            raise ServiceTaskExecutionError(
-                "The tenant is missing required SMTP secrets: "
-                f"{joined_secret_keys}."
-            )
-
-        delegated_request = api.ServiceTaskRequest(
-            operation_id=request.operation_id,
-            parameters=parameters,
-            context=request.context,
-            task_data=request.task_data,
-            callback_url=request.callback_url,
-            metadata=request.metadata,
+        missing_secret_keys = sorted(
+            secret_key
+            for secret_key in referenced_secret_keys
+            if secret_key not in tenant_secrets
         )
-        return self._delegate.execute(delegated_request)
+        if missing_secret_keys:
+            raise ServiceTaskExecutionError(
+                "The tenant is missing required secrets referenced by service "
+                f"task {request.operation_id!r}: {', '.join(missing_secret_keys)}."
+            )
+        _raise_if_placeholder_secret_values_are_used(
+            request=request,
+            tenant_secrets=tenant_secrets,
+            referenced_secret_keys=referenced_secret_keys,
+        )
+
+        resolved_parameters = _resolve_secret_references(
+            parameters,
+            tenant_secrets=tenant_secrets,
+        )
+        resolved_parameters = _coerce_parameter_values(
+            resolved_parameters,
+            parameter_types=_parameter_types_from_request(request),
+        )
+        return self._delegate.execute(
+            replace(
+                request,
+                parameters=resolved_parameters,
+            )
+        )
 
 
 def build_sample_app_service_task_registry() -> api.ServiceTaskRegistry:
@@ -73,11 +77,13 @@ def build_sample_app_service_task_registry() -> api.ServiceTaskRegistry:
         settings.connector_proxy_base_url,
         timeout_seconds=settings.connector_proxy_timeout_seconds,
     )
-    smtp_connector = registry.get_connector("smtp")
-    registry.register_connector(
-        TenantSecretBackedSmtpConnector(delegate=smtp_connector),
-        replace=True,
-    )
+    for connector_key in registry.list_connectors():
+        registry.register_connector(
+            TenantSecretResolvingConnector(
+                delegate=registry.get_connector(connector_key),
+            ),
+            replace=True,
+        )
     return registry
 
 
@@ -86,22 +92,126 @@ def _load_tenant_secret_map(*, tenant_id: str) -> dict[str, str]:
         secret_rows = db_session.scalars(
             select(SecretModel).where(SecretModel.m8f_tenant_id == tenant_id)
         )
+        return {secret.key: secret.value for secret in secret_rows}
+
+
+def _raise_if_placeholder_secret_values_are_used(
+    *,
+    request: api.ServiceTaskRequest,
+    tenant_secrets: Mapping[str, str],
+    referenced_secret_keys: set[str],
+) -> None:
+    placeholder_secret_keys = sorted(
+        secret_key
+        for secret_key in referenced_secret_keys
+        if tenant_secrets.get(secret_key, "").strip() == UNCONFIGURED_SECRET_PLACEHOLDER
+    )
+    if not placeholder_secret_keys:
+        return
+    verb = "uses" if len(placeholder_secret_keys) == 1 else "use"
+    pronoun = "it" if len(placeholder_secret_keys) == 1 else "them"
+    raise ServiceTaskExecutionError(
+        "The tenant secret"
+        f"{'s' if len(placeholder_secret_keys) != 1 else ''} "
+        f"{', '.join(placeholder_secret_keys)!r} "
+        f"still {verb} the default placeholder value. Update "
+        f"{pronoun} in Secrets "
+        f"before running service task {request.operation_id!r}."
+    )
+
+
+def _collect_referenced_secret_keys(value: object) -> set[str]:
+    referenced_secret_keys: set[str] = set()
+    _visit_secret_references(value, referenced_secret_keys)
+    return referenced_secret_keys
+
+
+def _visit_secret_references(value: object, referenced_secret_keys: set[str]) -> None:
+    if isinstance(value, str):
+        for match in M8FLOW_SECRET_REFERENCE_RE.finditer(value):
+            referenced_secret_keys.add(match.group("name"))
+        return
+    if isinstance(value, Mapping):
+        for item in value.values():
+            _visit_secret_references(item, referenced_secret_keys)
+        return
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        for item in value:
+            _visit_secret_references(item, referenced_secret_keys)
+
+
+def _resolve_secret_references(
+    value: object,
+    *,
+    tenant_secrets: Mapping[str, str],
+) -> object:
+    if isinstance(value, str):
+        return M8FLOW_SECRET_REFERENCE_RE.sub(
+            lambda match: tenant_secrets[match.group("name")],
+            value,
+        )
+    if isinstance(value, Mapping):
         return {
-            secret.key: secret.value
-            for secret in secret_rows
+            key: _resolve_secret_references(item, tenant_secrets=tenant_secrets)
+            for key, item in value.items()
         }
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return [
+            _resolve_secret_references(item, tenant_secrets=tenant_secrets)
+            for item in value
+        ]
+    return value
 
 
-def _coerce_secret_value(value: str) -> object:
-    normalized = value.strip()
-    lowered = normalized.lower()
-    if lowered == "true":
-        return True
-    if lowered == "false":
-        return False
-    if lowered in {"none", "null"}:
-        return None
+def _parameter_types_from_request(request: api.ServiceTaskRequest) -> Mapping[str, object]:
+    metadata = request.metadata or {}
+    parameter_types = metadata.get("parameter_types")
+    return parameter_types if isinstance(parameter_types, Mapping) else {}
+
+
+def _coerce_parameter_values(
+    parameters: Mapping[str, object],
+    *,
+    parameter_types: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        key: _coerce_parameter_value(
+            value,
+            declared_type=parameter_types.get(key),
+            parameter_name=key,
+        )
+        for key, value in parameters.items()
+    }
+
+
+def _coerce_parameter_value(
+    value: object,
+    *,
+    declared_type: object,
+    parameter_name: str,
+) -> object:
+    normalized_type = str(declared_type or "").strip().lower()
+    if not isinstance(value, str) or not normalized_type:
+        return value
+
+    normalized_value = value.strip()
     try:
-        return ast.literal_eval(normalized)
-    except (SyntaxError, ValueError):
-        return normalized
+        if normalized_type in {"bool", "boolean"}:
+            lowered = normalized_value.lower()
+            if lowered in {"1", "true", "yes", "on"}:
+                return True
+            if lowered in {"0", "false", "no", "off"}:
+                return False
+            raise ValueError("expected a boolean value")
+        if normalized_type in {"int", "integer"}:
+            return int(normalized_value)
+        if normalized_type in {"float", "number"}:
+            return float(normalized_value)
+        if normalized_type in {"dict", "list", "json", "object", "array"}:
+            return ast.literal_eval(normalized_value)
+    except (SyntaxError, ValueError) as exc:
+        raise ServiceTaskExecutionError(
+            f"Service task parameter {parameter_name!r} could not be coerced "
+            f"to declared type {normalized_type!r}: {exc}"
+        ) from exc
+    return value

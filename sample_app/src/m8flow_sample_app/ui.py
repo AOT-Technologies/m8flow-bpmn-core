@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from html import escape
 
 from flask import current_app, get_flashed_messages, url_for
@@ -9,6 +10,20 @@ from m8flow_sample_app.shared_m8flow import (
     SHARED_M8FLOW_AUDIT_CONTEXT_KEY,
     SharedM8flowAuditContext,
 )
+
+
+def format_timestamp(value: object | None) -> str:
+    if value is None or value == "":
+        return ""
+
+    try:
+        timestamp = datetime.fromtimestamp(float(value), tz=timezone.utc)
+    except (OverflowError, TypeError, ValueError):
+        return str(value)
+
+    if timestamp.microsecond:
+        return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f UTC")
+    return timestamp.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 def render_page(
@@ -206,8 +221,8 @@ def _audit_mode_banner(identity: ActiveIdentity | None) -> str:
         else:
             details.append(
                 "No local m8flow backend process-model catalog was discovered, "
-                "so deployed BPMN files cannot yet appear under Processes in "
-                "the m8flow UI."
+                "so deployed BPMN/DMN files cannot yet appear under Processes "
+                "in the m8flow UI."
             )
         if audit_context.backend_container_name:
             details.append(

@@ -28,6 +28,10 @@ from m8flow_sample_app.db import session_scope
 from m8flow_sample_app.models import SecretModel
 from m8flow_sample_app.scheduler import run_scheduler_cycle
 from m8flow_sample_app.settings import get_settings
+from m8flow_sample_app.workflows.deploy import (
+    DEFAULT_DEMO_BPMN_NAME,
+    DEFAULT_DEMO_PROCESS_MODEL_IDENTIFIER,
+)
 
 
 @pytest.fixture
@@ -63,6 +67,12 @@ def app_client(
     app = create_app()
     app.config.update(TESTING=True)
     app.extensions["captured_smtp_requests"] = captured_smtp_requests
+    with session_scope() as db_session:
+        smtp_password_secrets = db_session.scalars(
+            select(SecretModel).where(SecretModel.key == "SMTP_PASSWORD")
+        ).all()
+        for secret in smtp_password_secrets:
+            secret.value = "sample-app-test-smtp-password"
 
     with app.test_client() as client:
         yield client
@@ -225,7 +235,7 @@ def test_high_value_request_routes_through_finance_and_sends_email(
     assert smtp_request.parameters["smtp_host"] == "sandbox.smtp.mailtrap.io"
     assert smtp_request.parameters["smtp_port"] == 2525
     assert smtp_request.parameters["smtp_user"] == "fce006e9972d8b"
-    assert smtp_request.parameters["smtp_password"] == "CHANGE_ME_IN_SECRETS_UI"
+    assert smtp_request.parameters["smtp_password"] == "sample-app-test-smtp-password"
     assert smtp_request.parameters["smtp_starttls"] is True
     assert (
         smtp_request.parameters["email_from"]
@@ -450,6 +460,36 @@ def test_low_value_request_skips_finance_review(
     )
 
 
+def test_demo_definition_deploys_with_finance_threshold_dmn(
+    app_client: FlaskClient,
+) -> None:
+    tenant, admin_user, _operator_user, _finance_user, _reviewer_user, _supervisor = (
+        _load_seeded_users()
+    )
+    _login(app_client, tenant_id=tenant.id, user_id=admin_user.id)
+
+    response = app_client.post(
+        "/process-definitions/deploy-demo",
+        data={
+            "process_model_identifier": "sample-app/e2e-demo-with-dmn",
+            "bpmn_name": "Sample App E2E Demo With DMN",
+        },
+        follow_redirects=True,
+    )
+    assert "deployed" in response.get_data(as_text=True)
+
+    with session_scope() as db_session:
+        definition = db_session.scalars(
+            select(BpmnProcessDefinitionModel)
+            .where(BpmnProcessDefinitionModel.m8f_tenant_id == tenant.id)
+            .order_by(BpmnProcessDefinitionModel.id.desc())
+        ).first()
+        assert definition is not None
+        assert definition.source_dmn_xml is not None
+        assert "demo_finance_review_threshold" in definition.source_dmn_xml
+        assert "requires_finance_review" in definition.source_dmn_xml
+
+
 def test_review_timeout_escalates_to_supervisor(
     app_client: FlaskClient,
 ) -> None:
@@ -585,12 +625,12 @@ def test_secret_crud_works_through_the_sample_app(app_client: FlaskClient) -> No
             )
         )
     assert {
-        "MAILTRAP_SMTP_HOST",
-        "MAILTRAP_SMTP_PORT",
-        "MAILTRAP_SMTP_USERNAME",
-        "MAILTRAP_SMTP_PASSWORD",
-        "MAILTRAP_SMTP_STARTTLS",
-        "MAILTRAP_EMAIL_FROM",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USER",
+        "SMTP_PASSWORD",
+        "SMTP_STARTTLS",
+        "SMTP_FROM_EMAIL",
     }.issubset(seeded_secret_keys)
 
     response = app_client.post(
@@ -646,6 +686,123 @@ def test_secret_crud_works_through_the_sample_app(app_client: FlaskClient) -> No
         assert db_session.get(SecretModel, secret_id) is None
 
 
+def test_only_latest_definition_is_startable_from_sample_app(
+    app_client: FlaskClient,
+) -> None:
+    tenant, admin_user, _operator_user, _finance_user, _reviewer_user, _supervisor = (
+        _load_seeded_users()
+    )
+    _import_definition_version(
+        tenant_id=tenant.id,
+        user_id=admin_user.id,
+        process_model_identifier=DEFAULT_DEMO_PROCESS_MODEL_IDENTIFIER,
+        bpmn_name=DEFAULT_DEMO_BPMN_NAME,
+        version_marker="history-v1",
+    )
+    _import_definition_version(
+        tenant_id=tenant.id,
+        user_id=admin_user.id,
+        process_model_identifier=DEFAULT_DEMO_PROCESS_MODEL_IDENTIFIER,
+        bpmn_name=DEFAULT_DEMO_BPMN_NAME,
+        version_marker="history-v2",
+    )
+
+    _login(app_client, tenant_id=tenant.id, user_id=admin_user.id)
+    with session_scope() as db_session:
+        definitions = list(
+            db_session.scalars(
+                select(BpmnProcessDefinitionModel)
+                .where(
+                    BpmnProcessDefinitionModel.m8f_tenant_id == tenant.id,
+                )
+                .order_by(BpmnProcessDefinitionModel.id.desc())
+            )
+        )
+        assert len(definitions) == 2
+        latest_definition = definitions[0]
+        historical_definition = definitions[1]
+
+    response = app_client.get("/process-definitions")
+    response_text = response.get_data(as_text=True)
+
+    assert (
+        f"/process-instances/start?definition_id={latest_definition.id}"
+        in response_text
+    )
+    assert (
+        f"/process-instances/start?definition_id={historical_definition.id}"
+        not in response_text
+    )
+    assert "History only" in response_text
+
+    response = app_client.get("/process-instances/start")
+    response_text = response.get_data(as_text=True)
+
+    assert f'<option value="{latest_definition.id}"' in response_text
+    assert f'<option value="{historical_definition.id}"' not in response_text
+
+
+def test_start_workflow_rejects_historical_definition_id(
+    app_client: FlaskClient,
+) -> None:
+    tenant, admin_user, _operator_user, _finance_user, _reviewer_user, _supervisor = (
+        _load_seeded_users()
+    )
+    _import_definition_version(
+        tenant_id=tenant.id,
+        user_id=admin_user.id,
+        process_model_identifier=DEFAULT_DEMO_PROCESS_MODEL_IDENTIFIER,
+        bpmn_name=DEFAULT_DEMO_BPMN_NAME,
+        version_marker="history-v1",
+    )
+    _import_definition_version(
+        tenant_id=tenant.id,
+        user_id=admin_user.id,
+        process_model_identifier=DEFAULT_DEMO_PROCESS_MODEL_IDENTIFIER,
+        bpmn_name=DEFAULT_DEMO_BPMN_NAME,
+        version_marker="history-v2",
+    )
+
+    _login(app_client, tenant_id=tenant.id, user_id=admin_user.id)
+    with session_scope() as db_session:
+        definitions = list(
+            db_session.scalars(
+                select(BpmnProcessDefinitionModel)
+                .where(
+                    BpmnProcessDefinitionModel.m8f_tenant_id == tenant.id,
+                )
+                .order_by(BpmnProcessDefinitionModel.id.desc())
+            )
+        )
+        assert len(definitions) == 2
+        historical_definition = definitions[1]
+
+    response = app_client.post(
+        "/process-instances/start",
+        data={
+            "definition_id": str(historical_definition.id),
+            "summary": "Attempt to start a historical definition",
+        },
+        follow_redirects=True,
+    )
+    response_text = response.get_data(as_text=True)
+
+    assert (
+        "Only the latest stored definition for each process model can be started."
+        in response_text
+    )
+
+    with session_scope() as db_session:
+        process_instances = list(
+            db_session.scalars(
+                select(ProcessInstanceModel).where(
+                    ProcessInstanceModel.m8f_tenant_id == tenant.id
+                )
+            )
+        )
+        assert process_instances == []
+
+
 def _deploy_and_start_demo_workflow(
     app_client: FlaskClient,
     *,
@@ -676,6 +833,41 @@ def _deploy_and_start_timeout_escalation_workflow(
         process_model_identifier="sample-app/e2e-timeout-escalation",
         bpmn_name="Sample App E2E Timeout Escalation",
     )
+
+
+def _import_definition_version(
+    *,
+    tenant_id: str,
+    user_id: int,
+    process_model_identifier: str,
+    bpmn_name: str,
+    version_marker: str,
+) -> None:
+    bpmn_path = Path(__file__).resolve().parents[1] / "fixtures" / "sample_app_demo.bpmn"
+    dmn_path = Path(__file__).resolve().parents[1] / "fixtures" / "sample_app_demo.dmn"
+    source_bpmn_xml = bpmn_path.read_text(encoding="utf-8").replace(
+        "</bpmn:definitions>",
+        f"  <!-- {version_marker} -->\n</bpmn:definitions>",
+    )
+    source_dmn_xml = dmn_path.read_text(encoding="utf-8")
+
+    with session_scope() as db_session:
+        api.execute_command(
+            db_session,
+            api.ImportBpmnProcessDefinitionCommand(
+                tenant_id=tenant_id,
+                bpmn_identifier=process_model_identifier,
+                user_id=user_id,
+                bpmn_name=bpmn_name,
+                source_bpmn_xml=source_bpmn_xml,
+                source_dmn_xml=source_dmn_xml,
+                properties_json={},
+                bpmn_version_control_type="sample-app-test",
+                bpmn_version_control_identifier=version_marker,
+                created_at_in_seconds=1,
+                updated_at_in_seconds=1,
+            ),
+        )
 
 
 def _deploy_and_start_workflow(

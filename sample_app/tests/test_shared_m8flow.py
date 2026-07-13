@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select
 
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
+from m8flow_bpmn_core.models.principal import PrincipalModel
+from m8flow_bpmn_core.models.tenant import M8flowTenantModel, TenantStatus
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.utils.keycloak import (
     KeycloakUserSpec,
@@ -141,6 +142,12 @@ def test_shared_seed_uses_keycloak_organization_and_user_ids(
         assert alpha_admin.service_id == "kc-alpha-admin"
         assert alpha_admin.tenant_specific_field_1 == "org-alpha"
         assert alpha_admin.tenant_specific_field_2 == "sample-tenant-alpha"
+        assert (
+            db_session.scalar(
+                select(PrincipalModel).where(PrincipalModel.user_id == alpha_admin.id)
+            )
+            is not None
+        )
 
     get_settings.cache_clear()
 
@@ -206,6 +213,72 @@ def test_shared_seed_realigns_legacy_tenant_and_user_rows(
             user.service == keycloak_context.service_issuer for user in alpha_users
         )
         assert all(user.tenant_specific_field_1 == "org-alpha" for user in alpha_users)
+
+    get_settings.cache_clear()
+
+
+def test_shared_seed_backfills_missing_principal_for_existing_user(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_sqlite_database(
+        monkeypatch,
+        tmp_path / "sample_app_shared_backfill_principal.sqlite",
+    )
+    run_migrations()
+    _prime_m8flow_import_order()
+
+    with session_scope() as db_session:
+        tenant = M8flowTenantModel(
+            id="org-beta",
+            slug="sample-tenant-beta",
+            name="Sample Tenant Beta",
+            status=TenantStatus.ACTIVE,
+            created_by="test",
+            modified_by="test",
+            created_at_in_seconds=0,
+            updated_at_in_seconds=0,
+        )
+        db_session.add(tenant)
+        db_session.flush()
+
+        db_session.add(
+            UserModel(
+                username="beta-admin",
+                email="beta-admin@example.com",
+                service="http://localhost:6842/realms/m8flow",
+                service_id="kc-beta-admin",
+                display_name="Beta Admin",
+                tenant_specific_field_1="org-beta",
+                tenant_specific_field_2="sample-tenant-beta",
+                created_at_in_seconds=0,
+                updated_at_in_seconds=0,
+            )
+        )
+
+    keycloak_context = _fake_keycloak_context()
+    monkeypatch.setattr(
+        "m8flow_sample_app.seed.ensure_shared_realm_organizations_and_users",
+        lambda **_: keycloak_context,
+    )
+
+    with session_scope() as db_session:
+        seed_static_reference_data(
+            db_session,
+            audit_context=_shared_audit_context(),
+        )
+
+    with session_scope() as db_session:
+        beta_admin = db_session.scalar(
+            select(UserModel).where(UserModel.username == "beta-admin")
+        )
+        assert beta_admin is not None
+        assert (
+            db_session.scalar(
+                select(PrincipalModel).where(PrincipalModel.user_id == beta_admin.id)
+            )
+            is not None
+        )
 
     get_settings.cache_clear()
 

@@ -141,12 +141,12 @@ SEED_TENANTS = (
 )
 
 DEFAULT_TENANT_SECRET_VALUES = (
-    ("MAILTRAP_SMTP_HOST", "sandbox.smtp.mailtrap.io"),
-    ("MAILTRAP_SMTP_PORT", "2525"),
-    ("MAILTRAP_SMTP_USERNAME", "fce006e9972d8b"),
-    ("MAILTRAP_SMTP_PASSWORD", "CHANGE_ME_IN_SECRETS_UI"),
-    ("MAILTRAP_SMTP_STARTTLS", "True"),
-    ("MAILTRAP_EMAIL_FROM", "sample-app-reimbursements@example.com"),
+    ("SMTP_HOST", "sandbox.smtp.mailtrap.io"),
+    ("SMTP_PORT", "2525"),
+    ("SMTP_USER", "fce006e9972d8b"),
+    ("SMTP_PASSWORD", "CHANGE_ME_IN_SECRETS_UI"),
+    ("SMTP_STARTTLS", "True"),
+    ("SMTP_FROM_EMAIL", "sample-app-reimbursements@example.com"),
 )
 
 
@@ -155,7 +155,10 @@ def seed_static_reference_data(
     *,
     audit_context: SharedM8flowAuditContext | None = None,
 ) -> None:
-    from m8flow_bpmn_core.services.authorization import ensure_v1_role
+    from m8flow_bpmn_core.services.authorization import (
+        ensure_v1_role,
+        find_or_create_principal_for_user,
+    )
 
     keycloak_context: ProvisionedKeycloakSharedRealmContext | None = None
     if audit_context is not None and audit_context.uses_shared_m8flow:
@@ -180,6 +183,7 @@ def seed_static_reference_data(
                 user_definition,
                 keycloak_context=keycloak_context,
             )
+            find_or_create_principal_for_user(session, user_id=user.id)
             role_user_ids[user_definition.role_name].append(user.id)
             if user_definition.role_name == ROLE_ADMIN and admin_user_id is None:
                 admin_user_id = user.id

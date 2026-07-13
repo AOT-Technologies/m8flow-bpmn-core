@@ -5,7 +5,9 @@ from pathlib import Path
 
 from m8flow_sample_app.db import sample_app_root
 from m8flow_sample_app.shared_m8flow import (
+    BackendCatalogSupplementalFile,
     SharedM8flowAuditContext,
+    load_process_model_from_m8flow_backend,
     publish_process_model_to_m8flow_backend,
 )
 
@@ -21,6 +23,7 @@ def test_publish_process_model_to_m8flow_backend_creates_catalog_files(
         bpmn_name="Sample App Demo Workflow",
         source_bpmn_xml=_demo_bpmn_xml(),
         primary_file_name="sample_app_demo.bpmn",
+        supplemental_files=_demo_supplemental_files(),
     )
 
     assert result is not None
@@ -44,9 +47,17 @@ def test_publish_process_model_to_m8flow_backend_creates_catalog_files(
         / "demo-approval"
         / "sample_app_demo.bpmn"
     )
+    dmn_path = (
+        tmp_path
+        / "org-alpha"
+        / "sample-app"
+        / "demo-approval"
+        / "sample_app_demo.dmn"
+    )
     assert group_json.exists()
     assert model_json.exists()
     assert bpmn_path.exists()
+    assert dmn_path.exists()
 
     model_payload = json.loads(model_json.read_text(encoding="utf-8"))
     assert model_payload["display_name"] == "Sample App Demo Workflow"
@@ -65,6 +76,7 @@ def test_publish_process_model_to_m8flow_backend_returns_unchanged_when_current(
         bpmn_name="Sample App Demo Workflow",
         source_bpmn_xml=_demo_bpmn_xml(),
         primary_file_name="sample_app_demo.bpmn",
+        supplemental_files=_demo_supplemental_files(),
     )
     second = publish_process_model_to_m8flow_backend(
         audit_context=_shared_audit_context(tmp_path),
@@ -74,6 +86,7 @@ def test_publish_process_model_to_m8flow_backend_returns_unchanged_when_current(
         bpmn_name="Sample App Demo Workflow",
         source_bpmn_xml=_demo_bpmn_xml(),
         primary_file_name="sample_app_demo.bpmn",
+        supplemental_files=_demo_supplemental_files(),
     )
 
     assert first is not None and first.status == "created"
@@ -91,6 +104,7 @@ def test_publish_process_model_to_m8flow_backend_updates_existing_model(
         bpmn_name="Sample App Demo Workflow",
         source_bpmn_xml=_demo_bpmn_xml(),
         primary_file_name="sample_app_demo.bpmn",
+        supplemental_files=_demo_supplemental_files(),
     )
     updated = publish_process_model_to_m8flow_backend(
         audit_context=_shared_audit_context(tmp_path),
@@ -100,6 +114,7 @@ def test_publish_process_model_to_m8flow_backend_updates_existing_model(
         bpmn_name="Updated Sample App Demo Workflow",
         source_bpmn_xml=_demo_bpmn_xml(),
         primary_file_name="sample_app_demo.bpmn",
+        supplemental_files=_demo_supplemental_files(),
     )
 
     assert updated is not None
@@ -127,12 +142,42 @@ def test_publish_process_model_to_m8flow_backend_skips_invalid_identifier(
         bpmn_name="Sample App Demo Workflow",
         source_bpmn_xml=_demo_bpmn_xml(),
         primary_file_name="sample_app_demo.bpmn",
+        supplemental_files=_demo_supplemental_files(),
     )
 
     assert result is not None
     assert result.status == "skipped"
     assert any("<group>/<model>" in warning for warning in result.warnings)
     assert not (tmp_path / "org-alpha").exists()
+
+
+def test_load_process_model_from_m8flow_backend_reads_existing_catalog_model(
+    tmp_path: Path,
+) -> None:
+    audit_context = _shared_audit_context(tmp_path)
+    publish_process_model_to_m8flow_backend(
+        audit_context=audit_context,
+        tenant_id="org-alpha",
+        tenant_slug="sample-tenant-alpha",
+        process_model_identifier="sample-app/demo-approval",
+        bpmn_name="Sample App Demo Workflow",
+        source_bpmn_xml=_demo_bpmn_xml(),
+        primary_file_name="sample_app_demo.bpmn",
+        supplemental_files=_demo_supplemental_files(),
+    )
+
+    source = load_process_model_from_m8flow_backend(
+        audit_context=audit_context,
+        tenant_id="org-alpha",
+        tenant_slug="sample-tenant-alpha",
+        process_model_identifier="sample-app/demo-approval",
+    )
+
+    assert source.process_model_identifier == "sample-app/demo-approval"
+    assert source.bpmn_name == "Sample App Demo Workflow"
+    assert source.primary_file_name == "sample_app_demo.bpmn"
+    assert "Process_sample_app_demo" in source.source_bpmn_xml
+    assert source.source_dmn_xml == _demo_dmn_xml()
 
 
 def _shared_audit_context(process_models_root: Path) -> SharedM8flowAuditContext:
@@ -150,3 +195,17 @@ def _shared_audit_context(process_models_root: Path) -> SharedM8flowAuditContext
 def _demo_bpmn_xml() -> str:
     fixture_path = sample_app_root() / "fixtures" / "sample_app_demo.bpmn"
     return fixture_path.read_text(encoding="utf-8")
+
+
+def _demo_dmn_xml() -> str:
+    fixture_path = sample_app_root() / "fixtures" / "sample_app_demo.dmn"
+    return fixture_path.read_text(encoding="utf-8")
+
+
+def _demo_supplemental_files() -> tuple[BackendCatalogSupplementalFile, ...]:
+    return (
+        BackendCatalogSupplementalFile(
+            file_name="sample_app_demo.dmn",
+            contents=_demo_dmn_xml(),
+        ),
+    )

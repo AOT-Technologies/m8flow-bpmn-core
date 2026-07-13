@@ -167,8 +167,11 @@ claim and completion, metadata persistence, and event listing.</p>
 {shared_login_note}
 <form method="get">
   <label for="tenant_id">Tenant</label><br />
-  <select id="tenant_id" name="tenant_id">{tenant_options}</select><br /><br />
-  <button type="submit">Load users</button>
+  <select
+    id="tenant_id"
+    name="tenant_id"
+    onchange="this.form.requestSubmit()"
+  >{tenant_options}</select><br /><br />
 </form>
 <hr />
 {user_select_html}

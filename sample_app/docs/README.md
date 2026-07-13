@@ -65,7 +65,8 @@ The sample app supports two operating modes:
 - shared audit mode
   - provisions users in the shared Keycloak realm
   - aligns tenant ids to Keycloak organization ids
-  - publishes BPMN files into the local m8flow backend catalog so models are
+  - publishes BPMN files, plus companion DMN files when present, into the
+    local m8flow backend catalog so models are
     visible in m8flow UI
 
 ## Scheduler

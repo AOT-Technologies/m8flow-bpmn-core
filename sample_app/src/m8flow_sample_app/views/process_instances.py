@@ -7,8 +7,11 @@ from flask import Flask, flash, redirect, request, url_for
 from m8flow_bpmn_core import api
 from m8flow_sample_app.auth import get_active_identity
 from m8flow_sample_app.db import session_scope
-from m8flow_sample_app.ui import render_page
-from m8flow_sample_app.workflows.deploy import list_process_definitions
+from m8flow_sample_app.ui import format_timestamp, render_page
+from m8flow_sample_app.workflows.deploy import (
+    list_latest_process_definitions,
+    list_process_definitions,
+)
 from m8flow_sample_app.workflows.instances import (
     get_process_instance_detail,
     list_process_instances,
@@ -24,39 +27,76 @@ def register_process_instance_routes(app: Flask) -> None:
             if identity is None:
                 return redirect(url_for("select_identity"))
 
+            all_definitions = list_process_definitions(
+                db_session,
+                tenant_id=identity.tenant.id,
+            )
+            definitions = [
+                definition
+                for definition in list_latest_process_definitions(
+                    db_session,
+                    tenant_id=identity.tenant.id,
+                )
+            ]
+            startable_definition_ids = {definition.id for definition in definitions}
+            latest_definition_by_identifier = {
+                definition.process_model_identifier: definition
+                for definition in definitions
+            }
+
             if request.method == "POST":
                 definition_id_raw = request.form.get("definition_id", "").strip()
                 summary = request.form.get("summary", "").strip() or None
                 if definition_id_raw.isdigit():
-                    try:
-                        process_instance = start_process_instance(
-                            db_session,
-                            tenant_id=identity.tenant.id,
-                            user_id=identity.user.id,
-                            definition_id=int(definition_id_raw),
-                            summary=summary,
-                        )
-                    except api.BpmnCoreError as exc:
-                        flash(str(exc), "error")
-                    else:
+                    definition_id = int(definition_id_raw)
+                    if definition_id not in startable_definition_ids:
                         flash(
-                            f"Started process instance {process_instance.id}.",
-                            "success",
+                            "Only the latest stored definition for each "
+                            "process model can be started. Choose the newest "
+                            "definition.",
+                            "error",
                         )
-                        return redirect(
-                            url_for(
-                                "process_instance_detail",
-                                process_instance_id=process_instance.id,
+                    else:
+                        try:
+                            process_instance = start_process_instance(
+                                db_session,
+                                tenant_id=identity.tenant.id,
+                                user_id=identity.user.id,
+                                definition_id=definition_id,
+                                summary=summary,
                             )
-                        )
+                        except api.BpmnCoreError as exc:
+                            flash(str(exc), "error")
+                        else:
+                            flash(
+                                f"Started process instance {process_instance.id}.",
+                                "success",
+                            )
+                            return redirect(
+                                url_for(
+                                    "process_instance_detail",
+                                    process_instance_id=process_instance.id,
+                                )
+                            )
                 else:
                     flash("Select a valid definition before starting a workflow.", "error")
 
             selected_definition_id = request.args.get("definition_id", "").strip()
-            definitions = list_process_definitions(
-                db_session,
-                tenant_id=identity.tenant.id,
-            )
+            if selected_definition_id and selected_definition_id.isdigit():
+                selected_historical_definition = next(
+                    (
+                        definition
+                        for definition in all_definitions
+                        if definition.id == int(selected_definition_id)
+                    ),
+                    None,
+                )
+                if selected_historical_definition is not None:
+                    selected_definition_id = str(
+                        latest_definition_by_identifier[
+                            selected_historical_definition.process_model_identifier
+                        ].id
+                    )
             if definitions:
                 definition_options = "".join(
                     f"<option value=\"{definition.id}\""
@@ -113,7 +153,7 @@ def register_process_instance_routes(app: Flask) -> None:
   <td>{escape(process_instance.process_model_display_name)}</td>
   <td>{escape(process_instance.status)}</td>
   <td>{escape(process_instance.process_initiator.username)}</td>
-  <td>{process_instance.start_in_seconds or ''}</td>
+  <td>{format_timestamp(process_instance.start_in_seconds)}</td>
   <td><a href="{escape(url_for("process_instance_detail", process_instance_id=process_instance.id))}">Open</a></td>
 </tr>
 """
@@ -183,7 +223,7 @@ def register_process_instance_routes(app: Flask) -> None:
   <td>{escape(event.event_type)}</td>
   <td>{escape(event.task_guid or '')}</td>
   <td>{escape((event.user.display_name or event.user.username) if event.user else '')}</td>
-  <td>{event.timestamp}</td>
+  <td>{format_timestamp(event.timestamp)}</td>
 </tr>
 """
                 for event in detail.events
@@ -251,8 +291,8 @@ def register_process_instance_routes(app: Flask) -> None:
 <p><strong>Summary:</strong> {escape(detail.process_instance.summary or '')}</p>
 <p><strong>Process model identifier:</strong> {escape(detail.process_instance.process_model_identifier)}</p>
 <p><strong>Started by:</strong> {escape(detail.process_instance.process_initiator.username)}</p>
-<p><strong>Started:</strong> {detail.process_instance.start_in_seconds or ''}</p>
-<p><strong>Ended:</strong> {detail.process_instance.end_in_seconds or ''}</p>
+<p><strong>Started:</strong> {format_timestamp(detail.process_instance.start_in_seconds)}</p>
+<p><strong>Ended:</strong> {format_timestamp(detail.process_instance.end_in_seconds)}</p>
 <h2>Human tasks</h2>
 {human_tasks_html}
 <h2>Metadata</h2>

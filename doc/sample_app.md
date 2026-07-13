@@ -40,7 +40,8 @@ host app.
    local `service` / `service_id` pairs in shared audit mode.
    Status: complete as part of step 2 because tenant realignment and user
    identity updates must happen together.
-5. Publish deployed BPMN files into the local m8flow backend process-model
+5. Publish deployed BPMN files, plus any companion DMN files, into the local
+   m8flow backend process-model
    catalog so the workflows are visible under `Processes` in m8flow UI.
    Status: complete in this step.
 6. Add audit-mode diagnostics and final docs/tests.
@@ -92,8 +93,8 @@ instead of silently seeding incompatible local-only identities into the shared
 database.
 
 When a process definition is deployed from the sample-app UI in shared mode,
-the app now also publishes or refreshes the BPMN files inside the local
-m8flow backend process-model catalog if:
+the app now also publishes or refreshes the BPMN files, plus any companion DMN
+files, inside the local m8flow backend process-model catalog if:
 
 - the backend catalog root can be discovered or explicitly configured
 - the process model identifier is in `<group>/<model>` format
@@ -184,7 +185,8 @@ Files:
   - Shared page layout, navigation, flash rendering, and simple post-button
     helper.
 - `sample_app/src/m8flow_sample_app/views/process_definitions.py`
-  - List stored definitions and deploy the built-in BPMN into the DB.
+  - List stored definitions and deploy the built-in BPMN, plus any companion
+    DMN, into the DB.
 - `sample_app/src/m8flow_sample_app/views/process_instances.py`
   - Start workflows, list instances, and show instance detail plus
     metadata/events.
@@ -295,6 +297,12 @@ Files:
      step:
      - PowerShell: `.\sample_app\scripts\run_sample_app.ps1`
      - Bash: `bash sample_app/scripts/run_sample_app.sh`
+     - On Windows, the PowerShell wrapper retries the known transient
+       `uv-trampoline-*.exe` helper failures during `uv sync` and
+       suppresses that raw `uv` output when the retry succeeds
+     - If `uv sync --active` cannot update the active repo-root `.venv`
+       because an installed executable is locked by another running process,
+       the PowerShell wrapper falls back to syncing `sample_app/.venv`
      - Optional host/port override:
        `.\sample_app\scripts\run_sample_app.ps1 -BindHost 127.0.0.1 -Port 5010`
        or `bash sample_app/scripts/run_sample_app.sh 127.0.0.1 5010`
@@ -308,8 +316,17 @@ Files:
    username itself as the password, for example `alpha-admin` /
    `alpha-admin`
 8. Deploy the built-in demo workflow from `Process definitions`
+   - Or upload a custom `.bpmn` file from your local filesystem in the
+     `Custom workflow from BPMN file` section
+   - In shared audit mode, you can also import a custom workflow that already
+     exists in the local m8flow backend catalog by entering its
+     `<group>/<model>` identifier in the `Import existing model from local
+     m8flow catalog` section
 9. Start a workflow from `Start workflow`
-10. Open `Secrets` and update `MAILTRAP_SMTP_PASSWORD`
+10. Open `Secrets` and update `SMTP_PASSWORD`
+    The seeded default is intentionally `CHANGE_ME_IN_SECRETS_UI`; if you leave
+    that placeholder in place, the sample app stops the service task before it
+    reaches the connector proxy and tells you to replace the secret.
 11. Switch to `alpha-operator` and complete `Submit Reimbursement Request`
 12. If the amount is greater than `1000`, switch to
     `alpha-finance-reviewer` and complete `Finance Review`
@@ -318,8 +335,9 @@ Files:
 14. Inspect the completed instance, metadata, and events from
     `Process instances`
 15. Verify that the workflow sent the final outcome through the SMTP service
-    task backed by the tenant Mailtrap secrets. The email payload is generated
-    as HTML only.
+    task backed by tenant SMTP secrets referenced through
+    `M8FLOW_SECRET:<NAME>` parameters. The email payload is generated as HTML
+    only.
 
 ## Integration Findings
 
@@ -341,6 +359,14 @@ Files:
   sample-app flow, a safe fallback is:
   - `python -m pip install build hatchling`
   - `python -m build --wheel --no-isolation`
+- `sample_app/scripts/run_sample_app.ps1` now applies that fallback
+  automatically for the common Windows `uv-trampoline-*.exe` helper failures,
+  including temp-file lock and PE-resource update issues, and keeps the raw
+  `uv` error hidden unless the fallback also fails.
+- When the active repo-root `.venv` itself cannot be updated because a
+  background process is holding one of its installed executables open, the
+  same wrapper now falls back to `sample_app/.venv` automatically instead of
+  failing the sample-app startup flow.
 - The public API is sufficient for the main workflow lifecycle:
   - import definition
   - start process
@@ -387,12 +413,12 @@ host application through the public library API.
 | Process start | Starts instances through `InitializeProcessInstanceFromDefinitionCommand`. | Matches the in-process start contract and keeps tenant/user authorization inside the library. |
 | Task lifecycle | Lists pending work, claims tasks, and completes tasks through the public commands and queries. | Matches the expected user-task lifecycle used by m8flow-style host apps. |
 | Timer execution | Runs a host-managed inline scheduler loop that polls `run_due_scheduler_jobs(...)`, including the built-in boundary-timer escalation flow. | Proves that a thin app can own timer execution itself instead of depending on an external worker stack. |
-| Service task execution | Runs the reimbursement outcome email through a BPMN service task that calls the shared connector-proxy SMTP command. The sample app supplies tenant Mailtrap secrets through a host-side registry wrapper. | Proves that a host app can keep connector deployment in shared infrastructure while still executing service tasks through the library runtime. |
+| Service task execution | Runs the reimbursement outcome email through a BPMN service task that calls the shared connector-proxy SMTP command. The BPMN carries m8flow-style `M8FLOW_SECRET:<NAME>` references and the host app resolves those tenant secrets generically for any connector request before execution. | Proves that a host app can keep connector deployment in shared infrastructure while still following m8flow's connector-parameter contract inside the library runtime. |
 | Metadata persistence | Reads `process_instance_metadata` after each task submission. | Matches current library behavior, including stringified metadata values. |
 | Event history | Reads `process_instance_event` for created, completed, and process-completed events. | Matches the auditable event trail required for host-app inspection. |
-| Secrets | Uses an app-owned `secret` table outside the library metadata and seeds Mailtrap defaults per tenant. | Demonstrates that host-owned tables can coexist with the library schema while following the same schema style used by m8flow. |
+| Secrets | Uses an app-owned `secret` table outside the library metadata and seeds canonical SMTP defaults per tenant. | Demonstrates that host-owned tables can coexist with the library schema while following the same schema style and connector-secret naming conventions used by m8flow. |
 | Authentication UX | Uses a tenant-first session page. In standalone mode it behaves like a local picker; in shared audit mode it redirects the browser to Keycloak, exchanges the authorization code on callback, and only opens the session when the returned identity matches the selected tenant user. | Much closer to the real m8flow login shape, though the sample app still keeps a pre-login tenant/user chooser instead of the full m8flow frontend flow. |
-| Process catalog UX | Deploys a built-in BPMN fixture from the app instead of browsing a model catalog. | Simpler than m8flow's full process-model management, but enough to prove import, start, and execution end to end. |
+| Process catalog UX | Deploys built-in BPMN fixtures from the app, publishes companion DMN files for those models in shared audit mode, uploads custom BPMN files from the browser, and in shared audit mode can also import a custom BPMN that already exists in the local m8flow backend catalog by `<group>/<model>` identifier. | Simpler than m8flow's full process-model management, but now covers host-owned fixtures, BPMN plus DMN catalog publication for the built-in demo, direct BPMN-file imports, and real models created in m8flow UI. |
 
 ## Documented Host-App Integration Issues
 

@@ -64,9 +64,18 @@ Available today:
 
 Missing pieces include:
 
-- delayed backoff policies for repeated service-task failures
-- dead-letter or manual intervention handling
-- async callback/correlation handling for long-running connector executions
+- delayed backoff policies for repeated service-task failures:
+  Today a failed synchronous connector call can be retried, but there is no
+  built-in policy layer for "retry in 30 seconds, then 2 minutes, then 10
+  minutes" style backoff behavior.
+- dead-letter or manual intervention handling:
+  There is no first-class operator flow for "this connector has failed too many
+  times; stop retrying automatically and send it to a manual recovery queue"
+  scenarios.
+- async callback/correlation handling for long-running connector executions:
+  V1 assumes the connector finishes within the current runtime call. A future
+  async model would let a connector start external work, return a correlation
+  id, and then resume the waiting workflow when a callback arrives later.
 
 ## Timers And Scheduling
 
@@ -82,14 +91,19 @@ Available today:
   `api.run_due_scheduler_jobs`
 - scheduling and execution of basic timer start events through persisted scheduler jobs
 - programmatic scheduling and execution of delayed retries for errored process instances
-- an architecture that supports either an inline poller or a Celery-backed
-  dispatcher/worker integration
+- a host-owned inline poller execution model
+- an example-level Celery beat/worker poller that drives the same public
+  `api.run_due_scheduler_jobs(...)` entrypoint used by the inline model
 
 Still missing:
 
-- reminder and escalation jobs
+- reminder and escalation job types:
+  BPMN timeout paths such as interrupting boundary-timer escalations are now
+  supported, but there is still no separate generic reminder/escalation job
+  framework.
 - production-grade multi-worker claim/lock orchestration
-- Celery dispatcher and worker adapter implementation
+- a first-class library-owned Celery dispatcher/claim adapter beyond the
+  current example-level integration
 
 ## User Management
 
@@ -123,12 +137,29 @@ The library does not yet cover BPMN messaging features.
 
 Missing pieces include:
 
-- message start events
-- intermediate catch/throw message events
-- signal events
-- correlation keys and message subscriptions
-- inbound message routing to running process instances
-- outbound notifications or event fan-out
+- message start events:
+  These would allow a process definition to start from an inbound BPMN message
+  such as `invoice.received`, instead of requiring an explicit
+  `process.start` API call.
+- intermediate catch/throw message events:
+  These are the BPMN message events used inside a running process, for example
+  sending `payment.requested` and later waiting for `payment.confirmed` before
+  advancing the workflow.
+- signal events:
+  Signals are broadcast-style BPMN events rather than point-to-point messages.
+  A single signal could wake multiple listening process instances at once.
+- correlation keys and message subscriptions:
+  The library still needs a durable way to remember which running instance is
+  waiting for which message and how to match an inbound payload such as
+  `order_id=123` to the correct waiter.
+- inbound message routing to running process instances:
+  Even with BPMN message support, a host application still needs a library
+  entrypoint for translating a webhook or event-bus message into "resume this
+  waiting process instance at this message catch event".
+- outbound notifications or event fan-out:
+  When BPMN throws a message or signal, there is not yet a first-class delivery
+  layer for publishing that event to external systems such as email, Kafka, or
+  other subscribers.
 
 ## Advanced BPMN Coverage
 
@@ -136,13 +167,34 @@ Some BPMN features are not yet exercised in the library tests or examples.
 
 Missing or incomplete areas may include:
 
-- call activities and reusable subprocess orchestration
-- event subprocesses
-- compensation behavior
-- boundary error and escalation handling
-- multi-instance activities
-- non-interrupting intermediate event behavior
-- BPMN message correlation against running instances
+- call activities and reusable subprocess orchestration:
+  A BPMN call activity lets one process invoke another reusable process as a
+  child. For example, a purchase workflow might call a shared vendor-onboarding
+  subprocess and wait for it to finish.
+- event subprocesses:
+  These are subprocesses triggered by events inside a running parent process,
+  often used for cancellation, exception, or side-channel behavior without
+  modeling everything on the main path.
+- compensation behavior:
+  Compensation is BPMN's rollback-like mechanism for undoing previously
+  completed work. For example, if a workflow books travel and later fails, the
+  compensation path may cancel the hotel and flight reservations.
+- boundary error and escalation handling:
+  Timer boundary events are now covered, but typed BPMN business errors and
+  escalations attached to tasks are still separate behavior. A service task
+  raising `INSUFFICIENT_FUNDS`, for example, is not the same as a timer firing.
+- multi-instance activities:
+  BPMN can run one task or subprocess multiple times over a collection, either
+  sequentially or in parallel. Typical examples are parallel reviewer tasks or
+  looping over invoice line items.
+- non-interrupting intermediate event behavior:
+  Non-interrupting events create side work without cancelling the current path.
+  For example, a reminder timer may create a follow-up task while leaving the
+  original approval task open.
+- BPMN message correlation against running instances:
+  This is the BPMN-runtime side of the messaging gap above: once multiple
+  process instances are waiting on the same message type, the library still
+  needs a safe way to correlate one inbound message to the correct instance.
 
 ## Operations And Observability
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -8,6 +9,9 @@ import pytest
 from flask.testing import FlaskClient
 from sqlalchemy import select
 
+from m8flow_bpmn_core.models.bpmn_process_definition import (
+    BpmnProcessDefinitionModel,
+)
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.utils.keycloak import (
@@ -16,12 +20,20 @@ from m8flow_bpmn_core.utils.keycloak import (
     ProvisionedKeycloakUser,
 )
 from m8flow_sample_app.app import create_app
-from m8flow_sample_app.auth import SESSION_PENDING_SHARED_LOGIN_KEY
+from m8flow_sample_app.auth import (
+    SESSION_PENDING_SHARED_LOGIN_KEY,
+    SESSION_TENANT_ID_KEY,
+    SESSION_USER_ID_KEY,
+)
 from m8flow_sample_app.db import session_scope
 from m8flow_sample_app.keycloak_login import (
     AuthenticatedSharedRealmUser,
 )
 from m8flow_sample_app.settings import get_settings
+from m8flow_sample_app.shared_m8flow import (
+    SHARED_M8FLOW_AUDIT_CONTEXT_KEY,
+    publish_process_model_to_m8flow_backend,
+)
 
 
 @pytest.fixture
@@ -37,6 +49,10 @@ def shared_app_client(
     monkeypatch.setenv("M8FLOW_SAMPLE_APP_SECRET_KEY", "sample-app-test-secret")
     monkeypatch.setenv("M8FLOW_SAMPLE_APP_M8FLOW_AUDIT_MODE", "shared")
     monkeypatch.setenv("M8FLOW_SAMPLE_APP_SCHEDULER_ENABLED", "false")
+    monkeypatch.setenv(
+        "M8FLOW_SAMPLE_APP_M8FLOW_BACKEND_PROCESS_MODELS_DIR",
+        str(tmp_path / "process_models"),
+    )
     monkeypatch.setattr(
         "m8flow_sample_app.seed.ensure_shared_realm_organizations_and_users",
         lambda **_: _fake_keycloak_context(),
@@ -66,6 +82,25 @@ def test_shared_session_page_shows_keycloak_prompt(
     assert "Shared audit mode is active" in response_text
     assert 'name="password"' not in response_text
     assert "Continue to Keycloak" in response_text
+    assert 'onchange="this.form.requestSubmit()"' in response_text
+    assert "Load users" not in response_text
+
+
+def test_shared_process_definitions_page_shows_bpmn_file_upload(
+    shared_app_client: FlaskClient,
+) -> None:
+    tenant, admin_user = _load_shared_seeded_admin()
+    with shared_app_client.session_transaction() as session_payload:
+        session_payload[SESSION_TENANT_ID_KEY] = tenant.id
+        session_payload[SESSION_USER_ID_KEY] = admin_user.id
+
+    response = shared_app_client.get("/process-definitions")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Custom workflow from BPMN file" in response_text
+    assert 'type="file"' in response_text
+    assert 'enctype="multipart/form-data"' in response_text
 
 
 def test_shared_login_start_redirects_to_keycloak_authorization_endpoint(
@@ -214,6 +249,106 @@ def test_shared_login_callback_surfaces_keycloak_error(
     assert "Select tenant and user" in response_text
 
 
+def test_shared_process_definitions_page_imports_catalog_model(
+    shared_app_client: FlaskClient,
+) -> None:
+    tenant, admin_user = _load_shared_seeded_admin()
+    audit_context = shared_app_client.application.extensions[
+        SHARED_M8FLOW_AUDIT_CONTEXT_KEY
+    ]
+    assert audit_context.uses_shared_m8flow is True
+
+    publish_process_model_to_m8flow_backend(
+        audit_context=audit_context,
+        tenant_id=tenant.id,
+        tenant_slug=tenant.slug,
+        process_model_identifier="custom/catalog-demo",
+        bpmn_name="Custom Catalog Demo",
+        source_bpmn_xml=_demo_bpmn_xml(),
+        primary_file_name="custom_catalog_demo.bpmn",
+    )
+
+    with shared_app_client.session_transaction() as session_payload:
+        session_payload[SESSION_TENANT_ID_KEY] = tenant.id
+        session_payload[SESSION_USER_ID_KEY] = admin_user.id
+
+    response = shared_app_client.post(
+        "/process-definitions/import-catalog",
+        data={
+            "process_model_identifier": "custom/catalog-demo",
+            "bpmn_name": "",
+        },
+        follow_redirects=True,
+    )
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "imported from local m8flow catalog model" in response_text
+    assert "custom/catalog-demo" in response_text
+
+    with session_scope() as db_session:
+        imported_definition = db_session.scalar(
+            select(BpmnProcessDefinitionModel).where(
+                BpmnProcessDefinitionModel.m8f_tenant_id == tenant.id
+            )
+        )
+        assert imported_definition is not None
+        assert imported_definition.process_model_identifier == "custom/catalog-demo"
+        assert imported_definition.bpmn_name == "Custom Catalog Demo"
+
+
+def test_shared_process_definitions_page_imports_uploaded_bpmn_file(
+    shared_app_client: FlaskClient,
+) -> None:
+    tenant, admin_user = _load_shared_seeded_admin()
+    with shared_app_client.session_transaction() as session_payload:
+        session_payload[SESSION_TENANT_ID_KEY] = tenant.id
+        session_payload[SESSION_USER_ID_KEY] = admin_user.id
+
+    response = shared_app_client.post(
+        "/process-definitions/import-upload",
+        data={
+            "process_model_identifier": "custom/uploaded-demo",
+            "bpmn_name": "Uploaded Demo",
+            "bpmn_file": (
+                BytesIO(_demo_bpmn_xml().encode("utf-8")),
+                "uploaded_demo.bpmn",
+            ),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "imported from uploaded BPMN file" in response_text
+    assert "uploaded_demo.bpmn" in response_text
+
+    with session_scope() as db_session:
+        imported_definition = db_session.scalar(
+            select(BpmnProcessDefinitionModel).where(
+                BpmnProcessDefinitionModel.m8f_tenant_id == tenant.id
+            )
+        )
+        assert imported_definition is not None
+        assert imported_definition.process_model_identifier == "custom/uploaded-demo"
+        assert imported_definition.bpmn_name == "Uploaded Demo"
+
+    process_models_root = Path(
+        shared_app_client.application.extensions[
+            SHARED_M8FLOW_AUDIT_CONTEXT_KEY
+        ].process_models_root
+    )
+    published_bpmn_path = (
+        process_models_root
+        / tenant.id
+        / "custom"
+        / "uploaded-demo"
+        / "uploaded_demo.bpmn"
+    )
+    assert published_bpmn_path.exists()
+
+
 def _load_shared_seeded_admin() -> tuple[M8flowTenantModel, UserModel]:
     with session_scope() as db_session:
         tenant = db_session.scalar(
@@ -230,6 +365,11 @@ def _load_shared_seeded_admin() -> tuple[M8flowTenantModel, UserModel]:
         )
         assert admin_user is not None
         return tenant, admin_user
+
+
+def _demo_bpmn_xml() -> str:
+    fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "sample_app_demo.bpmn"
+    return fixture_path.read_text(encoding="utf-8")
 
 
 def _fake_keycloak_context() -> ProvisionedKeycloakSharedRealmContext:

@@ -5,7 +5,7 @@ import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 from xml.etree import ElementTree
 
 from sqlalchemy.engine.url import make_url
@@ -44,6 +44,22 @@ class BackendCatalogPublishResult:
     @property
     def published(self) -> bool:
         return self.status in {"created", "updated", "unchanged"}
+
+
+@dataclass(frozen=True, slots=True)
+class BackendCatalogDefinitionSource:
+    process_model_identifier: str
+    bpmn_name: str
+    source_bpmn_xml: str
+    source_dmn_xml: str | None
+    primary_file_name: str
+    model_description: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class BackendCatalogSupplementalFile:
+    file_name: str
+    contents: str
 
 
 def discover_shared_m8flow_audit_context(
@@ -172,6 +188,7 @@ def publish_process_model_to_m8flow_backend(
     bpmn_name: str,
     source_bpmn_xml: str,
     primary_file_name: str,
+    supplemental_files: Sequence[BackendCatalogSupplementalFile] = (),
     model_description: str | None = None,
     settings: Settings | None = None,
 ) -> BackendCatalogPublishResult | None:
@@ -240,6 +257,14 @@ def publish_process_model_to_m8flow_backend(
     group_json_path = group_dir / "process_group.json"
     model_json_path = model_dir / "process_model.json"
     bpmn_path = model_dir / primary_file_name
+    normalized_supplemental_files = _normalize_supplemental_files(
+        supplemental_files,
+        primary_file_name=primary_file_name,
+    )
+    supplemental_file_paths = {
+        file.file_name: model_dir / file.file_name
+        for file in normalized_supplemental_files
+    }
 
     desired_group_payload = _backend_process_group_payload(process_group_id)
     desired_model_payload = _backend_process_model_payload(
@@ -249,7 +274,12 @@ def publish_process_model_to_m8flow_backend(
         model_description=model_description,
     )
 
-    existing_files = [group_json_path, model_json_path, bpmn_path]
+    existing_files = [
+        group_json_path,
+        model_json_path,
+        bpmn_path,
+        *supplemental_file_paths.values(),
+    ]
     deployment_already_current = all(
         path.exists() for path in existing_files
     ) and _existing_backend_catalog_deployment_matches(
@@ -259,6 +289,8 @@ def publish_process_model_to_m8flow_backend(
         desired_model_payload=desired_model_payload,
         bpmn_path=bpmn_path,
         desired_bpmn_xml=source_bpmn_xml,
+        supplemental_files=normalized_supplemental_files,
+        supplemental_file_paths=supplemental_file_paths,
     )
     if deployment_already_current:
         return BackendCatalogPublishResult(
@@ -277,6 +309,11 @@ def publish_process_model_to_m8flow_backend(
         _write_json_file(group_json_path, desired_group_payload)
         _write_json_file(model_json_path, desired_model_payload)
         bpmn_path.write_text(source_bpmn_xml, encoding="utf-8")
+        for file in normalized_supplemental_files:
+            supplemental_file_paths[file.file_name].write_text(
+                file.contents,
+                encoding="utf-8",
+            )
     except OSError as exc:
         warnings.append(
             "The sample app imported the workflow definition, but publishing "
@@ -301,6 +338,124 @@ def publish_process_model_to_m8flow_backend(
         process_model_id=process_model_id,
         container_name=audit_context.backend_container_name,
         warnings=tuple(warnings),
+    )
+
+
+def load_process_model_from_m8flow_backend(
+    *,
+    audit_context: SharedM8flowAuditContext | None,
+    tenant_id: str,
+    tenant_slug: str,
+    process_model_identifier: str,
+    settings: Settings | None = None,
+) -> BackendCatalogDefinitionSource:
+    from m8flow_bpmn_core.errors import NotFoundError, ValidationError
+
+    if audit_context is None or not audit_context.uses_shared_m8flow:
+        raise ValidationError(
+            "Importing from the local m8flow catalog requires shared audit mode."
+        )
+
+    process_models_root = audit_context.process_models_root
+    if process_models_root is None:
+        raise NotFoundError(
+            "No local m8flow backend process-model catalog is available for import."
+        )
+
+    parsed_identifier = _parse_backend_process_model_identifier(
+        process_model_identifier
+    )
+    if parsed_identifier is None:
+        raise ValidationError(
+            "Catalog imports require a process model identifier in "
+            "'<group>/<model>' format."
+        )
+
+    settings = settings or get_settings()
+    tenant_root, _warnings = resolve_m8flow_backend_tenant_root(
+        tenant_id=tenant_id,
+        tenant_slug=tenant_slug,
+        settings=settings,
+    )
+    process_group_id, process_model_id = parsed_identifier
+    model_dir = process_models_root / tenant_root / process_group_id / process_model_id
+    model_json_path = model_dir / "process_model.json"
+    if not model_json_path.exists():
+        raise NotFoundError(
+            "No local m8flow catalog model was found for "
+            f"'{process_model_identifier}' under tenant root '{tenant_root}'."
+        )
+
+    try:
+        model_payload = json.loads(model_json_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValidationError(
+            "The local m8flow catalog metadata for "
+            f"'{process_model_identifier}' could not be read: {exc}"
+        ) from exc
+
+    if not isinstance(model_payload, dict):
+        raise ValidationError(
+            "The local m8flow catalog metadata for "
+            f"'{process_model_identifier}' is not a JSON object."
+        )
+
+    primary_file_name = model_payload.get("primary_file_name")
+    if not isinstance(primary_file_name, str) or not primary_file_name.strip():
+        raise ValidationError(
+            "The local m8flow catalog metadata for "
+            f"'{process_model_identifier}' does not define a valid "
+            "'primary_file_name'."
+        )
+    normalized_primary_file_name = primary_file_name.strip()
+    primary_file_path = Path(normalized_primary_file_name)
+    if primary_file_path.is_absolute() or primary_file_path.name != normalized_primary_file_name:
+        raise ValidationError(
+            "The local m8flow catalog metadata for "
+            f"'{process_model_identifier}' contains an unsafe primary BPMN file name."
+        )
+
+    bpmn_path = model_dir / normalized_primary_file_name
+    if not bpmn_path.exists():
+        raise NotFoundError(
+            "The local m8flow catalog BPMN file for "
+            f"'{process_model_identifier}' was not found at "
+            f"'{bpmn_path}'."
+        )
+
+    try:
+        source_bpmn_xml = bpmn_path.read_text(encoding="utf-8")
+        source_dmn_xml = _load_optional_dmn_xml_from_backend_model_dir(
+            model_dir=model_dir,
+            primary_file_name=normalized_primary_file_name,
+            process_model_identifier=process_model_identifier,
+        )
+    except OSError as exc:
+        raise ValidationError(
+            "The local m8flow catalog BPMN/DMN files for "
+            f"'{process_model_identifier}' could not be read: {exc}"
+        ) from exc
+
+    bpmn_name = model_payload.get("display_name")
+    resolved_bpmn_name = (
+        bpmn_name.strip()
+        if isinstance(bpmn_name, str) and bpmn_name.strip()
+        else process_model_id
+    )
+    model_description = model_payload.get("description")
+    resolved_description = (
+        model_description.strip()
+        if isinstance(model_description, str) and model_description.strip()
+        else None
+    )
+
+    return BackendCatalogDefinitionSource(
+        process_model_identifier=process_model_identifier,
+        bpmn_name=resolved_bpmn_name,
+        source_bpmn_xml=source_bpmn_xml,
+        source_dmn_xml=source_dmn_xml,
+        primary_file_name=normalized_primary_file_name,
+        model_description=resolved_description,
     )
 
 
@@ -462,11 +617,77 @@ def _existing_backend_catalog_deployment_matches(
     desired_model_payload: dict[str, Any],
     bpmn_path: Path,
     desired_bpmn_xml: str,
+    supplemental_files: Sequence[BackendCatalogSupplementalFile],
+    supplemental_file_paths: dict[str, Path],
 ) -> bool:
     return (
         _json_file_matches(group_json_path, desired_group_payload)
         and _json_file_matches(model_json_path, desired_model_payload)
         and bpmn_path.read_text(encoding="utf-8") == desired_bpmn_xml
+        and all(
+            supplemental_file_paths[file.file_name].read_text(encoding="utf-8")
+            == file.contents
+            for file in supplemental_files
+        )
+    )
+
+
+def _normalize_supplemental_files(
+    supplemental_files: Sequence[BackendCatalogSupplementalFile],
+    *,
+    primary_file_name: str,
+) -> tuple[BackendCatalogSupplementalFile, ...]:
+    normalized: list[BackendCatalogSupplementalFile] = []
+    seen_names: set[str] = {primary_file_name}
+    for file in supplemental_files:
+        normalized_file_name = _normalize_backend_catalog_file_name(file.file_name)
+        if normalized_file_name in seen_names:
+            raise ValueError(
+                "Supplemental backend catalog file names must be unique and "
+                "must not match the primary BPMN file name."
+            )
+        seen_names.add(normalized_file_name)
+        normalized.append(
+            BackendCatalogSupplementalFile(
+                file_name=normalized_file_name,
+                contents=file.contents,
+            )
+        )
+    return tuple(normalized)
+
+
+def _normalize_backend_catalog_file_name(file_name: str) -> str:
+    normalized = file_name.strip()
+    if not normalized:
+        raise ValueError("Backend catalog file names cannot be blank.")
+    path = Path(normalized)
+    if path.is_absolute() or path.name != normalized or normalized in {".", ".."}:
+        raise ValueError(f"Unsafe backend catalog file name: {file_name!r}")
+    return normalized
+
+
+def _load_optional_dmn_xml_from_backend_model_dir(
+    *,
+    model_dir: Path,
+    primary_file_name: str,
+    process_model_identifier: str,
+) -> str | None:
+    matching_stem_path = model_dir / f"{Path(primary_file_name).stem}.dmn"
+    if matching_stem_path.exists():
+        return matching_stem_path.read_text(encoding="utf-8")
+
+    dmn_paths = sorted(model_dir.glob("*.dmn"))
+    if not dmn_paths:
+        return None
+    if len(dmn_paths) == 1:
+        return dmn_paths[0].read_text(encoding="utf-8")
+
+    from m8flow_bpmn_core.errors import ValidationError
+
+    raise ValidationError(
+        "The local m8flow catalog model "
+        f"'{process_model_identifier}' contains multiple DMN files, so the "
+        "sample app cannot determine which one belongs to the primary BPMN."
     )
 
 
