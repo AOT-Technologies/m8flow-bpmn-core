@@ -59,11 +59,14 @@ Available today:
 - process-wide and scoped hooks for installing connector registries
 - documentation of the current connector-proxy catalog and execution contract
 - the HTTP adapter for `m8flow-connector-proxy`
-- retry integration for synchronous service-task failures
+- retry integration for synchronous service-task failures on initial start,
+  timer-start, waiting-workflow refresh, and retry reruns
 - an end-to-end connector-proxy POC that uses the shared m8flow database/UI path
 
 Missing pieces include:
 
+- rollback-safe failure persistence for service tasks that run after a user
+  task completion path
 - delayed backoff policies for repeated service-task failures
 - dead-letter or manual intervention handling
 - async callback/correlation handling for long-running connector executions

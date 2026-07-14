@@ -83,9 +83,19 @@ See [`service_tasks.md`](service_tasks.md) for the connector-proxy contract and
 the intended adapter direction.
 
 During process execution, synchronous service-task failures surface as
-`ServiceTaskExecutionError`. The library also persists the failed workflow
-snapshot, records `task_failed`, and transitions the process instance to
-`error` so the same instance can be retried later.
+`ServiceTaskExecutionError`.
+
+For initial start, timer-start, waiting-workflow refresh, and retry reruns,
+the service-task contract is stronger than a normal in-transaction failure:
+the same process instance remains retryable afterwards even if the host
+application lets the exception escape an outer transaction helper that rolls
+back the main unit of work. To support that, the library uses a limited
+autonomous persistence step for the failure snapshot, failure events, and
+final `error` status. That safeguard is for workflow recovery state only; it
+must not be treated as a commit of arbitrary caller-side changes.
+
+Workflow advancement after a user task is completed still shares the caller
+transaction boundary in V1.
 
 ---
 

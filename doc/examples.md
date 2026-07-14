@@ -1,6 +1,6 @@
 # Example Workflows
 
-The repository ships ten runnable examples:
+The repository ships eleven runnable examples:
 
 | File | Purpose | Database |
 | --- | --- | --- |
@@ -12,6 +12,7 @@ The repository ships ten runnable examples:
 | `examples/scheduled_cycle_timer_poc.py` | Interactive recurring timer-start workflow with `timeCycle` rescheduling and m8flow audit support. | PostgreSQL |
 | `examples/scheduled_retry_poc.py` | Interactive delayed-retry workflow with inline polling and m8flow audit support. | PostgreSQL |
 | `examples/service_task_connector_poc.py` | Interactive connector-proxy workflow with real BPMN service tasks and m8flow audit support. | PostgreSQL |
+| `examples/service_task_failure_retry_poc.py` | Interactive rollback-safe service-task failure and retry workflow with m8flow audit support. | PostgreSQL |
 | `examples/parallel_review_poc.py` | Non-interactive purchase-order flow that exercises a parallel gateway and script tasks. | In-memory SQLite |
 | `examples/errors_demo.py` | Non-interactive walk through every public error class. | In-memory SQLite |
 
@@ -399,9 +400,72 @@ The example:
 - prints the captured external requests and the persisted workflow data so the
   connector results can be inspected after the run
 
+Transaction note:
+
+- when a synchronous service task fails during initial start, timer wake-up, or
+  retry rerun, the library now preserves a retryable errored process instance
+  even though it still re-raises `ServiceTaskExecutionError`
+- this connector POC itself stays on the happy path; the rollback and retry
+  guarantees are covered by `tests/test_service_task_runtime.py`
+
 This is the shortest end-to-end example of how an application can use
 `m8flow_bpmn_core` to execute real BPMN service tasks through m8flow's current
 connector-proxy direction while still keeping the workflow logic in-process.
+
+## Service Task Failure Retry
+
+`examples/service_task_failure_retry_poc.py` is the rollback-safe failure
+counterpart to the happy-path connector example above. It demonstrates the
+transaction rule for synchronous service-task failures: the first service task
+fails during workflow initialization of a committed process-instance shell, the
+exception escapes a caller-owned `session_scope(...)`, the outer transaction
+helper rolls back, and the library still leaves behind a retryable errored
+process instance.
+
+Run it with:
+
+```bash
+uv run python examples/service_task_failure_retry_poc.py
+```
+
+Or on PowerShell:
+
+```powershell
+.\examples\service_task_failure_retry_poc.ps1
+```
+
+Or on Bash:
+
+```bash
+bash examples/service_task_failure_retry_poc.sh
+```
+
+The example:
+
+- creates or connects to a Postgres database
+- reuses the shared local m8flow database when available, or starts a
+  temporary Postgres container otherwise
+- provisions a dedicated demo tenant and users for the failure-retry example
+- deploys the BPMN into the local m8flow backend catalog when the shared DB
+  is in use, so the model can be audited in the UI
+- commits a normal process-instance shell before any risky service-task
+  execution begins
+- initializes that shell with an intentionally empty `ServiceTaskRegistry` so
+  the first `demo/PrepareReview` call fails deterministically
+- runs that initialization inside a host-style `session_scope(...)` helper and
+  lets `ServiceTaskExecutionError` escape
+- demonstrates that the same process instance still persists in `error`
+  afterwards, with a stored workflow snapshot and `task_failed` /
+  `process_instance_error` events
+- installs a working in-process demo connector registry and retries that same
+  process instance through `RetryProcessInstanceCommand`
+- shows the workflow reopening at its user task and then completing normally
+- prints the recorded demo-connector invocations so the successful retry call
+  and successful finalize call can both be inspected
+
+This is the clearest end-to-end example of how a host application can rely on
+the library's rollback-safe failure persistence for initial service-task
+execution without needing an external worker or proxy.
 
 ## Launchers
 
@@ -453,6 +517,8 @@ the process instance progress and audit it live in the m8flow UI while
 
   `.\examples\service_task_connector_poc.ps1`
 
+  `.\examples\service_task_failure_retry_poc.ps1`
+
 - Bash:
 
   `bash examples/conditional_approval_poc.sh`
@@ -472,6 +538,8 @@ the process instance progress and audit it live in the m8flow UI while
   `bash examples/scheduled_retry_poc.sh`
 
   `bash examples/service_task_connector_poc.sh`
+
+  `bash examples/service_task_failure_retry_poc.sh`
 
 Add `-UseDocker` or `--docker` to force the temporary container. Add
 `-KeepContainer` or `--keep-container` if you want to leave the container
