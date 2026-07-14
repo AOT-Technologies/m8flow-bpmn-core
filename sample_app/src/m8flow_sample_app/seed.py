@@ -446,14 +446,23 @@ def _provision_shared_keycloak_context() -> ProvisionedKeycloakSharedRealmContex
                 password=user_definition.username,
                 organization_alias=tenant_definition.slug,
                 display_name=user_definition.display_name,
-                organization_group_names=KEYCLOAK_GROUPS_BY_ROLE[
-                    user_definition.role_name
-                ],
+                organization_group_names=_organization_group_names_for_seed_user(
+                    user_definition
+                ),
             )
             for tenant_definition in SEED_TENANTS
             for user_definition in tenant_definition.users
         ],
     )
+
+
+def _organization_group_names_for_seed_user(
+    user_definition: SeedUserDefinition,
+) -> tuple[str, ...]:
+    group_names = list(KEYCLOAK_GROUPS_BY_ROLE[user_definition.role_name])
+    if user_definition.lane_name is not None:
+        group_names.append(user_definition.lane_name)
+    return tuple(dict.fromkeys(group_names))
 
 
 def _realign_tenant_to_canonical_id(

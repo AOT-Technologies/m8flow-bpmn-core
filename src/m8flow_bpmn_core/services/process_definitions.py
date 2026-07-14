@@ -22,6 +22,7 @@ from m8flow_bpmn_core.services.authorization import (
 )
 from m8flow_bpmn_core.services.tenant_users import ensure_user_belongs_to_tenant
 from m8flow_bpmn_core.services.workflow_runtime import (
+    _sync_lane_owner_group_assignments,
     _sync_timer_start_scheduler_jobs_for_definition,
 )
 
@@ -151,6 +152,11 @@ def import_bpmn_process_definition(
         session,
         process_definition=definition,
         occurred_at=snapshot_timestamp,
+    )
+    _sync_lane_owner_group_assignments(
+        session,
+        tenant_id=tenant_id,
+        lane_owners=resolved_properties_json.get("lane_owners"),
     )
     return definition
 

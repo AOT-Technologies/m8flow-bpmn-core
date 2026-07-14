@@ -5,11 +5,14 @@ from pathlib import Path
 
 import pytest
 from SpiffWorkflow.util.task import TaskState
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core import api
+from m8flow_bpmn_core.models.group import GroupModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
 from m8flow_bpmn_core.services.authorization import ROLE_ADMIN, ensure_v1_role
 from m8flow_bpmn_core.services.workflow_runtime import _restore_workflow
 
@@ -177,6 +180,120 @@ def test_service_tasks_execute_before_and_after_manual_task(
         )
         == []
     )
+
+
+def test_lane_owners_sync_into_lane_group_membership_on_import(
+    session: Session,
+) -> None:
+    tenant, user = _seed_tenant_and_admin(session)
+    bpmn_xml = SERVICE_TASK_RUNTIME_BPMN_PATH.read_text(encoding="utf-8")
+
+    api.execute_command(
+        session,
+        api.ImportBpmnProcessDefinitionCommand(
+            tenant_id=tenant.id,
+            bpmn_identifier="service-task-runtime-poc-group-sync",
+            user_id=user.id,
+            bpmn_name="Service Task Runtime Group Sync POC",
+            source_bpmn_xml=bpmn_xml,
+            properties_json={
+                "lane_owners": {"Operations": [user.username]},
+            },
+            created_at_in_seconds=10,
+            updated_at_in_seconds=10,
+        ),
+    )
+
+    lane_group = session.get(GroupModel, api.resolve_lane_assignment_id("Operations"))
+    assert lane_group is not None
+    assert lane_group.identifier == "Operations"
+    assert sorted(
+        session.scalars(
+            select(UserGroupAssignmentModel.user_id).where(
+                UserGroupAssignmentModel.group_id == lane_group.id
+            )
+        )
+    ) == [user.id]
+
+
+def test_group_membership_assigns_lane_tasks_without_lane_owners(
+    session: Session,
+) -> None:
+    tenant, admin = _seed_tenant_and_admin(session)
+    reviewer = UserModel(
+        username="group-reviewer",
+        email="group-reviewer@example.com",
+        service="http://localhost:7002/realms/tenant-service-task-runtime",
+        service_id="group-reviewer-keycloak",
+        display_name="Group Reviewer",
+        created_at_in_seconds=1,
+        updated_at_in_seconds=1,
+    )
+    session.add(reviewer)
+    session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[reviewer.id],
+    )
+    lane_group_id = api.resolve_lane_assignment_id("Operations")
+    session.add(
+        GroupModel(
+            id=lane_group_id,
+            name="Operations",
+            identifier="Operations",
+            source_is_open_id=False,
+        )
+    )
+    session.add(
+        UserGroupAssignmentModel(
+            user_id=reviewer.id,
+            group_id=lane_group_id,
+        )
+    )
+    session.flush()
+
+    bpmn_xml = SERVICE_TASK_RUNTIME_BPMN_PATH.read_text(encoding="utf-8")
+    connector = DemoServiceTaskConnector()
+    registry = api.ServiceTaskRegistry(connectors=(connector,))
+
+    with api.service_task_registry_scope(registry):
+        definition = api.execute_command(
+            session,
+            api.ImportBpmnProcessDefinitionCommand(
+                tenant_id=tenant.id,
+                bpmn_identifier="service-task-runtime-poc-group-membership",
+                user_id=admin.id,
+                bpmn_name="Service Task Runtime Group Membership POC",
+                source_bpmn_xml=bpmn_xml,
+                properties_json={},
+                created_at_in_seconds=10,
+                updated_at_in_seconds=10,
+            ),
+        )
+        api.execute_command(
+            session,
+            api.InitializeProcessInstanceFromDefinitionCommand(
+                tenant_id=tenant.id,
+                bpmn_process_definition_id=definition.id,
+                process_initiator_id=admin.id,
+                submission_metadata={"submission_message": "hello-group-reviewer"},
+                started_at_in_seconds=20,
+            ),
+        )
+
+    pending_tasks = api.execute_query(
+        session,
+        api.GetPendingTasksQuery(tenant_id=tenant.id, user_id=reviewer.id),
+    )
+
+    assert len(pending_tasks) == 1
+    assert pending_tasks[0].task_name == "Task_review"
+    assert [
+        (assignment.user.username, assignment.added_by)
+        for assignment in pending_tasks[0].human_task_users
+    ] == [("group-reviewer", "lane_assignment")]
 
 
 def test_missing_service_task_connector_surfaces_service_task_execution_error(

@@ -57,6 +57,7 @@ from m8flow_bpmn_core.models.scheduler_job import (
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
 from m8flow_bpmn_core.services.authorization import (
     PROCESS_START_COMMAND,
     require_command_authorization,
@@ -1742,6 +1743,13 @@ def _upsert_human_task(
 
 
 def _lane_group_id(session: Session, lane_name: str | None) -> int | None:
+    lane_group = _lane_group(session, lane_name)
+    if lane_group is None:
+        return None
+    return lane_group.id
+
+
+def _lane_group(session: Session, lane_name: str | None) -> GroupModel | None:
     if lane_name is None:
         return None
     if re.match(r"(process.?)initiator", lane_name, re.IGNORECASE):
@@ -1758,7 +1766,7 @@ def _lane_group_id(session: Session, lane_name: str | None) -> int | None:
         )
         session.add(lane_group)
         session.flush()
-    return lane_group.id
+    return lane_group
 
 
 def _sync_human_task_assignments(
@@ -1810,31 +1818,159 @@ def _resolve_human_task_assignments(
         process_instance=process_instance,
         task=task,
     )
-    if not isinstance(lane_owners, dict) or lane_name not in lane_owners:
-        raise NotFoundError(
-            f"Task {task.task_spec.name} does not define lane owners for "
-            f"lane {lane_name!r}"
-        )
-
-    resolved_users: list[tuple[UserModel, HumanTaskUserAddedBy]] = []
-    seen_user_ids: set[int] = set()
-    for identifier in lane_owners[lane_name]:
-        for user in _find_users_by_identifier(
-            session,
-            tenant_id=process_instance.m8f_tenant_id,
-            identifier=identifier,
-        ):
-            if user.id in seen_user_ids:
-                continue
-            seen_user_ids.add(user.id)
-            resolved_users.append((user, HumanTaskUserAddedBy.lane_owner))
+    _sync_lane_owner_group_assignments(
+        session,
+        tenant_id=process_instance.m8f_tenant_id,
+        lane_owners=lane_owners,
+    )
+    preferred_identifiers: tuple[Any, ...] = ()
+    if isinstance(lane_owners, Mapping):
+        configured_identifiers = lane_owners.get(lane_name, ())
+        if isinstance(configured_identifiers, (list, tuple, set, frozenset)):
+            preferred_identifiers = tuple(configured_identifiers)
+    resolved_users = _resolve_lane_group_users(
+        session,
+        tenant_id=process_instance.m8f_tenant_id,
+        lane_name=lane_name,
+        preferred_identifiers=preferred_identifiers,
+    )
 
     if not resolved_users:
+        if not isinstance(lane_owners, Mapping) or lane_name not in lane_owners:
+            raise NotFoundError(
+                f"Task {task.task_spec.name} does not define lane owners for "
+                f"lane {lane_name!r} and no users belong to that lane group"
+            )
         raise NotFoundError(
             f"No users were resolved for lane {lane_name!r} on task "
             f"{task.task_spec.name}"
         )
 
+    return resolved_users
+
+
+def _sync_lane_owner_group_assignments(
+    session: Session,
+    *,
+    tenant_id: str,
+    lane_owners: Mapping[str, Any] | None,
+) -> None:
+    if not isinstance(lane_owners, Mapping):
+        return
+
+    for lane_name, identifiers in lane_owners.items():
+        if not isinstance(lane_name, str):
+            continue
+        lane_group = _lane_group(session, lane_name)
+        if lane_group is None:
+            continue
+        for user in _resolved_lane_owner_users(
+            session,
+            tenant_id=tenant_id,
+            identifiers=identifiers,
+        ):
+            assignment = session.scalar(
+                select(UserGroupAssignmentModel).where(
+                    UserGroupAssignmentModel.user_id == user.id,
+                    UserGroupAssignmentModel.group_id == lane_group.id,
+                )
+            )
+            if assignment is None:
+                session.add(
+                    UserGroupAssignmentModel(
+                        user_id=user.id,
+                        group_id=lane_group.id,
+                    )
+                )
+    session.flush()
+
+
+def _resolve_lane_group_users(
+    session: Session,
+    *,
+    tenant_id: str,
+    lane_name: str,
+    preferred_identifiers: tuple[Any, ...] = (),
+) -> list[tuple[UserModel, HumanTaskUserAddedBy]]:
+    lane_group = _lane_group(session, lane_name)
+    if lane_group is None:
+        return []
+
+    lane_group_users = _users_in_lane_group(
+        session,
+        tenant_id=tenant_id,
+        group_id=lane_group.id,
+    )
+    users_by_id = {user.id: user for user in lane_group_users}
+
+    resolved_users: list[tuple[UserModel, HumanTaskUserAddedBy]] = []
+    seen_user_ids: set[int] = set()
+    for user in _resolved_lane_owner_users(
+        session,
+        tenant_id=tenant_id,
+        identifiers=preferred_identifiers,
+    ):
+        if user.id not in users_by_id or user.id in seen_user_ids:
+            continue
+        seen_user_ids.add(user.id)
+        resolved_users.append((user, HumanTaskUserAddedBy.lane_owner))
+
+    for user in sorted(lane_group_users, key=lambda item: (item.username, item.id)):
+        if user.id in seen_user_ids:
+            continue
+        seen_user_ids.add(user.id)
+        resolved_users.append((user, HumanTaskUserAddedBy.lane_assignment))
+
+    return resolved_users
+
+
+def _users_in_lane_group(
+    session: Session,
+    *,
+    tenant_id: str,
+    group_id: int,
+) -> list[UserModel]:
+    users = list(
+        session.scalars(
+            select(UserModel)
+            .join(
+                UserGroupAssignmentModel,
+                UserGroupAssignmentModel.user_id == UserModel.id,
+            )
+            .where(UserGroupAssignmentModel.group_id == group_id)
+        )
+    )
+    tenant_identifiers = tenant_identifiers_for(session, tenant_id)
+    if tenant_identifiers:
+        users = [
+            user for user in users if user_belongs_to_tenant(user, tenant_identifiers)
+        ]
+    return users
+
+
+def _resolved_lane_owner_users(
+    session: Session,
+    *,
+    tenant_id: str,
+    identifiers: Any,
+) -> list[UserModel]:
+    if not isinstance(identifiers, (list, tuple, set, frozenset)):
+        return []
+
+    resolved_users: list[UserModel] = []
+    seen_user_ids: set[int] = set()
+    for identifier in identifiers:
+        if not isinstance(identifier, str):
+            continue
+        for user in _find_users_by_identifier(
+            session,
+            tenant_id=tenant_id,
+            identifier=identifier,
+        ):
+            if user.id in seen_user_ids:
+                continue
+            seen_user_ids.add(user.id)
+            resolved_users.append(user)
     return resolved_users
 
 

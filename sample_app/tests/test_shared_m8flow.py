@@ -16,7 +16,7 @@ from m8flow_bpmn_core.utils.keycloak import (
     ProvisionedKeycloakUser,
 )
 from m8flow_sample_app.db import run_migrations, session_scope
-from m8flow_sample_app.seed import seed_static_reference_data
+from m8flow_sample_app.seed import SEED_TENANTS, seed_static_reference_data
 from m8flow_sample_app.settings import get_settings
 from m8flow_sample_app.shared_m8flow import (
     SharedM8flowAuditContext,
@@ -47,6 +47,24 @@ def test_auto_mode_detects_shared_m8flow_for_postgres_database(
     assert context.process_models_root == tmp_path
     assert context.warnings == ()
     get_settings.cache_clear()
+
+
+def test_shared_keycloak_seed_includes_lane_group_names() -> None:
+    alpha_operator = next(
+        user
+        for tenant in SEED_TENANTS
+        if tenant.slug == "sample-tenant-alpha"
+        for user in tenant.users
+        if user.username == "alpha-operator"
+    )
+
+    from m8flow_sample_app.seed import _organization_group_names_for_seed_user
+
+    assert _organization_group_names_for_seed_user(alpha_operator) == (
+        "Submitters",
+        "Viewers",
+        "Operations",
+    )
 
 
 def test_off_mode_disables_shared_m8flow_detection(
