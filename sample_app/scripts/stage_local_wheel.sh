@@ -23,7 +23,8 @@ cp "$wheel_path" "$destination"
 python3 "$metadata_script" \
   --pyproject-path "$pyproject_path" \
   --uv-lock-path "$uv_lock_path" \
-  --wheel-path "$destination"
+  --wheel-path "$destination" \
+  --uv-executable "uv"
 
 echo "Staged wheel: $wheel_path"
 echo "Destination : $destination"

@@ -20,6 +20,14 @@ function Resolve-PythonExecutable {
     throw "Could not find 'python' or 'py'. Install Python before staging the sample-app wheel."
 }
 
+function Resolve-UvExecutable {
+    $uvCommand = Get-Command uv -ErrorAction SilentlyContinue
+    if ($null -eq $uvCommand) {
+        throw "Could not find 'uv'. Install uv before staging the sample-app wheel."
+    }
+    return $uvCommand.Source
+}
+
 $resolvedDist = Resolve-Path -Path $DistDirectory -ErrorAction Stop
 $wheel = Get-ChildItem -Path $resolvedDist -Filter "m8flow_bpmn_core-*.whl" |
     Sort-Object LastWriteTimeUtc -Descending |
@@ -46,19 +54,22 @@ if (Test-Path -LiteralPath $legacyWheelPath) {
 Copy-Item -LiteralPath $wheel.FullName -Destination $destination -Force
 
 $pythonExecutable = Resolve-PythonExecutable
+$uvExecutable = Resolve-UvExecutable
 $uvLockPath = Join-Path $PSScriptRoot "..\uv.lock"
 $metadataScript = Join-Path $PSScriptRoot "update_local_wheel_metadata.py"
 if ($pythonExecutable -is [array]) {
     & $pythonExecutable[0] $pythonExecutable[1] $metadataScript `
         --pyproject-path $PyprojectPath `
         --uv-lock-path $uvLockPath `
-        --wheel-path $destination
+        --wheel-path $destination `
+        --uv-executable $uvExecutable
 }
 else {
     & $pythonExecutable $metadataScript `
         --pyproject-path $PyprojectPath `
         --uv-lock-path $uvLockPath `
-        --wheel-path $destination
+        --wheel-path $destination `
+        --uv-executable $uvExecutable
 }
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to refresh sample_app/pyproject.toml and sample_app/uv.lock for the staged wheel."

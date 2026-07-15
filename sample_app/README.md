@@ -155,6 +155,8 @@ identities into the shared m8flow database.
 
    The staging helper also refreshes the `m8flow-bpmn-core` entry in
    `sample_app/uv.lock` so the lockfile hash matches the rebuilt local wheel.
+   If `sample_app/uv.lock` is missing, the helper regenerates it automatically
+   before continuing.
 
 3. Sync the sample app environment:
 

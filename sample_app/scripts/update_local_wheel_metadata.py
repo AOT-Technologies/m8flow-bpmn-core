@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 
@@ -16,6 +18,7 @@ def main() -> int:
     parser.add_argument("--pyproject-path", required=True)
     parser.add_argument("--uv-lock-path", required=True)
     parser.add_argument("--wheel-path", required=True)
+    parser.add_argument("--uv-executable", default="uv")
     args = parser.parse_args()
 
     pyproject_path = Path(args.pyproject_path)
@@ -31,13 +34,27 @@ def main() -> int:
         pyproject_path=pyproject_path,
         relative_wheel_path=relative_wheel_path,
     )
-    _update_uv_lock(
-        uv_lock_path=uv_lock_path,
-        relative_wheel_path=relative_wheel_path,
-        wheel_filename=wheel_filename,
-        wheel_version=wheel_version,
-        wheel_hash=wheel_hash,
-    )
+    if not uv_lock_path.exists():
+        _generate_uv_lock(
+            pyproject_path=pyproject_path,
+            uv_lock_path=uv_lock_path,
+            uv_executable=args.uv_executable,
+        )
+    else:
+        try:
+            _update_uv_lock(
+                uv_lock_path=uv_lock_path,
+                relative_wheel_path=relative_wheel_path,
+                wheel_filename=wheel_filename,
+                wheel_version=wheel_version,
+                wheel_hash=wheel_hash,
+            )
+        except RuntimeError:
+            _refresh_uv_lock(
+                pyproject_path=pyproject_path,
+                uv_lock_path=uv_lock_path,
+                uv_executable=args.uv_executable,
+            )
     return 0
 
 
@@ -107,6 +124,75 @@ def _update_uv_lock(
         )
 
     uv_lock_path.write_text(updated_text, encoding="utf-8")
+
+
+def _generate_uv_lock(
+    *,
+    pyproject_path: Path,
+    uv_lock_path: Path,
+    uv_executable: str,
+) -> None:
+    _run_uv_lock_command(
+        pyproject_path=pyproject_path,
+        uv_lock_path=uv_lock_path,
+        uv_executable=uv_executable,
+        arguments=("lock",),
+    )
+
+
+def _refresh_uv_lock(
+    *,
+    pyproject_path: Path,
+    uv_lock_path: Path,
+    uv_executable: str,
+) -> None:
+    _run_uv_lock_command(
+        pyproject_path=pyproject_path,
+        uv_lock_path=uv_lock_path,
+        uv_executable=uv_executable,
+        arguments=("lock", "--refresh-package", "m8flow-bpmn-core"),
+    )
+
+
+def _run_uv_lock_command(
+    *,
+    pyproject_path: Path,
+    uv_lock_path: Path,
+    uv_executable: str,
+    arguments: tuple[str, ...],
+) -> None:
+    uv_command = _resolve_uv_command(uv_executable)
+    try:
+        subprocess.run(
+            [uv_command, *arguments],
+            check=True,
+            cwd=pyproject_path.parent,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        details = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+        raise RuntimeError(
+            "Could not regenerate the sample-app uv.lock with "
+            f"{uv_command!r}: {details}"
+        ) from exc
+
+    if not uv_lock_path.exists():
+        raise RuntimeError(
+            f"uv completed without creating the expected lockfile at '{uv_lock_path}'."
+        )
+
+
+def _resolve_uv_command(uv_executable: str) -> str:
+    if Path(uv_executable).exists():
+        return uv_executable
+    resolved = shutil.which(uv_executable)
+    if resolved is None:
+        raise RuntimeError(
+            "Could not find the 'uv' executable needed to refresh "
+            "sample_app/uv.lock."
+        )
+    return resolved
 
 
 def _sha256_for_file(path: Path) -> str:
