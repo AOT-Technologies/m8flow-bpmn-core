@@ -15,10 +15,12 @@ EXPECTED_PUBLIC_API = frozenset(
         "BpmnCoreError",
         "InvalidStateError",
         "NotFoundError",
+        "ServiceTaskExecutionError",
         "ValidationError",
         # Commands
         "ClaimTaskCommand",
         "CompleteTaskCommand",
+        "ConnectorProxyServiceTaskConnector",
         "CreateProcessInstanceCommand",
         "DatabaseAuthorizationPolicy",
         "ErrorProcessInstanceCommand",
@@ -52,10 +54,22 @@ EXPECTED_PUBLIC_API = frozenset(
         # Enums
         "ProcessInstanceEventType",
         "ProcessInstanceStatus",
+        "ServiceTaskCommandDefinition",
+        "ServiceTaskConnector",
+        "ServiceTaskContext",
+        "ServiceTaskParameterDefinition",
+        "ServiceTaskRegistry",
+        "ServiceTaskRegistryFactory",
+        "ServiceTaskRequest",
+        "ServiceTaskResult",
         # Dispatchers
         "authorization_policy_scope",
+        "build_connector_proxy_service_task_connectors",
+        "build_connector_proxy_service_task_registry",
+        "build_service_task_operation_id",
         "execute_command",
         "execute_query",
+        "fetch_connector_proxy_command_definitions",
         # Service functions
         "advance_process_instance_workflow",
         "claim_task",
@@ -76,7 +90,10 @@ EXPECTED_PUBLIC_API = frozenset(
         "resume_process_instance",
         "retry_process_instance",
         "schedule_process_instance_retry",
+        "service_task_registry_scope",
         "set_default_authorization_policy_factory",
+        "set_default_service_task_registry_factory",
+        "split_service_task_operation_id",
         "suspend_process_instance",
         "terminate_process_instance",
         "upsert_process_instance_metadata",
@@ -94,7 +111,23 @@ def test_public_api_re_exports_task_services() -> None:
     assert callable(api.get_pending_tasks)
     assert callable(api.claim_task)
     assert callable(api.complete_task)
+    assert callable(api.ConnectorProxyServiceTaskConnector)
     assert callable(api.DatabaseAuthorizationPolicy)
+    assert api.ServiceTaskConnector is not None
+    assert callable(api.ServiceTaskRegistry)
+    assert callable(api.ServiceTaskCommandDefinition)
+    assert callable(api.ServiceTaskContext)
+    assert callable(api.ServiceTaskParameterDefinition)
+    assert callable(api.ServiceTaskRequest)
+    assert callable(api.ServiceTaskResult)
+    assert api.ServiceTaskRegistryFactory is not None
+    assert callable(api.build_connector_proxy_service_task_connectors)
+    assert callable(api.build_connector_proxy_service_task_registry)
+    assert callable(api.build_service_task_operation_id)
+    assert callable(api.split_service_task_operation_id)
+    assert callable(api.fetch_connector_proxy_command_definitions)
+    assert callable(api.service_task_registry_scope)
+    assert callable(api.set_default_service_task_registry_factory)
     assert callable(api.authorization_policy_scope)
     assert callable(api.set_default_authorization_policy_factory)
     assert callable(api.error_process_instance)
@@ -148,3 +181,5 @@ def test_error_hierarchy_preserves_builtin_compatibility() -> None:
     assert issubclass(api.AuthorizationError, PermissionError)
     assert issubclass(api.NotFoundError, api.BpmnCoreError)
     assert issubclass(api.NotFoundError, LookupError)
+    assert issubclass(api.ServiceTaskExecutionError, api.BpmnCoreError)
+    assert issubclass(api.ServiceTaskExecutionError, RuntimeError)

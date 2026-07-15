@@ -154,9 +154,27 @@ For delayed retry specifically, the normal host-application sequence is:
    `running`, clears `end_in_seconds`, reopens terminated runtime tasks and
    human tasks to `READY`, records a `process_instance_retried` event, and
    deletes the consumed scheduler row.
-6. If the instance is no longer in `error` by the time the worker reaches the
+6. If that errored instance was caused by a synchronous service task failure,
+   the retry path also restores the persisted Spiff workflow snapshot, resets
+   the errored service-task branch, and reruns it immediately inside the same
+   command or scheduler invocation.
+7. If the rerun succeeds, the instance continues to its next waiting state,
+   user task, or completion state as normal. If it fails again, the instance
+   returns to `error` and surfaces `ServiceTaskExecutionError` again.
+8. If the instance is no longer in `error` by the time the worker reaches the
    due row, the library treats that scheduler row as stale and deletes it
    instead of forcing a retry.
+
+For synchronous service-task failures during initial start, timer-start,
+waiting-workflow refresh, or retry reruns, the process instance remains
+retryable after `ServiceTaskExecutionError` is surfaced, even when the host
+application uses an outer rollback-on-exception transaction helper. The
+library therefore durably persists the failure snapshot and `error` lifecycle
+state as a narrow recovery safeguard, while leaving unrelated caller-side
+writes outside that autonomous commit boundary.
+
+Workflow advancement after a user task is completed still shares the caller
+transaction boundary in V1.
 
 The current V1 runner is intentionally simple and is best used as a single
 logical poller per database or tenant scope. A Celery-backed dispatcher can be

@@ -37,10 +37,15 @@ class NotFoundError(BpmnCoreError, LookupError):
     """The requested entity does not exist for the supplied tenant."""
 
 
+class ServiceTaskExecutionError(BpmnCoreError, RuntimeError):
+    """A BPMN service task failed while invoking a registered connector."""
+
+
 __all__ = [
     "AuthorizationError",
     "BpmnCoreError",
     "InvalidStateError",
     "NotFoundError",
+    "ServiceTaskExecutionError",
     "ValidationError",
 ]

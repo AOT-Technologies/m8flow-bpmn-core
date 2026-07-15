@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:spiffworkflow="http://spiffworkflow.org/bpmn/schema/1.0/core"
+  id="Definitions_Service_Task_Runtime"
+  targetNamespace="http://m8flow.example/service-tasks">
+  <bpmn:process id="Process_service_task_runtime" isExecutable="true">
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_Operations" name="Operations">
+        <bpmn:flowNodeRef>Task_review</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="StartEvent_1" />
+    <bpmn:sequenceFlow
+      id="Flow_start_to_prepare"
+      sourceRef="StartEvent_1"
+      targetRef="Task_prepare"
+    />
+    <bpmn:serviceTask id="Task_prepare" name="Prepare Review">
+      <bpmn:extensionElements>
+        <spiffworkflow:serviceTaskOperator
+          id="demo/PrepareReview"
+          resultVariable="service_stage_one">
+          <spiffworkflow:parameters>
+            <spiffworkflow:parameter
+              id="submission_message"
+              type="str"
+              value="submission_message"
+            />
+          </spiffworkflow:parameters>
+        </spiffworkflow:serviceTaskOperator>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow
+      id="Flow_prepare_to_review"
+      sourceRef="Task_prepare"
+      targetRef="Task_review"
+    />
+    <bpmn:userTask id="Task_review" name="Review Prepared Request" />
+    <bpmn:sequenceFlow
+      id="Flow_review_to_finalize"
+      sourceRef="Task_review"
+      targetRef="Task_finalize"
+    />
+    <bpmn:serviceTask id="Task_finalize" name="Finalize Review">
+      <bpmn:extensionElements>
+        <spiffworkflow:serviceTaskOperator
+          id="demo/FinalizeReview"
+          resultVariable="service_stage_two">
+          <spiffworkflow:parameters>
+            <spiffworkflow:parameter
+              id="decision"
+              type="str"
+              value="decision"
+            />
+          </spiffworkflow:parameters>
+        </spiffworkflow:serviceTaskOperator>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow
+      id="Flow_finalize_to_end"
+      sourceRef="Task_finalize"
+      targetRef="EndEvent_1"
+    />
+    <bpmn:endEvent id="EndEvent_1" />
+  </bpmn:process>
+</bpmn:definitions>
