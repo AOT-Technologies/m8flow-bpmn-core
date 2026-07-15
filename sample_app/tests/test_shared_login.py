@@ -86,7 +86,7 @@ def test_shared_session_page_shows_keycloak_prompt(
     assert "Load users" not in response_text
 
 
-def test_shared_process_definitions_page_shows_bpmn_file_upload(
+def test_shared_process_definitions_page_hides_custom_import_forms(
     shared_app_client: FlaskClient,
 ) -> None:
     tenant, admin_user = _load_shared_seeded_admin()
@@ -98,9 +98,9 @@ def test_shared_process_definitions_page_shows_bpmn_file_upload(
     response_text = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "Custom workflow from BPMN file" in response_text
-    assert 'type="file"' in response_text
-    assert 'enctype="multipart/form-data"' in response_text
+    assert "Custom workflow from BPMN file" not in response_text
+    assert "Import existing model from local m8flow catalog" not in response_text
+    assert 'enctype="multipart/form-data"' not in response_text
 
 
 def test_shared_login_start_redirects_to_keycloak_authorization_endpoint(

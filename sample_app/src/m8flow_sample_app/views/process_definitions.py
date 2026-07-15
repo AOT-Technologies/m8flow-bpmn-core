@@ -78,70 +78,6 @@ def register_process_definition_routes(app: Flask) -> None:
                 if definitions
                 else "<p>No process definitions are stored for this tenant yet.</p>"
             )
-            audit_context = current_app.extensions.get(SHARED_M8FLOW_AUDIT_CONTEXT_KEY)
-            custom_upload_html = f"""
-<h2>Custom workflow from BPMN file</h2>
-<form
-  method="post"
-  action="{escape(url_for("import_uploaded_definition_action"))}"
-  enctype="multipart/form-data"
->
-  <label for="uploaded_process_model_identifier">Process model identifier</label><br />
-  <input
-    id="uploaded_process_model_identifier"
-    name="process_model_identifier"
-    type="text"
-    placeholder="group/model"
-  /><br /><br />
-  <label for="uploaded_bpmn_name">Display name override (optional)</label><br />
-  <input
-    id="uploaded_bpmn_name"
-    name="bpmn_name"
-    type="text"
-    placeholder="Leave blank to use the uploaded filename"
-  /><br /><br />
-  <label for="uploaded_bpmn_file">BPMN file</label><br />
-  <input
-    id="uploaded_bpmn_file"
-    name="bpmn_file"
-    type="file"
-    accept=".bpmn,.xml"
-  /><br /><br />
-  <button type="submit">Import workflow from BPMN file</button>
-</form>
-<p>Use this when you want to import a BPMN file directly from your local file
-system into the library tables.</p>
-"""
-            custom_catalog_import_html = ""
-            if (
-                isinstance(audit_context, SharedM8flowAuditContext)
-                and audit_context.uses_shared_m8flow
-                and audit_context.process_models_root is not None
-            ):
-                custom_catalog_import_html = f"""
-<h2>Import existing model from local m8flow catalog</h2>
-<form method="post" action="{escape(url_for("import_catalog_definition_action"))}">
-  <label for="catalog_process_model_identifier">Catalog process model identifier</label><br />
-  <input
-    id="catalog_process_model_identifier"
-    name="process_model_identifier"
-    type="text"
-    placeholder="group/model"
-  /><br /><br />
-  <label for="catalog_bpmn_name">Display name override (optional)</label><br />
-  <input
-    id="catalog_bpmn_name"
-    name="bpmn_name"
-    type="text"
-    placeholder="Leave blank to use the name from m8flow UI"
-  /><br /><br />
-  <button type="submit">Import workflow from local m8flow catalog</button>
-</form>
-<p>Use this when the BPMN was already created in m8flow UI. The sample app reads
-the catalog entry from <code>{escape(str(audit_context.process_models_root))}</code>
-for the current tenant and imports that BPMN into the library tables.</p>
-"""
-
             body = f"""
 <p>This screen stores workflow definitions in the library tables through
 <code>ImportBpmnProcessDefinitionCommand</code>.</p>
@@ -197,8 +133,6 @@ tenant-scoped SMTP secrets.</p>
 It starts with an Operations manual review task and uses an interrupting
 boundary timer to escalate the work to the Supervisor lane if the initial
 review is still open two minutes after process start.</p>
-{custom_upload_html}
-{custom_catalog_import_html}
 <p>The table below keeps every stored definition for history, but only the
 latest definition for each process model can be started from the sample app.</p>
 <h2>Stored definitions</h2>
