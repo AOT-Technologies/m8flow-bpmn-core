@@ -114,9 +114,19 @@ See [service_tasks.md](service_tasks.md) for the connector-proxy
 contract and adapter direction.
 
 Synchronous service-task failures surface as
-`ServiceTaskExecutionError`. The library also persists the failed
-workflow snapshot, records `task_failed`, and transitions the process
-instance to `error` so the same instance can be retried later.
+`ServiceTaskExecutionError`.
+
+For initial start, timer-start, waiting-workflow refresh, and retry reruns,
+the service-task contract is stronger than a normal in-transaction failure:
+the same process instance remains retryable afterwards even if the host
+application lets the exception escape an outer transaction helper that rolls
+back the main unit of work. To support that, the library uses a limited
+autonomous persistence step for the failure snapshot, failure events, and
+final `error` status. That safeguard is for workflow recovery state only; it
+must not be treated as a commit of arbitrary caller-side changes.
+
+Workflow advancement after a user task is completed still shares the caller
+transaction boundary in V1.
 
 ---
 
@@ -654,10 +664,10 @@ BpmnCoreError
 | Error | When | Public sources |
 | --- | --- | --- |
 | `ValidationError` | Inputs are malformed or contradictory, such as ambiguous `bpmn_process_id`, invalid event type, or invalid scheduler inputs | Import, initialize, event, and scheduler paths |
-| `InvalidStateError` | The target entity is in a state that does not permit the operation | Task and lifecycle commands |
+| `InvalidStateError` | The target entity is in a state that does not permit the operation, such as claiming a completed task or suspending a terminal instance | Task and lifecycle commands |
 | `AuthorizationError` | The supplied user does not belong to the tenant, lacks a required command permission, is not assigned to the target task, or does not own the target task | Any command/query that accepts `user_id`, plus covered workflow admin commands |
-| `NotFoundError` | The requested entity does not exist for the supplied tenant scope | All commands/queries that load users, tasks, instances, or definitions |
-| `ServiceTaskExecutionError` | A BPMN service task failed while invoking a registered connector | Initialize, complete-task, retry, and workflow-runtime execution paths |
+| `NotFoundError` | The requested entity does not exist for the supplied tenant scope | All commands/queries that load users, tasks, lane owners, instances, or definitions |
+| `ServiceTaskExecutionError` | A BPMN service task failed while invoking a registered connector or proxy adapter | Initialize, complete-task, retry, and workflow-runtime execution paths |
 
 Catch by either the domain class or the matching builtin. Both work.
 

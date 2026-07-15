@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:spiffworkflow="http://spiffworkflow.org/bpmn/schema/1.0/core"
+  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+  id="Definitions_Service_Task_Failure_Retry_POC"
+  targetNamespace="http://bpmn.io/schema/bpmn"
+  exporter="m8flow-bpmn-core"
+  exporterVersion="1.0">
+  <bpmn:collaboration id="Collaboration_service_task_failure_retry_poc">
+    <bpmn:participant
+      id="Participant_service_task_failure_retry_poc"
+      processRef="Process_service_task_failure_retry_poc"
+    />
+  </bpmn:collaboration>
+  <bpmn:process
+    id="Process_service_task_failure_retry_poc"
+    name="Service Task Failure Retry POC"
+    isExecutable="true">
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_Operations" name="Operations">
+        <bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_prepare</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_review</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_finalize</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_1</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_start_to_prepare</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow
+      id="Flow_start_to_prepare"
+      sourceRef="StartEvent_1"
+      targetRef="Task_prepare"
+    />
+    <bpmn:serviceTask id="Task_prepare" name="Prepare Review">
+      <bpmn:incoming>Flow_start_to_prepare</bpmn:incoming>
+      <bpmn:outgoing>Flow_prepare_to_review</bpmn:outgoing>
+      <bpmn:extensionElements>
+        <spiffworkflow:serviceTaskOperator
+          id="demo/PrepareReview"
+          resultVariable="service_stage_one">
+          <spiffworkflow:parameters>
+            <spiffworkflow:parameter
+              id="submission_message"
+              type="str"
+              value="submission_message"
+            />
+          </spiffworkflow:parameters>
+        </spiffworkflow:serviceTaskOperator>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow
+      id="Flow_prepare_to_review"
+      sourceRef="Task_prepare"
+      targetRef="Task_review"
+    />
+    <bpmn:userTask id="Task_review" name="Review Prepared Request">
+      <bpmn:incoming>Flow_prepare_to_review</bpmn:incoming>
+      <bpmn:outgoing>Flow_review_to_finalize</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow
+      id="Flow_review_to_finalize"
+      sourceRef="Task_review"
+      targetRef="Task_finalize"
+    />
+    <bpmn:serviceTask id="Task_finalize" name="Finalize Review">
+      <bpmn:incoming>Flow_review_to_finalize</bpmn:incoming>
+      <bpmn:outgoing>Flow_finalize_to_end</bpmn:outgoing>
+      <bpmn:extensionElements>
+        <spiffworkflow:serviceTaskOperator
+          id="demo/FinalizeReview"
+          resultVariable="service_stage_two">
+          <spiffworkflow:parameters>
+            <spiffworkflow:parameter
+              id="decision"
+              type="str"
+              value="decision"
+            />
+          </spiffworkflow:parameters>
+        </spiffworkflow:serviceTaskOperator>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow
+      id="Flow_finalize_to_end"
+      sourceRef="Task_finalize"
+      targetRef="EndEvent_1"
+    />
+    <bpmn:endEvent id="EndEvent_1">
+      <bpmn:incoming>Flow_finalize_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane
+      id="BPMNPlane_1"
+      bpmnElement="Collaboration_service_task_failure_retry_poc">
+      <bpmndi:BPMNShape
+        id="Participant_service_task_failure_retry_poc_di"
+        bpmnElement="Participant_service_task_failure_retry_poc"
+        isHorizontal="true">
+        <dc:Bounds x="120" y="100" width="980" height="220" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape
+        id="Lane_Operations_di"
+        bpmnElement="Lane_Operations"
+        isHorizontal="true">
+        <dc:Bounds x="150" y="100" width="950" height="220" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="220" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_prepare_di" bpmnElement="Task_prepare">
+        <dc:Bounds x="320" y="175" width="170" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_review_di" bpmnElement="Task_review">
+        <dc:Bounds x="560" y="175" width="160" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_finalize_di" bpmnElement="Task_finalize">
+        <dc:Bounds x="790" y="175" width="170" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="1030" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge
+        id="Flow_start_to_prepare_di"
+        bpmnElement="Flow_start_to_prepare">
+        <di:waypoint x="256" y="210" />
+        <di:waypoint x="320" y="215" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge
+        id="Flow_prepare_to_review_di"
+        bpmnElement="Flow_prepare_to_review">
+        <di:waypoint x="490" y="215" />
+        <di:waypoint x="560" y="215" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge
+        id="Flow_review_to_finalize_di"
+        bpmnElement="Flow_review_to_finalize">
+        <di:waypoint x="720" y="215" />
+        <di:waypoint x="790" y="215" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge
+        id="Flow_finalize_to_end_di"
+        bpmnElement="Flow_finalize_to_end">
+        <di:waypoint x="960" y="215" />
+        <di:waypoint x="1030" y="210" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -165,6 +165,17 @@ For delayed retry specifically, the normal host-application sequence is:
    due row, the library treats that scheduler row as stale and deletes it
    instead of forcing a retry.
 
+For synchronous service-task failures during initial start, timer-start,
+waiting-workflow refresh, or retry reruns, the process instance remains
+retryable after `ServiceTaskExecutionError` is surfaced, even when the host
+application uses an outer rollback-on-exception transaction helper. The
+library therefore durably persists the failure snapshot and `error` lifecycle
+state as a narrow recovery safeguard, while leaving unrelated caller-side
+writes outside that autonomous commit boundary.
+
+Workflow advancement after a user task is completed still shares the caller
+transaction boundary in V1.
+
 The current V1 runner is intentionally simple and is best used as a single
 logical poller per database or tenant scope. The repository also includes an
 example-level Celery beat/worker poller that drives the same persisted

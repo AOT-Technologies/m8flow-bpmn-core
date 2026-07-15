@@ -415,6 +415,12 @@ def retry_process_instance(
         process_instance,
         occurred_at=occurred_at,
     )
+    retry_errored_service_task_workflow_if_needed(
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance.id,
+        occurred_at=occurred_at,
+    )
     _delete_scheduled_process_retry_job(
         session,
         tenant_id=tenant_id,

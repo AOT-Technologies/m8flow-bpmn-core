@@ -21,6 +21,7 @@ from SpiffWorkflow.spiff.parser.process import SpiffBpmnParser
 from SpiffWorkflow.spiff.serializer.config import SPIFF_CONFIG
 from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import or_, select
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core.errors import (
@@ -261,6 +262,7 @@ def initialize_process_instance_workflow(
         process_instance=process_instance,
         workflow=workflow,
         occurred_at=occurred_at,
+        autonomous_failure_state_persistence=True,
     )
 
     return _finalize_initialized_process_instance_workflow(
@@ -400,6 +402,7 @@ def _initialize_process_instance_from_timer_start_definition(
         process_instance=process_instance,
         workflow=workflow,
         occurred_at=occurred_at,
+        autonomous_failure_state_persistence=True,
     )
     forced_due = _force_waiting_timer_start_task_due(
         workflow,
@@ -414,6 +417,7 @@ def _initialize_process_instance_from_timer_start_definition(
                 process_instance=process_instance,
                 workflow=workflow,
                 occurred_at=occurred_at,
+                autonomous_failure_state_persistence=True,
             )
 
     return _finalize_initialized_process_instance_workflow(
@@ -500,6 +504,112 @@ def advance_process_instance_workflow(
 
 
 def _prepare_process_instance_from_definition(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_definition: BpmnProcessDefinitionModel,
+    process_model_identifier: str,
+    process_initiator_id: int,
+    submission_metadata: Mapping[str, Any] | None,
+    summary: str | None,
+    process_version: int,
+    started_at_in_seconds: int | None,
+    bpmn_process_id: str | None,
+) -> tuple[ProcessInstanceModel, str]:
+    autonomous_baseline = _prepare_process_instance_baseline_in_independent_session(
+        session,
+        tenant_id=tenant_id,
+        process_definition=process_definition,
+        process_model_identifier=process_model_identifier,
+        process_initiator_id=process_initiator_id,
+        submission_metadata=submission_metadata,
+        summary=summary,
+        process_version=process_version,
+        started_at_in_seconds=started_at_in_seconds,
+        bpmn_process_id=bpmn_process_id,
+    )
+    if autonomous_baseline is not None:
+        process_instance_id, selected_process_id = autonomous_baseline
+        process_instance = _load_process_instance(
+            session,
+            tenant_id=tenant_id,
+            process_instance_id=process_instance_id,
+        )
+        return process_instance, selected_process_id
+
+    return _prepare_process_instance_from_definition_in_session(
+        session,
+        tenant_id=tenant_id,
+        process_definition=process_definition,
+        process_model_identifier=process_model_identifier,
+        process_initiator_id=process_initiator_id,
+        submission_metadata=submission_metadata,
+        summary=summary,
+        process_version=process_version,
+        started_at_in_seconds=started_at_in_seconds,
+        bpmn_process_id=bpmn_process_id,
+    )
+
+
+def _prepare_process_instance_baseline_in_independent_session(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_definition: BpmnProcessDefinitionModel,
+    process_model_identifier: str,
+    process_initiator_id: int,
+    submission_metadata: Mapping[str, Any] | None,
+    summary: str | None,
+    process_version: int,
+    started_at_in_seconds: int | None,
+    bpmn_process_id: str | None,
+) -> tuple[int, str] | None:
+    engine = _session_engine(session)
+    if engine is None or process_definition.id is None:
+        return None
+
+    autonomous_session = Session(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+    )
+    try:
+        try:
+            autonomous_process_definition = _load_process_definition(
+                autonomous_session,
+                tenant_id=tenant_id,
+                bpmn_process_definition_id=process_definition.id,
+            )
+            ensure_user_belongs_to_tenant(
+                autonomous_session,
+                tenant_id=tenant_id,
+                user_id=process_initiator_id,
+            )
+        except NotFoundError:
+            autonomous_session.rollback()
+            return None
+
+        process_instance, selected_process_id = (
+            _prepare_process_instance_from_definition_in_session(
+                autonomous_session,
+                tenant_id=tenant_id,
+                process_definition=autonomous_process_definition,
+                process_model_identifier=process_model_identifier,
+                process_initiator_id=process_initiator_id,
+                submission_metadata=submission_metadata,
+                summary=summary,
+                process_version=process_version,
+                started_at_in_seconds=started_at_in_seconds,
+                bpmn_process_id=bpmn_process_id,
+            )
+        )
+        autonomous_session.commit()
+        return process_instance.id, selected_process_id
+    finally:
+        autonomous_session.close()
+
+
+def _prepare_process_instance_from_definition_in_session(
     session: Session,
     *,
     tenant_id: str,
@@ -624,6 +734,27 @@ def _finalize_initialized_process_instance_workflow(
     return process_instance
 
 
+def _seed_runtime_definitions(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_instance: ProcessInstanceModel,
+    workflow: BpmnWorkflow,
+    occurred_at: int,
+) -> None:
+    if process_instance.bpmn_process_definition_id is None:
+        raise ValidationError(
+            "Process instance is missing a BPMN process definition"
+        )
+
+    _sync_process_definition_from_workflow(
+        session,
+        process_instance=process_instance,
+        serialized_workflow=_serialize_workflow_dict(workflow),
+        occurred_at=occurred_at,
+    )
+
+
 def retry_errored_service_task_workflow_if_needed(
     session: Session,
     *,
@@ -673,6 +804,7 @@ def retry_errored_service_task_workflow_if_needed(
         process_instance=process_instance,
         workflow=workflow,
         occurred_at=timestamp,
+        autonomous_failure_state_persistence=True,
     )
     _persist_workflow_state(
         session,
@@ -735,6 +867,7 @@ def _refresh_waiting_process_instance_workflow(
         process_instance=process_instance,
         workflow=workflow,
         occurred_at=timestamp,
+        autonomous_failure_state_persistence=True,
     )
 
     _persist_workflow_state(
@@ -808,10 +941,21 @@ def _run_workflow_with_service_task_failure_handling(
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
     occurred_at: int,
+    autonomous_failure_state_persistence: bool = False,
 ) -> None:
     try:
         workflow.run_all(halt_on_manual=True)
     except ServiceTaskExecutionError:
+        if autonomous_failure_state_persistence and (
+            _persist_service_task_failure_state_in_independent_session(
+                session,
+                tenant_id=tenant_id,
+                process_instance_id=process_instance.id,
+                workflow=workflow,
+                occurred_at=occurred_at,
+            )
+        ):
+            raise
         _transition_process_instance_to_error_for_service_task_failure(
             session,
             tenant_id=tenant_id,
@@ -820,6 +964,59 @@ def _run_workflow_with_service_task_failure_handling(
             occurred_at=occurred_at,
         )
         raise
+
+
+def _persist_service_task_failure_state_in_independent_session(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_instance_id: int,
+    workflow: BpmnWorkflow,
+    occurred_at: int,
+) -> bool:
+    engine = _session_engine(session)
+    if engine is None:
+        return False
+
+    autonomous_session = Session(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+    )
+    try:
+        try:
+            process_instance = _load_process_instance(
+                autonomous_session,
+                tenant_id=tenant_id,
+                process_instance_id=process_instance_id,
+            )
+        except NotFoundError:
+            autonomous_session.rollback()
+            return False
+
+        _transition_process_instance_to_error_for_service_task_failure(
+            autonomous_session,
+            tenant_id=tenant_id,
+            process_instance=process_instance,
+            workflow=workflow,
+            occurred_at=occurred_at,
+        )
+        autonomous_session.commit()
+        return True
+    except Exception:
+        autonomous_session.rollback()
+        return False
+    finally:
+        autonomous_session.close()
+
+
+def _session_engine(session: Session) -> Engine | None:
+    bind = session.get_bind()
+    if isinstance(bind, Engine):
+        return bind
+    if isinstance(bind, Connection):
+        return bind.engine
+    return None
 
 
 def _transition_process_instance_to_error_for_service_task_failure(
@@ -865,6 +1062,8 @@ def _transition_process_instance_to_error_for_service_task_failure(
         if process_instance.bpmn_process.start_in_seconds is None:
             process_instance.bpmn_process.start_in_seconds = float(occurred_at)
         process_instance.bpmn_process.end_in_seconds = float(occurred_at)
+    if process_instance.status == ProcessInstanceStatus.error.value:
+        process_instance.status = ProcessInstanceStatus.running.value
 
     error_process_instance(
         session,
@@ -1231,27 +1430,6 @@ def _sync_task_models_from_workflow(
             task_payload=task_payload,
             occurred_at=occurred_at,
         )
-
-
-def _seed_runtime_definitions(
-    session: Session,
-    *,
-    tenant_id: str,
-    process_instance: ProcessInstanceModel,
-    workflow: BpmnWorkflow,
-    occurred_at: int,
-) -> None:
-    if process_instance.bpmn_process_definition_id is None:
-        raise ValidationError(
-            "Process instance is missing a BPMN process definition"
-        )
-
-    _sync_process_definition_from_workflow(
-        session,
-        process_instance=process_instance,
-        serialized_workflow=_serialize_workflow_dict(workflow),
-        occurred_at=occurred_at,
-    )
 
 
 def _upsert_task_definition(
