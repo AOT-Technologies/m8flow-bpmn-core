@@ -18,3 +18,4 @@ dist/
 reference/
 .*
 sample_app/vendor/*.whl
+sample_app/uv.lock
