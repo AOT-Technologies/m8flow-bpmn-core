@@ -1000,6 +1000,7 @@ def _persist_service_task_failure_state_in_independent_session(
             process_instance=process_instance,
             workflow=workflow,
             occurred_at=occurred_at,
+            recovery_only=True,
         )
         autonomous_session.commit()
         return True
@@ -1026,24 +1027,32 @@ def _transition_process_instance_to_error_for_service_task_failure(
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
     occurred_at: int,
+    recovery_only: bool = False,
 ) -> None:
     errored_service_tasks = _errored_service_tasks(workflow)
     failed_task_guid = (
         str(errored_service_tasks[0].id) if errored_service_tasks else None
     )
 
-    _persist_workflow_state(
-        session,
-        process_instance,
-        workflow,
-        occurred_at=occurred_at,
-    )
-    _sync_inactive_human_tasks(
-        session,
-        process_instance=process_instance,
-        workflow=workflow,
-        occurred_at=occurred_at,
-    )
+    if recovery_only:
+        _persist_workflow_recovery_state(
+            session,
+            process_instance,
+            workflow,
+        )
+    else:
+        _persist_workflow_state(
+            session,
+            process_instance,
+            workflow,
+            occurred_at=occurred_at,
+        )
+        _sync_inactive_human_tasks(
+            session,
+            process_instance=process_instance,
+            workflow=workflow,
+            occurred_at=occurred_at,
+        )
 
     if failed_task_guid is not None:
         record_process_instance_event(
@@ -1282,6 +1291,22 @@ def _persist_workflow_state(
         process_instance=process_instance,
         workflow=workflow,
         occurred_at=occurred_at,
+    )
+
+
+def _persist_workflow_recovery_state(
+    session: Session,
+    process_instance: ProcessInstanceModel,
+    workflow: BpmnWorkflow,
+) -> None:
+    serialized_state = _WORKFLOW_SERIALIZER.serialize_json(workflow)
+    process_instance.spiff_serializer_version = _WORKFLOW_STATE_SERIALIZER_VERSION
+    serialized_workflow = _serialize_workflow_dict(workflow)
+    _sync_bpmn_process_from_workflow(
+        session,
+        process_instance=process_instance,
+        serialized_workflow=serialized_workflow,
+        serialized_state=serialized_state,
     )
 
 

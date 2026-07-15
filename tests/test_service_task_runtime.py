@@ -12,13 +12,17 @@ from m8flow_bpmn_core import api
 from m8flow_bpmn_core.db import session_scope
 from m8flow_bpmn_core.models.group import GroupModel
 from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
+from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
 from m8flow_bpmn_core.services.authorization import ROLE_ADMIN, ensure_v1_role
 from m8flow_bpmn_core.services.workflow_runtime import (
+    _build_workflow,
+    _persist_service_task_failure_state_in_independent_session,
     _prepare_process_instance_from_definition_in_session,
     _restore_workflow,
+    _service_task_execution_context,
 )
 
 SERVICE_TASK_RUNTIME_BPMN_PATH = (
@@ -635,6 +639,102 @@ def test_retry_service_task_failure_persists_error_state_across_session_scope_ro
         restored_workflow = _restore_workflow(process_instance.workflow_state_json)
         errored_tasks = restored_workflow.get_tasks(state=TaskState.ERROR)
         assert [task.task_spec.name for task in errored_tasks] == ["Task_prepare"]
+
+
+def test_autonomous_failure_persistence_skips_task_definition_sync(
+    session: Session,
+) -> None:
+    tenant, user = _seed_tenant_and_admin(session)
+    bpmn_xml = SERVICE_TASK_RUNTIME_BPMN_PATH.read_text(encoding="utf-8")
+    definition = api.execute_command(
+        session,
+        api.ImportBpmnProcessDefinitionCommand(
+            tenant_id=tenant.id,
+            bpmn_identifier="service-task-runtime-poc-recovery-only",
+            user_id=user.id,
+            bpmn_name="Service Task Runtime Recovery Only POC",
+            source_bpmn_xml=bpmn_xml,
+            properties_json={
+                "lane_owners": {"Operations": [user.username]},
+            },
+            created_at_in_seconds=10,
+            updated_at_in_seconds=10,
+        ),
+    )
+    process_model_identifier = definition.process_model_identifier or str(definition.id)
+    process_instance, selected_process_id = (
+        _prepare_process_instance_from_definition_in_session(
+            session,
+            tenant_id=tenant.id,
+            process_definition=definition,
+            process_model_identifier=process_model_identifier,
+            process_initiator_id=user.id,
+            submission_metadata={"submission_message": "recovery-only"},
+            summary="recovery-only",
+            process_version=1,
+            started_at_in_seconds=15,
+            bpmn_process_id=None,
+        )
+    )
+    session.commit()
+
+    workflow = _build_workflow(
+        bpmn_xml=bpmn_xml,
+        dmn_xml=None,
+        bpmn_process_id=selected_process_id,
+        service_task_context=_service_task_execution_context(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+            process_definition_id=definition.id,
+        ),
+    )
+    workflow.data["submission_message"] = "recovery-only"
+    with api.service_task_registry_scope(api.ServiceTaskRegistry()):
+        with pytest.raises(api.ServiceTaskExecutionError):
+            workflow.run_all(halt_on_manual=True)
+
+    persisted = _persist_service_task_failure_state_in_independent_session(
+        session,
+        tenant_id=tenant.id,
+        process_instance_id=process_instance.id,
+        workflow=workflow,
+        occurred_at=20,
+    )
+
+    assert persisted is True
+    session.expire_all()
+    persisted_process_instance = api.execute_query(
+        session,
+        api.GetProcessInstanceQuery(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+        ),
+    )
+    persisted_events = api.execute_query(
+        session,
+        api.GetProcessInstanceEventsQuery(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+        ),
+    )
+    task_definitions = session.scalars(
+        select(TaskDefinitionModel).where(
+            TaskDefinitionModel.m8f_tenant_id == tenant.id,
+            TaskDefinitionModel.bpmn_process_definition_id == definition.id,
+        )
+    ).all()
+
+    assert persisted_process_instance.status == api.ProcessInstanceStatus.error
+    assert persisted_process_instance.start_in_seconds == 20
+    assert persisted_process_instance.end_in_seconds == 20
+    assert persisted_process_instance.workflow_state_json is not None
+    assert [event.event_type for event in persisted_events] == [
+        api.ProcessInstanceEventType.task_failed.value,
+        api.ProcessInstanceEventType.process_instance_error.value,
+    ]
+    assert task_definitions == []
+
+
 def test_retry_process_instance_reruns_failed_service_task(
     session: Session,
 ) -> None:
