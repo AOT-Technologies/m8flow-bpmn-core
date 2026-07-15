@@ -5,10 +5,12 @@ from pathlib import Path
 
 import pytest
 from SpiffWorkflow.util.task import TaskState
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core import api
 from m8flow_bpmn_core.db import session_scope
+from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.services.authorization import ROLE_ADMIN, ensure_v1_role
@@ -707,6 +709,100 @@ def test_scheduled_retry_reruns_failed_service_task(
         api.ProcessInstanceEventType.task_failed.value,
         api.ProcessInstanceEventType.process_instance_error.value,
         api.ProcessInstanceEventType.process_instance_retried.value,
+    ]
+
+
+def test_failed_scheduled_retry_keeps_scheduler_job_available_for_retry(
+    session: Session,
+) -> None:
+    tenant, user = _seed_tenant_and_admin(session)
+    bpmn_xml = SERVICE_TASK_RUNTIME_BPMN_PATH.read_text(encoding="utf-8")
+    connector = DemoServiceTaskConnector(fail_operation_id="demo/PrepareReview")
+    registry = api.ServiceTaskRegistry(connectors=(connector,))
+
+    with api.service_task_registry_scope(registry):
+        definition = api.execute_command(
+            session,
+            api.ImportBpmnProcessDefinitionCommand(
+                tenant_id=tenant.id,
+                bpmn_identifier="service-task-runtime-poc-scheduled-retry-failure",
+                user_id=user.id,
+                bpmn_name="Service Task Runtime Scheduled Retry Failure POC",
+                source_bpmn_xml=bpmn_xml,
+                properties_json={
+                    "lane_owners": {"Operations": [user.username]},
+                },
+                created_at_in_seconds=10,
+                updated_at_in_seconds=10,
+            ),
+        )
+        with pytest.raises(api.ServiceTaskExecutionError):
+            api.execute_command(
+                session,
+                api.InitializeProcessInstanceFromDefinitionCommand(
+                    tenant_id=tenant.id,
+                    bpmn_process_definition_id=definition.id,
+                    process_initiator_id=user.id,
+                    submission_metadata={"submission_message": "scheduled-retry"},
+                    started_at_in_seconds=20,
+                ),
+            )
+
+    process_instance = api.execute_query(
+        session,
+        api.ListProcessInstancesQuery(tenant_id=tenant.id),
+    )[0]
+    scheduler_job = api.execute_command(
+        session,
+        api.ScheduleProcessInstanceRetryCommand(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+            user_id=user.id,
+            retry_at_in_seconds=40,
+            scheduled_at_in_seconds=30,
+        ),
+    )
+
+    with api.service_task_registry_scope(registry):
+        with pytest.raises(api.ServiceTaskExecutionError):
+            api.run_due_scheduler_jobs(
+                session,
+                now_in_seconds=40,
+                worker_id="service-task-retry-worker",
+                tenant_id=tenant.id,
+            )
+
+    session.expire_all()
+    refreshed_process_instance = api.execute_query(
+        session,
+        api.GetProcessInstanceQuery(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+        ),
+    )
+    persisted_scheduler_job = session.scalar(
+        select(SchedulerJobModel).where(
+            SchedulerJobModel.id == scheduler_job.id,
+        )
+    )
+    events = api.execute_query(
+        session,
+        api.GetProcessInstanceEventsQuery(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+        ),
+    )
+
+    assert refreshed_process_instance.status == api.ProcessInstanceStatus.error
+    assert persisted_scheduler_job is not None
+    assert persisted_scheduler_job.job_key == scheduler_job.job_key
+    assert persisted_scheduler_job.locked_by is None
+    assert persisted_scheduler_job.locked_at_in_seconds is None
+    assert [event.event_type for event in events] == [
+        api.ProcessInstanceEventType.task_failed.value,
+        api.ProcessInstanceEventType.process_instance_error.value,
+        api.ProcessInstanceEventType.task_failed.value,
+        api.ProcessInstanceEventType.process_instance_error.value,
     ]
 
 
