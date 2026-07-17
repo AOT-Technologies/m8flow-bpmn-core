@@ -177,8 +177,11 @@ Workflow advancement after a user task is completed still shares the caller
 transaction boundary in V1.
 
 The current V1 runner is intentionally simple and is best used as a single
-logical poller per database or tenant scope. A Celery-backed dispatcher can be
-added later on top of the same persisted scheduler rows.
+logical poller per database or tenant scope. The repository also includes an
+example-level Celery beat/worker poller that drives the same persisted
+scheduler rows through `api.run_due_scheduler_jobs(...)`. A first-class
+library-owned Celery dispatcher can still be added later on top of the same
+storage model.
 
 Timer-started workflows do not require a caller-supplied initiator id. The
 library creates those process instances with an internal tenant-scoped system

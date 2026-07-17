@@ -178,10 +178,19 @@ def ensure_shared_realm_organizations_and_users(
                 ),
             )
             created = False
+            reconcile_realm_user_credentials(
+                shared_realm,
+                user_id,
+                password=user_spec.password,
+                email=normalized_email,
+                display_name=user_spec.display_name,
+                admin_token=token,
+            )
             warnings.append(
                 "Keycloak user "
                 f"'{normalized_username}' already exists in shared realm "
-                f"'{shared_realm}'; current credentials were left unchanged."
+                f"'{shared_realm}'; credentials were reconciled to the "
+                "requested provisioning values."
             )
 
         add_organization_member(
@@ -461,6 +470,54 @@ def create_user_in_realm(
         json_body=user_payload,
     )
     return user_id
+
+
+def reconcile_realm_user_credentials(
+    realm: str,
+    user_id: str,
+    *,
+    password: str,
+    email: str | None = None,
+    display_name: str | None = None,
+    admin_token: str,
+) -> None:
+    user_response = _request(
+        "GET",
+        _realm_user_url(realm, user_id),
+        headers=_bearer_headers(admin_token),
+    )
+    user_payload = _json_body(user_response)
+    if not isinstance(user_payload, dict):
+        raise KeycloakProvisioningError(
+            f"Keycloak user '{user_id}' could not be loaded for reconciliation."
+        )
+
+    first_name, last_name = _display_name_parts(
+        display_name,
+        str(user_payload.get("username", "")).strip() or user_id,
+    )
+    user_payload["enabled"] = True
+    user_payload["email"] = (email or "").strip()
+    user_payload["emailVerified"] = True
+    user_payload["requiredActions"] = []
+    user_payload["firstName"] = first_name
+    user_payload["lastName"] = last_name
+    _request(
+        "PUT",
+        _realm_user_url(realm, user_id),
+        headers=_bearer_headers(admin_token),
+        json_body=user_payload,
+    )
+    _request(
+        "PUT",
+        _realm_user_url(realm, user_id, "reset-password"),
+        headers=_bearer_headers(admin_token),
+        json_body={
+            "type": "password",
+            "value": password,
+            "temporary": False,
+        },
+    )
 
 
 def add_organization_member(
@@ -753,11 +810,16 @@ def _realm_users_url(
     return _url_with_query(base_url, query_params)
 
 
-def _realm_user_url(realm: str, user_id: str) -> str:
-    return (
+def _realm_user_url(realm: str, user_id: str, *segments: str) -> str:
+    base_url = (
         f"{keycloak_url()}/admin/realms/{quote(realm.strip(), safe='')}/users/"
         f"{quote(user_id.strip(), safe='')}"
     )
+    for segment in segments:
+        normalized_segment = segment.strip()
+        if normalized_segment:
+            base_url = f"{base_url}/{quote(normalized_segment, safe='')}"
+    return base_url
 
 
 def _shared_realm_organizations_url(

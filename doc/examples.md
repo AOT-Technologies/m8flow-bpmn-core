@@ -23,6 +23,21 @@ parallel gateway (AND-split + AND-join) and Python script tasks. The errors
 demo is a quick, dependency-free way to see each `BpmnCoreError` subclass
 being raised by the services.
 
+## Sample App
+
+In addition to the workflow POCs above, the repo now includes a thin host-app
+integration under `sample_app/`. It validates the “consume the library as a
+dependency” path rather than the standalone example-script path.
+
+See [sample_app.md](sample_app.md) for:
+
+- wheel staging and dependency setup
+- the default PostgreSQL run path
+- the tenant and user selection flow
+- end-to-end workflow execution through the web app
+- behavior comparison with the current m8flow-style workflow path
+- documented integration findings and current API gaps
+
 ## How To Run
 
 Most interactive examples use one terminal:

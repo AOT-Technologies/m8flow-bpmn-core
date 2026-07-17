@@ -17,6 +17,22 @@ This is the same as:
 uv build
 ```
 
+If you only need the wheel artifact, use:
+
+```bash
+uv build --wheel
+```
+
+On Windows, `uv build` can occasionally fail with a locked
+`uv-trampoline-*.exe` file under the temp directory. That is a local tooling
+issue rather than a package problem. In that case, install the build helpers
+into the active environment once and use the backend directly:
+
+```bash
+python -m pip install build hatchling
+python -m build --wheel --no-isolation
+```
+
 Artifacts are written to `dist/`:
 
 - a wheel, which is the preferred dependency artifact

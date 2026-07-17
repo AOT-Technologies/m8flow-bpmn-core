@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "m8flow-bpmn-core-sample-app"
+version = "0.1.0"
+description = "Thin host application for validating m8flow-bpmn-core integration."
+readme = "README.md"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+  "alembic>=1.16,<2.0",
+  "Flask>=3.0,<4.0",
+  "m8flow-bpmn-core",
+  "pydantic-settings>=2.3,<3.0",
+  "psycopg[binary]>=3.2,<4.0",
+  "SQLAlchemy>=2.0,<3.0",
+]
+
+[project.scripts]
+m8flow-sample-app = "m8flow_sample_app.__main__:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<9.0",
+  "ruff>=0.6,<1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/m8flow_sample_app"]
+
+[tool.uv.sources]
+# Refreshed by sample_app/scripts/stage_local_wheel.* to match the newest
+# staged local wheel.
+m8flow-bpmn-core = { path = "vendor/m8flow_bpmn_core-0.1.0-py3-none-any.whl" }
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["src", "tests"]

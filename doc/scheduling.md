@@ -323,9 +323,8 @@ Current V1 note:
 
 ### Celery-Backed Execution
 
-In a Celery-backed deployment, a dispatcher scans the same persisted jobs and
-submits due work to Celery workers. The workers then call back into the library
-to execute the claimed job.
+In a Celery-backed deployment, a host-owned worker arrangement can drive the
+same persisted jobs through Celery instead of through an inline loop.
 
 This matches the m8flow architectural direction:
 
@@ -351,16 +350,24 @@ Implemented so far:
   listing
 - automatic synchronization of waiting intermediate catch and boundary timers
   into scheduler jobs whenever workflow state is persisted
-- due-job claiming and inline execution for waiting intermediate catch and
-  boundary timers
+- due-job claiming and batch-continuing inline execution for waiting
+  intermediate catch and boundary timers
 - timer-start synchronization from imported process definitions
 - due-job execution for timer-started process instances
+- recurring timer-start rescheduling for finite `timeCycle` definitions, with
+  cleanup after the final occurrence
 - scheduled retry persistence for errored process instances
 - due-job execution for scheduled process retries
 - public polling entrypoint: `api.run_due_scheduler_jobs(...)`
+- an example-level Celery beat/worker poller that drives
+  `api.run_due_scheduler_jobs(...)` with the same persisted scheduler rows
 
 Not implemented yet:
 
 - production-grade multi-worker claim coordination
-- reminder and escalation job types
-- Celery adapter and dispatcher hooks
+- generic reminder and escalation job types:
+  BPMN timeout paths such as interrupting boundary-timer escalations are
+  supported, but there is still no separate generic reminder/escalation job
+  framework.
+- first-class library-owned Celery adapter and dispatcher hooks beyond the
+  current example-level beat/worker integration

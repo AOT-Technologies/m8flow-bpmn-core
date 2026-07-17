@@ -10,13 +10,19 @@ from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core import api
 from m8flow_bpmn_core.db import session_scope
+from m8flow_bpmn_core.models.group import GroupModel
 from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
+from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
 from m8flow_bpmn_core.services.authorization import ROLE_ADMIN, ensure_v1_role
 from m8flow_bpmn_core.services.workflow_runtime import (
+    _build_workflow,
+    _persist_service_task_failure_state_in_independent_session,
     _prepare_process_instance_from_definition_in_session,
     _restore_workflow,
+    _service_task_execution_context,
 )
 
 SERVICE_TASK_RUNTIME_BPMN_PATH = (
@@ -184,7 +190,118 @@ def test_service_tasks_execute_before_and_after_manual_task(
         == []
     )
 
+def test_lane_owners_sync_into_lane_group_membership_on_import(
+    session: Session,
+) -> None:
+    tenant, user = _seed_tenant_and_admin(session)
+    bpmn_xml = SERVICE_TASK_RUNTIME_BPMN_PATH.read_text(encoding="utf-8")
 
+    api.execute_command(
+        session,
+        api.ImportBpmnProcessDefinitionCommand(
+            tenant_id=tenant.id,
+            bpmn_identifier="service-task-runtime-poc-group-sync",
+            user_id=user.id,
+            bpmn_name="Service Task Runtime Group Sync POC",
+            source_bpmn_xml=bpmn_xml,
+            properties_json={
+                "lane_owners": {"Operations": [user.username]},
+            },
+            created_at_in_seconds=10,
+            updated_at_in_seconds=10,
+        ),
+    )
+
+    lane_group = session.get(GroupModel, api.resolve_lane_assignment_id("Operations"))
+    assert lane_group is not None
+    assert lane_group.identifier == "Operations"
+    assert sorted(
+        session.scalars(
+            select(UserGroupAssignmentModel.user_id).where(
+                UserGroupAssignmentModel.group_id == lane_group.id
+            )
+        )
+    ) == [user.id]
+
+
+def test_group_membership_assigns_lane_tasks_without_lane_owners(
+    session: Session,
+) -> None:
+    tenant, admin = _seed_tenant_and_admin(session)
+    reviewer = UserModel(
+        username="group-reviewer",
+        email="group-reviewer@example.com",
+        service="http://localhost:7002/realms/tenant-service-task-runtime",
+        service_id="group-reviewer-keycloak",
+        display_name="Group Reviewer",
+        created_at_in_seconds=1,
+        updated_at_in_seconds=1,
+    )
+    session.add(reviewer)
+    session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[reviewer.id],
+    )
+    lane_group_id = api.resolve_lane_assignment_id("Operations")
+    session.add(
+        GroupModel(
+            id=lane_group_id,
+            name="Operations",
+            identifier="Operations",
+            source_is_open_id=False,
+        )
+    )
+    session.add(
+        UserGroupAssignmentModel(
+            user_id=reviewer.id,
+            group_id=lane_group_id,
+        )
+    )
+    session.flush()
+
+    bpmn_xml = SERVICE_TASK_RUNTIME_BPMN_PATH.read_text(encoding="utf-8")
+    connector = DemoServiceTaskConnector()
+    registry = api.ServiceTaskRegistry(connectors=(connector,))
+
+    with api.service_task_registry_scope(registry):
+        definition = api.execute_command(
+            session,
+            api.ImportBpmnProcessDefinitionCommand(
+                tenant_id=tenant.id,
+                bpmn_identifier="service-task-runtime-poc-group-membership",
+                user_id=admin.id,
+                bpmn_name="Service Task Runtime Group Membership POC",
+                source_bpmn_xml=bpmn_xml,
+                properties_json={},
+                created_at_in_seconds=10,
+                updated_at_in_seconds=10,
+            ),
+        )
+        api.execute_command(
+            session,
+            api.InitializeProcessInstanceFromDefinitionCommand(
+                tenant_id=tenant.id,
+                bpmn_process_definition_id=definition.id,
+                process_initiator_id=admin.id,
+                submission_metadata={"submission_message": "hello-group-reviewer"},
+                started_at_in_seconds=20,
+            ),
+        )
+
+    pending_tasks = api.execute_query(
+        session,
+        api.GetPendingTasksQuery(tenant_id=tenant.id, user_id=reviewer.id),
+    )
+
+    assert len(pending_tasks) == 1
+    assert pending_tasks[0].task_name == "Task_review"
+    assert [
+        (assignment.user.username, assignment.added_by)
+        for assignment in pending_tasks[0].human_task_users
+    ] == [("group-reviewer", "lane_assignment")]
 def test_missing_service_task_connector_surfaces_service_task_execution_error(
     session: Session,
 ) -> None:
@@ -524,6 +641,100 @@ def test_retry_service_task_failure_persists_error_state_across_session_scope_ro
         assert [task.task_spec.name for task in errored_tasks] == ["Task_prepare"]
 
 
+def test_autonomous_failure_persistence_skips_task_definition_sync(
+    session: Session,
+) -> None:
+    tenant, user = _seed_tenant_and_admin(session)
+    bpmn_xml = SERVICE_TASK_RUNTIME_BPMN_PATH.read_text(encoding="utf-8")
+    definition = api.execute_command(
+        session,
+        api.ImportBpmnProcessDefinitionCommand(
+            tenant_id=tenant.id,
+            bpmn_identifier="service-task-runtime-poc-recovery-only",
+            user_id=user.id,
+            bpmn_name="Service Task Runtime Recovery Only POC",
+            source_bpmn_xml=bpmn_xml,
+            properties_json={
+                "lane_owners": {"Operations": [user.username]},
+            },
+            created_at_in_seconds=10,
+            updated_at_in_seconds=10,
+        ),
+    )
+    process_model_identifier = definition.process_model_identifier or str(definition.id)
+    process_instance, selected_process_id = (
+        _prepare_process_instance_from_definition_in_session(
+            session,
+            tenant_id=tenant.id,
+            process_definition=definition,
+            process_model_identifier=process_model_identifier,
+            process_initiator_id=user.id,
+            submission_metadata={"submission_message": "recovery-only"},
+            summary="recovery-only",
+            process_version=1,
+            started_at_in_seconds=15,
+            bpmn_process_id=None,
+        )
+    )
+    session.commit()
+
+    workflow = _build_workflow(
+        bpmn_xml=bpmn_xml,
+        dmn_xml=None,
+        bpmn_process_id=selected_process_id,
+        service_task_context=_service_task_execution_context(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+            process_definition_id=definition.id,
+        ),
+    )
+    workflow.data["submission_message"] = "recovery-only"
+    with api.service_task_registry_scope(api.ServiceTaskRegistry()):
+        with pytest.raises(api.ServiceTaskExecutionError):
+            workflow.run_all(halt_on_manual=True)
+
+    persisted = _persist_service_task_failure_state_in_independent_session(
+        session,
+        tenant_id=tenant.id,
+        process_instance_id=process_instance.id,
+        workflow=workflow,
+        occurred_at=20,
+    )
+
+    assert persisted is True
+    session.expire_all()
+    persisted_process_instance = api.execute_query(
+        session,
+        api.GetProcessInstanceQuery(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+        ),
+    )
+    persisted_events = api.execute_query(
+        session,
+        api.GetProcessInstanceEventsQuery(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+        ),
+    )
+    task_definitions = session.scalars(
+        select(TaskDefinitionModel).where(
+            TaskDefinitionModel.m8f_tenant_id == tenant.id,
+            TaskDefinitionModel.bpmn_process_definition_id == definition.id,
+        )
+    ).all()
+
+    assert persisted_process_instance.status == api.ProcessInstanceStatus.error
+    assert persisted_process_instance.start_in_seconds == 20
+    assert persisted_process_instance.end_in_seconds == 20
+    assert persisted_process_instance.workflow_state_json is not None
+    assert [event.event_type for event in persisted_events] == [
+        api.ProcessInstanceEventType.task_failed.value,
+        api.ProcessInstanceEventType.process_instance_error.value,
+    ]
+    assert task_definitions == []
+
+
 def test_retry_process_instance_reruns_failed_service_task(
     session: Session,
 ) -> None:
@@ -711,7 +922,6 @@ def test_scheduled_retry_reruns_failed_service_task(
         api.ProcessInstanceEventType.process_instance_retried.value,
     ]
 
-
 def test_failed_scheduled_retry_keeps_scheduler_job_available_for_retry(
     session: Session,
 ) -> None:
@@ -804,8 +1014,6 @@ def test_failed_scheduled_retry_keeps_scheduler_job_available_for_retry(
         api.ProcessInstanceEventType.task_failed.value,
         api.ProcessInstanceEventType.process_instance_error.value,
     ]
-
-
 def _seed_tenant_and_admin(
     session: Session,
 ) -> tuple[M8flowTenantModel, UserModel]:

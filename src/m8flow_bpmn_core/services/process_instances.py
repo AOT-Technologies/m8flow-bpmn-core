@@ -434,6 +434,12 @@ def retry_process_instance(
         timestamp=float(occurred_at),
         user_id=user_id,
     )
+    retry_errored_service_task_workflow_if_needed(
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance.id,
+        occurred_at=occurred_at,
+    )
     session.flush()
     return process_instance
 

@@ -8,6 +8,7 @@ def test_ensure_shared_realm_organizations_and_users_reuses_existing_rows(
 ) -> None:
     created_organizations: list[tuple[str, str]] = []
     created_users: list[str] = []
+    reconciled_users: list[tuple[str, str, str | None, str | None]] = []
     added_members: list[tuple[str, str]] = []
     added_group_memberships: list[tuple[str, str, str]] = []
     ensured_groups: list[str] = []
@@ -121,6 +122,19 @@ def test_ensure_shared_realm_organizations_and_users_reuses_existing_rows(
     )
     monkeypatch.setattr(
         keycloak_service,
+        "reconcile_realm_user_credentials",
+        lambda realm,
+        user_id,
+        *,
+        password,
+        email=None,
+        display_name=None,
+        admin_token: reconciled_users.append(
+            (user_id, password, email, display_name)
+        ),
+    )
+    monkeypatch.setattr(
+        keycloak_service,
         "add_organization_member",
         lambda organization_id, user_id, *, admin_token: added_members.append(
             (organization_id, user_id)
@@ -176,6 +190,9 @@ def test_ensure_shared_realm_organizations_and_users_reuses_existing_rows(
 
     assert created_organizations == [("tenant-b", "Tenant B")]
     assert created_users == ["bob"]
+    assert reconciled_users == [
+        ("kc-alice", "demo-password", "alice@example.com", None)
+    ]
     assert added_members == [
         ("org-tenant-a", "kc-alice"),
         ("org-tenant-b", "kc-bob"),
@@ -193,4 +210,7 @@ def test_ensure_shared_realm_organizations_and_users_reuses_existing_rows(
     assert result.users_by_username["alice"].created is False
     assert result.users_by_username["bob"].created is True
     assert any("tenant-a" in warning for warning in result.warnings)
-    assert any("alice" in warning for warning in result.warnings)
+    assert any(
+        "alice" in warning and "reconciled" in warning
+        for warning in result.warnings
+    )

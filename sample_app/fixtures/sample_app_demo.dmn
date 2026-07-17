@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions
+  xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+  xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+  xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+  id="Definitions_sample_app_demo_threshold"
+  name="Sample App Demo Finance Threshold"
+  namespace="http://camunda.org/schema/1.0/dmn"
+  exporter="m8flow-bpmn-core"
+  exporterVersion="1.0">
+  <decision
+    id="demo_finance_review_threshold"
+    name="Demo Finance Review Threshold">
+    <decisionTable id="DecisionTable_demo_finance_review_threshold">
+      <input id="Input_amount">
+        <inputExpression
+          id="InputExpression_amount"
+          typeRef="integer"
+          expressionLanguage="python">
+          <text>amount</text>
+        </inputExpression>
+      </input>
+      <output
+        id="Output_requires_finance_review"
+        name="requires_finance_review"
+        typeRef="boolean" />
+      <rule id="DecisionRule_no_finance_review">
+        <description>Amounts at or below 1000 skip Finance</description>
+        <inputEntry id="UnaryTests_no_finance_review">
+          <text>&lt;= 1000</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_no_finance_review">
+          <text>False</text>
+        </outputEntry>
+      </rule>
+      <rule id="DecisionRule_requires_finance_review">
+        <description>Amounts above 1000 require Finance</description>
+        <inputEntry id="UnaryTests_requires_finance_review">
+          <text>&gt; 1000</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_requires_finance_review">
+          <text>True</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram>
+      <dmndi:DMNShape dmnElementRef="demo_finance_review_threshold">
+        <dc:Bounds height="80" width="220" x="160" y="100" />
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>
