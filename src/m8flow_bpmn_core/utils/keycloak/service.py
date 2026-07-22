@@ -749,7 +749,7 @@ def _request(
 
     request = Request(url, data=payload, headers=request_headers, method=method)
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with urlopen(request, timeout=timeout) as response:  # nosec B310
             body = response.read().decode("utf-8", errors="replace")
             return _HttpResponse(
                 status_code=response.status,

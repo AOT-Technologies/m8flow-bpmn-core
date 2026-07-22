@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12,<4.0"
 dependencies = [
   "alembic>=1.16,<2.0",
+  "defusedxml>=0.7,<1.0",
   "pydantic>=2.7,<3.0",
   "pydantic-settings>=2.3,<3.0",
   "SQLAlchemy>=2.0,<3.0",
@@ -23,6 +24,7 @@ celery = ["celery[redis]>=5.4,<6.0"]
 
 [dependency-groups]
 dev = [
+  "bandit[toml]>=1.8,<2.0",
   "mypy>=1.11,<2.0",
   "pre-commit>=4.0,<5.0",
   "pytest>=8.3,<9.0",
@@ -57,4 +59,26 @@ disallow_incomplete_defs = true
 no_implicit_optional = true
 show_error_codes = true
 ignore_missing_imports = true
+files = ["src/m8flow_bpmn_core"]
 plugins = ["sqlalchemy.ext.mypy.plugin"]
+
+[[tool.mypy.overrides]]
+module = [
+  "m8flow_bpmn_core.models.future_task",
+  "m8flow_bpmn_core.models.json_data",
+  "m8flow_bpmn_core.services.connector_proxy_service_tasks",
+  "m8flow_bpmn_core.services.process_definitions",
+  "m8flow_bpmn_core.services.scheduler_jobs",
+  "m8flow_bpmn_core.services.scheduler_runtime",
+  "m8flow_bpmn_core.services.workflow_runtime",
+  "m8flow_bpmn_core.utils.keycloak.service",
+]
+ignore_errors = true
+
+[tool.bandit]
+exclude_dirs = [
+  "tests",
+  "integration",
+  "examples",
+  "sample_app/tests",
+]

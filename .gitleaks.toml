@@ -1,0 +1,54 @@
+title = "m8flow-bpmn-core Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Intentional documentation, fixtures, and test assets with sample credentials"
+paths = [
+  '''^README\.md$''',
+  '''^doc/''',
+  '''^examples/''',
+  '''^integration/''',
+  '''^reference/''',
+  '''^tests/''',
+  '''^sample\.env$''',
+  '''^sample_app/README\.md$''',
+  '''^sample_app/docs/''',
+  '''^sample_app/fixtures/''',
+  '''^sample_app/tests/''',
+]
+
+[[allowlists]]
+description = "Intentional local-development defaults in tracked source and config"
+regexTarget = "line"
+regexes = [
+  '''DEFAULT_KEYCLOAK_ADMIN_PASSWORD\s*=\s*"admin"''',
+  '''secret_key:\s*str\s*=\s*"sample-app-dev-secret"''',
+  '''postgresql\+psycopg://postgres:postgres@localhost:(5432|6843)/''',
+  '''UNCONFIGURED_SECRET_PLACEHOLDER\s*=\s*"CHANGE_ME_IN_SECRETS_UI"''',
+  '''\("SMTP_PASSWORD",\s*"CHANGE_ME_IN_SECRETS_UI"\)''',
+]
+
+[[allowlists]]
+description = "Known sample app config file with local-only connection defaults"
+paths = [
+  '''^sample_app/alembic\.ini$''',
+]
+
+[[allowlists]]
+description = "Local-generated environments, caches, build outputs, and tool downloads"
+paths = [
+  '''^\.mypy_cache/''',
+  '''^\.pytest_cache/''',
+  '''^\.ruff_cache/''',
+  '''^\.tmp-pre-commit/''',
+  '''^\.tmp-tools/''',
+  '''^\.uv-cache/''',
+  '''^\.venv/''',
+  '''^dist/''',
+  '''^sample_app/\.pytest_cache/''',
+  '''^sample_app/\.ruff_cache/''',
+  '''^sample_app/\.uv-cache/''',
+  '''^sample_app/\.venv/''',
+]

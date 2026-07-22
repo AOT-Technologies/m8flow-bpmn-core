@@ -6,12 +6,12 @@ import json
 import math
 import re
 import time
-import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from defusedxml import ElementTree
 from SpiffWorkflow.bpmn.script_engine.python_engine import PythonScriptEngine
 from SpiffWorkflow.bpmn.serializer.workflow import BpmnWorkflowSerializer
 from SpiffWorkflow.bpmn.specs.event_definitions.timer import TimerEventDefinition
@@ -2420,7 +2420,7 @@ def _collect_timer_start_payloads_for_definition(
 
 
 def _definition_contains_timer_start_event(source_bpmn_xml: str | bytes) -> bool:
-    root = ET.fromstring(_coerce_xml_bytes(source_bpmn_xml))
+    root = ElementTree.fromstring(_coerce_xml_bytes(source_bpmn_xml))
     namespace = {"bpmn": "http://www.omg.org/spec/BPMN/20100524/MODEL"}
     return bool(
         root.findall(
