@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 concurrency:
@@ -10,6 +12,7 @@ concurrency:
 
 jobs:
   quality:
+    name: Lint, type, and security checks
     runs-on: ubuntu-latest
 
     steps:
@@ -42,6 +45,7 @@ jobs:
         run: uv run --locked bandit -c pyproject.toml -r src sample_app/src
 
   tests:
+    name: Core test suite
     runs-on: ubuntu-latest
 
     steps:
@@ -68,6 +72,7 @@ jobs:
         run: uv run --locked pytest
 
   tests-postgres:
+    name: Core test suite (PostgreSQL)
     runs-on: ubuntu-latest
 
     services:
@@ -112,6 +117,7 @@ jobs:
         run: uv run --locked pytest
 
   sample-app-tests:
+    name: Sample app lint and tests
     runs-on: ubuntu-latest
 
     steps:
