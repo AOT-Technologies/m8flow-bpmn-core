@@ -17,5 +17,13 @@ dist/
 *.sqlite
 reference/
 .*
+!.gitleaks.toml
+!.pre-commit-config.yaml
+!.github/
+!.github/codeql/
+!.github/codeql/*.yml
+!.github/dependabot.yml
+!.github/workflows/
+!.github/workflows/*.yml
 sample_app/vendor/*.whl
-sample_app/uv.lock
+!sample_app/uv.lock

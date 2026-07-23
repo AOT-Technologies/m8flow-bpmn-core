@@ -5,7 +5,7 @@ SRC_DIR := src
 TEST_DIR := tests
 ALEMBIC_DIR := alembic/versions
 
-.PHONY: help sync sync-postgresql lint lint-fix test test-integration build package package-wheel package-sdist
+.PHONY: help sync sync-postgresql lint lint-fix typecheck security precommit-install test test-integration build package package-wheel package-sdist
 
 help:
 	@echo "Targets:"
@@ -13,6 +13,9 @@ help:
 	@echo "  make sync-postgresql  Sync dependencies with the Postgres extra"
 	@echo "  make lint             Run Ruff"
 	@echo "  make lint-fix         Run Ruff with --fix"
+	@echo "  make typecheck        Run mypy on the core package"
+	@echo "  make security         Run Bandit on the core and sample-app source trees"
+	@echo "  make precommit-install  Install the local pre-commit and commit-msg hooks"
 	@echo "  make test             Run the unit test suite"
 	@echo "  make test-integration  Run the Postgres integration test"
 	@echo "  make build            Build wheel and sdist artifacts into dist/"
@@ -31,6 +34,15 @@ lint:
 
 lint-fix:
 	$(UV) run ruff check --fix $(SRC_DIR) $(TEST_DIR) $(ALEMBIC_DIR)
+
+typecheck:
+	$(UV) run mypy
+
+security:
+	$(UV) run bandit -c pyproject.toml -r $(SRC_DIR) sample_app/src
+
+precommit-install:
+	$(UV) run pre-commit install --hook-type pre-commit --hook-type commit-msg
 
 test:
 	$(UV) run pytest

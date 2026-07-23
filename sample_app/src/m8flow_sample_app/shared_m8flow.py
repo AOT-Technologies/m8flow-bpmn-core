@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
+import subprocess  # nosec B404
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Sequence
-from xml.etree import ElementTree
+
+from defusedxml import ElementTree
 
 from sqlalchemy.engine.url import make_url
 
@@ -468,7 +469,8 @@ def _database_name_from_url(database_url: str) -> str | None:
 
 def _docker_inspect_container(container_name: str) -> list[dict[str, Any]] | None:
     try:
-        result = subprocess.run(
+        # Bandit: fixed docker CLI invocation without shell expansion.
+        result = subprocess.run(  # nosec B603 B607
             ["docker", "inspect", container_name],
             check=False,
             capture_output=True,

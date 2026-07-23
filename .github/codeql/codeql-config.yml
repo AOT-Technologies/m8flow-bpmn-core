@@ -1,0 +1,17 @@
+name: "m8flow-bpmn-core CodeQL Config"
+
+queries:
+  - uses: security-and-quality
+
+paths:
+  - src
+  - sample_app/src
+
+paths-ignore:
+  - tests
+  - integration
+  - examples
+  - reference
+  - sample_app/tests
+  - sample_app/docs
+  - sample_app/fixtures

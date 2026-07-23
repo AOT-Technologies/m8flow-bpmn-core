@@ -260,7 +260,10 @@ def _connector_proxy_json_request(
     )
 
     try:
-        with urlopen(request, timeout=normalized_timeout_seconds) as response:
+        with urlopen(  # nosec B310
+            request,
+            timeout=normalized_timeout_seconds,
+        ) as response:
             raw_body = response.read()
             parsed_body = _parse_connector_proxy_response_body(raw_body)
             _raise_for_connector_proxy_error_payload(
