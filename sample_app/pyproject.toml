@@ -23,7 +23,7 @@ m8flow-sample-app = "m8flow_sample_app.__main__:main"
 
 [dependency-groups]
 dev = [
-  "pytest>=8.3,<9.0",
+  "pytest>=9.0.3,<10.0",
   "ruff>=0.6,<1.0",
 ]
 
