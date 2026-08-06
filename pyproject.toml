@@ -60,7 +60,7 @@ no_implicit_optional = true
 show_error_codes = true
 ignore_missing_imports = true
 files = ["src/m8flow_bpmn_core"]
-plugins = ["sqlalchemy.ext.mypy.plugin"]
+plugins = ["sqlalchemy>=2.0.51,<3.0"]
 
 [[tool.mypy.overrides]]
 module = [
