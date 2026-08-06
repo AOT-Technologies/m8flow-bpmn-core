@@ -21,6 +21,8 @@ It is meant to be called directly by the platform or app layer through Python im
 ## Documentation
 
 Detailed API and usage notes live in [doc/README.md](doc/README.md).
+Contributor expectations, including DCO signoff requirements, live in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Local Setup
 
@@ -59,6 +61,53 @@ artifact storage.
   `uv run ruff check --fix src tests alembic/versions`
 
 - If you add or rename imports, Ruff will also keep the import order consistent through `ruff check`.
+
+### Type Checking
+
+- Run mypy against the core package:
+
+  `uv run mypy`
+
+### Security Scanning
+
+- Run Bandit against the core and sample-app source trees:
+
+  `uv run bandit -c pyproject.toml -r src sample_app/src`
+
+- GitHub Actions also run repository-level security scans:
+
+  `CodeQL` via `.github/workflows/codeql.yml`
+
+  `Gitleaks` via `.github/workflows/secret-scan.yml`
+
+- GitHub native secret scanning and push protection are repository or organization settings. This repo-level setup adds CI scanning, but it does not turn those GitHub features on by itself.
+
+- For private repositories, GitHub-native CodeQL and SARIF visibility still depend on repository or organization Code Security settings.
+
+### Pre-commit
+
+- Install the local hooks:
+
+  `make precommit-install`
+
+- Run all configured hooks on demand:
+
+  `uv run pre-commit run --all-files`
+
+### DCO
+
+- Every commit must include a `Signed-off-by` trailer. The normal path is:
+
+  `git commit -s -m "Describe the change"`
+
+- For existing commits, use:
+
+  `git commit --amend -s`
+
+  `git rebase --signoff origin/main`
+
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository DCO policy and the
+  GitHub setting that can auto-sign web-based commits.
 
 ### Tests
 

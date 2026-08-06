@@ -113,6 +113,7 @@ dependencies = [
             str(wheel_path),
         ],
     )
+    monkeypatch.setattr(module, "_check_uv_lock", lambda **kwargs: None)
 
     assert module.main() == 0
     updated_lock_text = uv_lock_path.read_text(encoding="utf-8")
@@ -125,6 +126,49 @@ dependencies = [
         '{ name = "m8flow-bpmn-core", path = "vendor/m8flow_bpmn_core-0.2.0-py3-none-any.whl" }'
         in updated_lock_text
     )
+
+
+def test_update_or_refresh_uv_lock_refreshes_when_check_fails(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    module = _load_update_local_wheel_metadata_module()
+    pyproject_path = tmp_path / "pyproject.toml"
+    uv_lock_path = tmp_path / "uv.lock"
+    pyproject_path.write_text("[project]\nname = 'sample'\n", encoding="utf-8")
+    uv_lock_path.write_text("# lock\n", encoding="utf-8")
+
+    calls: list[tuple[str, object]] = []
+
+    def fake_update_uv_lock(**kwargs) -> None:
+        calls.append(("update", kwargs["wheel_filename"]))
+
+    def fake_check_uv_lock(**kwargs) -> None:
+        calls.append(("check", kwargs["uv_executable"]))
+        raise RuntimeError("lock is stale")
+
+    def fake_refresh_uv_lock(**kwargs) -> None:
+        calls.append(("refresh", kwargs["uv_executable"]))
+
+    monkeypatch.setattr(module, "_update_uv_lock", fake_update_uv_lock)
+    monkeypatch.setattr(module, "_check_uv_lock", fake_check_uv_lock)
+    monkeypatch.setattr(module, "_refresh_uv_lock", fake_refresh_uv_lock)
+
+    module._update_or_refresh_uv_lock(
+        pyproject_path=pyproject_path,
+        uv_lock_path=uv_lock_path,
+        relative_wheel_path="vendor/m8flow_bpmn_core-0.2.0-py3-none-any.whl",
+        wheel_filename="m8flow_bpmn_core-0.2.0-py3-none-any.whl",
+        wheel_version="0.2.0",
+        wheel_hash="deadbeef",
+        uv_executable="uv-test",
+    )
+
+    assert calls == [
+        ("update", "m8flow_bpmn_core-0.2.0-py3-none-any.whl"),
+        ("check", "uv-test"),
+        ("refresh", "uv-test"),
+    ]
 
 
 def _load_update_local_wheel_metadata_module():

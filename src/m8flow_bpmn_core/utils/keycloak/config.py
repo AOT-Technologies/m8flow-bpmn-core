@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 
-DEFAULT_KEYCLOAK_ADMIN_PASSWORD = "admin"
+# Bandit: local demo fallback only.
+DEFAULT_KEYCLOAK_ADMIN_PASSWORD = "admin"  # nosec B105
 DEFAULT_KEYCLOAK_ADMIN_USER = "admin"
 DEFAULT_KEYCLOAK_URL = "http://localhost:6842"
 DEFAULT_MASTER_REALM_NAME = "master"

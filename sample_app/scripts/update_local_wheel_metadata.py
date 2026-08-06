@@ -41,20 +41,15 @@ def main() -> int:
             uv_executable=args.uv_executable,
         )
     else:
-        try:
-            _update_uv_lock(
-                uv_lock_path=uv_lock_path,
-                relative_wheel_path=relative_wheel_path,
-                wheel_filename=wheel_filename,
-                wheel_version=wheel_version,
-                wheel_hash=wheel_hash,
-            )
-        except RuntimeError:
-            _refresh_uv_lock(
-                pyproject_path=pyproject_path,
-                uv_lock_path=uv_lock_path,
-                uv_executable=args.uv_executable,
-            )
+        _update_or_refresh_uv_lock(
+            pyproject_path=pyproject_path,
+            uv_lock_path=uv_lock_path,
+            relative_wheel_path=relative_wheel_path,
+            wheel_filename=wheel_filename,
+            wheel_version=wheel_version,
+            wheel_hash=wheel_hash,
+            uv_executable=args.uv_executable,
+        )
     return 0
 
 
@@ -126,6 +121,37 @@ def _update_uv_lock(
     uv_lock_path.write_text(updated_text, encoding="utf-8")
 
 
+def _update_or_refresh_uv_lock(
+    *,
+    pyproject_path: Path,
+    uv_lock_path: Path,
+    relative_wheel_path: str,
+    wheel_filename: str,
+    wheel_version: str,
+    wheel_hash: str,
+    uv_executable: str,
+) -> None:
+    try:
+        _update_uv_lock(
+            uv_lock_path=uv_lock_path,
+            relative_wheel_path=relative_wheel_path,
+            wheel_filename=wheel_filename,
+            wheel_version=wheel_version,
+            wheel_hash=wheel_hash,
+        )
+        _check_uv_lock(
+            pyproject_path=pyproject_path,
+            uv_lock_path=uv_lock_path,
+            uv_executable=uv_executable,
+        )
+    except RuntimeError:
+        _refresh_uv_lock(
+            pyproject_path=pyproject_path,
+            uv_lock_path=uv_lock_path,
+            uv_executable=uv_executable,
+        )
+
+
 def _generate_uv_lock(
     *,
     pyproject_path: Path,
@@ -151,6 +177,20 @@ def _refresh_uv_lock(
         uv_lock_path=uv_lock_path,
         uv_executable=uv_executable,
         arguments=("lock", "--refresh-package", "m8flow-bpmn-core"),
+    )
+
+
+def _check_uv_lock(
+    *,
+    pyproject_path: Path,
+    uv_lock_path: Path,
+    uv_executable: str,
+) -> None:
+    _run_uv_lock_command(
+        pyproject_path=pyproject_path,
+        uv_lock_path=uv_lock_path,
+        uv_executable=uv_executable,
+        arguments=("lock", "--check"),
     )
 
 

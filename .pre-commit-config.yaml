@@ -1,0 +1,30 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: Ruff
+        entry: uv run --locked ruff check src tests alembic/versions sample_app/src sample_app/tests
+        language: system
+        pass_filenames: false
+        files: ^(src/|tests/|alembic/versions/|sample_app/src/|sample_app/tests/)
+
+      - id: mypy
+        name: mypy
+        entry: uv run --locked mypy
+        language: system
+        pass_filenames: false
+        files: ^src/m8flow_bpmn_core/
+
+      - id: bandit
+        name: Bandit
+        entry: uv run --locked bandit -c pyproject.toml -r src sample_app/src
+        language: system
+        pass_filenames: false
+        files: ^(src/|sample_app/src/)
+
+      - id: dco-signoff
+        name: DCO signoff
+        entry: uv run --locked python tools/check_dco.py --commit-msg-file
+        language: system
+        stages: [commit-msg]
+        always_run: true

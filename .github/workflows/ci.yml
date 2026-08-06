@@ -2,13 +2,17 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
+  pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  tests:
+  quality:
+    name: Lint, type, and security checks
     runs-on: ubuntu-latest
 
     steps:
@@ -34,10 +38,41 @@ jobs:
       - name: Run Ruff
         run: uv run --locked ruff check src tests alembic/versions
 
+      - name: Run mypy
+        run: uv run --locked mypy
+
+      - name: Run Bandit
+        run: uv run --locked bandit -c pyproject.toml -r src sample_app/src
+
+  tests:
+    name: Core test suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Sync environment
+        run: uv sync --locked
+
       - name: Run tests
         run: uv run --locked pytest
 
   tests-postgres:
+    name: Core test suite (PostgreSQL)
     runs-on: ubuntu-latest
 
     services:
@@ -78,8 +113,46 @@ jobs:
       - name: Sync environment
         run: uv sync --locked --extra postgresql
 
-      - name: Run Ruff
-        run: uv run --locked ruff check src tests alembic/versions
-
       - name: Run tests
+        run: uv run --locked pytest
+
+  sample-app-tests:
+    name: Sample app lint and tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+            sample_app/pyproject.toml
+            sample_app/uv.lock
+
+      - name: Build library wheel
+        run: uv build --wheel
+
+      - name: Stage library wheel for sample app
+        run: bash sample_app/scripts/stage_local_wheel.sh
+
+      - name: Sync sample app environment
+        working-directory: sample_app
+        run: uv sync --locked
+
+      - name: Run sample app Ruff
+        working-directory: sample_app
+        run: uv run --locked ruff check src tests
+
+      - name: Run sample app tests
+        working-directory: sample_app
         run: uv run --locked pytest

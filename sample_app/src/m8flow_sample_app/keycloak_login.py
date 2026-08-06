@@ -19,6 +19,7 @@ from m8flow_bpmn_core.utils.keycloak.service import (
 from m8flow_sample_app.settings import Settings, get_settings
 
 SHARED_KEYCLOAK_CALLBACK_PATH = "/session/keycloak/callback"
+ANY_INTERFACE_HOST = "0.0.0.0"  # nosec B104
 
 
 class KeycloakLoginError(RuntimeError):
@@ -294,7 +295,7 @@ def _token_request(
         method="POST",
     )
     try:
-        with urlopen(request, timeout=30) as response:
+        with urlopen(request, timeout=30) as response:  # nosec B310
             body_text = response.read().decode("utf-8", errors="replace")
     except HTTPError as exc:
         body_text = exc.read().decode("utf-8", errors="replace")
@@ -441,7 +442,7 @@ def _admin_request(
         method=method,
     )
     try:
-        with urlopen(request, timeout=30) as response:
+        with urlopen(request, timeout=30) as response:  # nosec B310
             body_text = response.read().decode("utf-8", errors="replace")
             return _HttpResponse(
                 status_code=response.status,
@@ -519,11 +520,11 @@ def _shared_login_base_urls(
 
     normalized_host = settings.host.strip().lower()
     candidates: list[str] = []
-    if normalized_host and normalized_host != "0.0.0.0":
+    if normalized_host and normalized_host != ANY_INTERFACE_HOST:
         candidates.append(f"http://{normalized_host}:{settings.port}")
-    if normalized_host in {"127.0.0.1", "0.0.0.0"}:
+    if normalized_host in {"127.0.0.1", ANY_INTERFACE_HOST}:
         candidates.append(f"http://localhost:{settings.port}")
-    if normalized_host in {"localhost", "0.0.0.0"}:
+    if normalized_host in {"localhost", ANY_INTERFACE_HOST}:
         candidates.append(f"http://127.0.0.1:{settings.port}")
     return tuple(_normalize_url_values(candidates))
 

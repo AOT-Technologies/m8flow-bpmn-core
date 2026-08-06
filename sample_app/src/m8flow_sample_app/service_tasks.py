@@ -14,7 +14,8 @@ from m8flow_sample_app.models import SecretModel
 from m8flow_sample_app.settings import get_settings
 
 M8FLOW_SECRET_REFERENCE_RE = re.compile(r"M8FLOW_SECRET:(?P<name>\w+)")
-UNCONFIGURED_SECRET_PLACEHOLDER = "CHANGE_ME_IN_SECRETS_UI"
+# Bandit: placeholder marker, not a real credential.
+UNCONFIGURED_SECRET_PLACEHOLDER = "CHANGE_ME_IN_SECRETS_UI"  # nosec B105
 
 
 class TenantSecretResolvingConnector:
