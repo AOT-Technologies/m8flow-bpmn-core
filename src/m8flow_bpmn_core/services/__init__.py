@@ -5,6 +5,7 @@ from typing import Any
 
 __all__ = [
     "advance_process_instance_workflow",
+    "assign_pending_tasks_for_user",
     "claim_task",
     "complete_task",
     "create_process_instance",
@@ -37,6 +38,7 @@ _EXPORT_MODULES = {
     "resolve_lane_assignment_id": "m8flow_bpmn_core.services.workflow_runtime",
     "claim_task": "m8flow_bpmn_core.services.tasks",
     "complete_task": "m8flow_bpmn_core.services.tasks",
+    "assign_pending_tasks_for_user": "m8flow_bpmn_core.services.tasks",
     "get_pending_tasks": "m8flow_bpmn_core.services.tasks",
     "create_process_instance": "m8flow_bpmn_core.services.process_instances",
     "error_process_instance": "m8flow_bpmn_core.services.process_instances",

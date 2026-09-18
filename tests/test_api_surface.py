@@ -72,6 +72,7 @@ EXPECTED_PUBLIC_API = frozenset(
         "fetch_connector_proxy_command_definitions",
         # Service functions
         "advance_process_instance_workflow",
+        "assign_pending_tasks_for_user",
         "claim_task",
         "complete_task",
         "create_process_instance",
@@ -109,6 +110,7 @@ def test_public_api_surface_is_frozen() -> None:
 
 def test_public_api_re_exports_task_services() -> None:
     assert callable(api.get_pending_tasks)
+    assert callable(api.assign_pending_tasks_for_user)
     assert callable(api.claim_task)
     assert callable(api.complete_task)
     assert callable(api.ConnectorProxyServiceTaskConnector)

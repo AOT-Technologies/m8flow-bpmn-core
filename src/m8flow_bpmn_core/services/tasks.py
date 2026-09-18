@@ -19,6 +19,7 @@ from m8flow_bpmn_core.models.process_instance import (
     ProcessInstanceStatus,
 )
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
 from m8flow_bpmn_core.services.authorization import (
     TASK_CLAIM_COMMAND,
     TASK_COMPLETE_COMMAND,
@@ -64,6 +65,59 @@ def get_pending_tasks(
 
     stmt = stmt.order_by(HumanTaskModel.id)
     return list(session.scalars(stmt).all())
+
+
+def assign_pending_tasks_for_user(
+    session: Session,
+    *,
+    tenant_id: str,
+    user_id: int,
+) -> list[HumanTaskModel]:
+    """Add a user to pending tasks for the lane groups they belong to.
+
+    This is intended for hosts to call after synchronizing directory
+    membership. It creates potential-owner rows only; the user must still
+    claim a task before it can be completed. Repeated calls are idempotent.
+    """
+    ensure_user_belongs_to_tenant(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
+
+    user_group_ids = select(UserGroupAssignmentModel.group_id).where(
+        UserGroupAssignmentModel.user_id == user_id,
+    )
+    existing_assignment = exists(
+        select(1).where(
+            HumanTaskUserModel.m8f_tenant_id == tenant_id,
+            HumanTaskUserModel.human_task_id == HumanTaskModel.id,
+            HumanTaskUserModel.user_id == user_id,
+        )
+    )
+    tasks = list(
+        session.scalars(
+            select(HumanTaskModel)
+            .where(
+                HumanTaskModel.m8f_tenant_id == tenant_id,
+                HumanTaskModel.completed.is_(False),
+                HumanTaskModel.lane_assignment_id.in_(user_group_ids),
+                ~existing_assignment,
+            )
+            .order_by(HumanTaskModel.id)
+        ).all()
+    )
+    for human_task in tasks:
+        session.add(
+            HumanTaskUserModel(
+                m8f_tenant_id=tenant_id,
+                human_task_id=human_task.id,
+                user_id=user_id,
+                added_by="lane_assignment",
+            )
+        )
+    session.flush()
+    return tasks
 
 
 def claim_task(

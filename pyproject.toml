@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "m8flow-bpmn-core"
-version = "0.1.0"
+version = "0.1.1"
 description = "Core BPMN engine scaffolding for M8Flow."
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
