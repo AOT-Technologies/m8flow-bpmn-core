@@ -212,13 +212,16 @@ def test_lane_owners_sync_into_lane_group_membership_on_import(
         ),
     )
 
-    lane_group = session.get(GroupModel, api.resolve_lane_assignment_id("Operations"))
+    lane_group = session.get(
+        GroupModel,
+        api.resolve_lane_assignment_id("Operations", tenant.id),
+    )
     assert lane_group is not None
-    assert lane_group.identifier == "Operations"
+    assert lane_group.identifier == f"{tenant.id}:Operations"
     assert sorted(
         session.scalars(
             select(UserGroupAssignmentModel.user_id).where(
-                UserGroupAssignmentModel.group_id == lane_group.id
+                UserGroupAssignmentModel.group_id == lane_group.id,
             )
         )
     ) == [user.id]
@@ -245,12 +248,12 @@ def test_group_membership_assigns_lane_tasks_without_lane_owners(
         role_name=ROLE_ADMIN,
         user_ids=[reviewer.id],
     )
-    lane_group_id = api.resolve_lane_assignment_id("Operations")
+    lane_group_id = api.resolve_lane_assignment_id("Operations", tenant.id)
     session.add(
         GroupModel(
             id=lane_group_id,
-            name="Operations",
-            identifier="Operations",
+            name=f"{tenant.id}:Operations",
+            identifier=f"{tenant.id}:Operations",
             source_is_open_id=False,
         )
     )
@@ -302,6 +305,99 @@ def test_group_membership_assigns_lane_tasks_without_lane_owners(
         (assignment.user.username, assignment.added_by)
         for assignment in pending_tasks[0].human_task_users
     ] == [("group-reviewer", "lane_assignment")]
+
+
+def test_empty_lane_does_not_block_process_start(
+    session: Session,
+) -> None:
+    tenant, admin = _seed_tenant_and_admin(session)
+    bpmn_xml = SERVICE_TASK_RUNTIME_BPMN_PATH.read_text(encoding="utf-8")
+    connector = DemoServiceTaskConnector()
+    registry = api.ServiceTaskRegistry(connectors=(connector,))
+
+    with api.service_task_registry_scope(registry):
+        definition = api.execute_command(
+            session,
+            api.ImportBpmnProcessDefinitionCommand(
+                tenant_id=tenant.id,
+                bpmn_identifier="service-task-runtime-poc-empty-lane",
+                user_id=admin.id,
+                bpmn_name="Service Task Runtime Empty Lane POC",
+                source_bpmn_xml=bpmn_xml,
+                properties_json={},
+                created_at_in_seconds=10,
+                updated_at_in_seconds=10,
+            ),
+        )
+        process_instance = api.execute_command(
+            session,
+            api.InitializeProcessInstanceFromDefinitionCommand(
+                tenant_id=tenant.id,
+                bpmn_process_definition_id=definition.id,
+                process_initiator_id=admin.id,
+                submission_metadata={"submission_message": "hello-empty-lane"},
+                started_at_in_seconds=20,
+            ),
+        )
+
+    pending_tasks = api.execute_query(
+        session,
+        api.GetPendingTasksQuery(tenant_id=tenant.id),
+    )
+
+    assert process_instance.status == api.ProcessInstanceStatus.user_input_required
+    assert len(pending_tasks) == 1
+    assert pending_tasks[0].lane_name == "Operations"
+    assert pending_tasks[0].lane_assignment_id == api.resolve_lane_assignment_id(
+        "Operations", tenant.id
+    )
+    assert pending_tasks[0].actual_owner_id is None
+    assert pending_tasks[0].human_task_users == []
+
+    reviewer = UserModel(
+        username="late-group-reviewer",
+        email="late-group-reviewer@example.com",
+        service="http://localhost:7002/realms/tenant-service-task-runtime",
+        service_id="late-group-reviewer-keycloak",
+        display_name="Late Group Reviewer",
+        created_at_in_seconds=1,
+        updated_at_in_seconds=1,
+    )
+    session.add(reviewer)
+    session.flush()
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_ADMIN,
+        user_ids=[reviewer.id],
+    )
+    session.add(
+        UserGroupAssignmentModel(
+            user_id=reviewer.id,
+            group_id=api.resolve_lane_assignment_id("Operations", tenant.id),
+        )
+    )
+    session.flush()
+
+    assigned_tasks = api.assign_pending_tasks_for_user(
+        session,
+        tenant_id=tenant.id,
+        user_id=reviewer.id,
+    )
+    assert [task.id for task in assigned_tasks] == [pending_tasks[0].id]
+    assert api.assign_pending_tasks_for_user(
+        session,
+        tenant_id=tenant.id,
+        user_id=reviewer.id,
+    ) == []
+    reviewer_pending_tasks = api.execute_query(
+        session,
+        api.GetPendingTasksQuery(tenant_id=tenant.id, user_id=reviewer.id),
+    )
+    assert [task.id for task in reviewer_pending_tasks] == [pending_tasks[0].id]
+    assert reviewer_pending_tasks[0].actual_owner_id is None
+
+
 def test_missing_service_task_connector_surfaces_service_task_execution_error(
     session: Session,
 ) -> None:

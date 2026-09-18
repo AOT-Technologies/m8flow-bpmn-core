@@ -229,7 +229,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert manager_task.task_name == CONDITIONAL_APPROVAL_TASK_IDS["manager_review"]
     assert manager_task.task_title == "Review Expense Claim"
     assert manager_task.lane_name == "Manager"
-    assert manager_task.lane_assignment_id == api.resolve_lane_assignment_id("Manager")
+    assert manager_task.lane_assignment_id == api.resolve_lane_assignment_id(
+        "Manager", context.tenant.id
+    )
     # Manager ownership should be resolved from the lane_owners mapping.
     assert manager_task.task_model is not None
     assert manager_task.task_model.task_definition is not None
@@ -311,7 +313,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         assert finance_task.task_title == "Review Expense Claim (Finance)"
         assert finance_task.lane_name == "Finance"
         assert finance_task.lane_assignment_id == api.resolve_lane_assignment_id(
-            "Finance"
+            "Finance", context.tenant.id
         )
         assert finance_task.task_model is not None
         assert finance_task.task_model.task_definition is not None

@@ -210,9 +210,16 @@ workflow runtime access:
 - `advance_process_instance_workflow(...)`
   Restores an initialized workflow, completes the supplied runtime task
   guid, advances the process, and persists the refreshed state.
-- `resolve_lane_assignment_id(lane_name)`
+- `resolve_lane_assignment_id(lane_name, tenant_id=None)`
   Converts a lane name into a stable positive integer that matches
-  m8flow's lane/group id expectations.
+  m8flow's lane/group id expectations. When `tenant_id` is supplied, the
+  corresponding group identifier is qualified as `{tenant_id}:{lane_name}`
+  so equal lane names in different tenants never share a group. Workflow
+  runtime callers supply the tenant id.
+- `assign_pending_tasks_for_user(...)`
+  Reconciles incomplete human tasks for the lane groups assigned to a user.
+  This adds potential-owner rows after a host synchronizes directory
+  membership; it does not claim the tasks or set `actual_owner_id`.
 
 ---
 
@@ -754,4 +761,8 @@ process-definition identifiers.
   identifiers.
 - The runtime materializes human-task assignments from that lane-owner
   metadata plus BPMN lane information.
+- `lane_owners` is optional for named lanes. If no matching users are
+  currently available, the process still starts and the human task remains
+  `READY` without potential owners. A host application can add potential
+  owners later when directory membership is synchronized.
 

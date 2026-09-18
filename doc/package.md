@@ -50,13 +50,13 @@ Once the wheel is built, another project can depend on it directly.
 Example with `uv`:
 
 ```bash
-uv add ./dist/m8flow_bpmn_core-0.1.0-py3-none-any.whl
+uv add ./dist/m8flow_bpmn_core-0.1.1-py3-none-any.whl
 ```
 
 Example with `pip`:
 
 ```bash
-pip install ./dist/m8flow_bpmn_core-0.1.0-py3-none-any.whl
+pip install ./dist/m8flow_bpmn_core-0.1.1-py3-none-any.whl
 ```
 
 In a CI pipeline or artifact repository, upload the wheel from `dist/` and use
