@@ -5,7 +5,6 @@ from typing import Any
 
 __all__ = [
     "advance_process_instance_workflow",
-    "assign_pending_tasks_for_user",
     "claim_task",
     "complete_task",
     "create_process_instance",
