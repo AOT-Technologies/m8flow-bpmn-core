@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import logging
 import math
 import re
 import time
@@ -85,6 +86,8 @@ from m8flow_bpmn_core.services.tenant_users import (
     tenant_identifiers_for,
     user_belongs_to_tenant,
 )
+
+logger = logging.getLogger(__name__)
 
 _WORKFLOW_SERIALIZER = BpmnWorkflowSerializer(
     registry=BpmnWorkflowSerializer.configure(SPIFF_CONFIG),
@@ -1991,14 +1994,31 @@ def _lane_group(
     lane_group_id = resolve_lane_assignment_id(lane_name, tenant_id=tenant_id)
     lane_group = session.get(GroupModel, lane_group_id)
     if lane_group is not None and lane_group.identifier != lane_group_identifier:
-        if tenant_id and lane_group.identifier == lane_name.strip():
-            # Upgrade rows created by the short-lived tenant-column variant.
+        existing_identifier = lane_group.identifier or ""
+        if (
+            existing_identifier.casefold() == lane_group_identifier.casefold()
+            or (
+                tenant_id
+                and existing_identifier.casefold() == lane_name.strip().casefold()
+            )
+        ):
+            # Canonicalize case-only differences and upgrade rows created by
+            # the short-lived tenant-column variant.
             lane_group.name = lane_group_identifier
             lane_group.identifier = lane_group_identifier
             session.flush()
         else:
             # A deterministic hash collision or a legacy group with the same id
             # must never be reused across tenant boundaries.
+            logger.warning(
+                "Lane group identifier mismatch for lane %r and tenant %r: "
+                "group id %s has identifier %r, expected %r",
+                lane_name,
+                tenant_id,
+                lane_group_id,
+                lane_group.identifier,
+                lane_group_identifier,
+            )
             return None
     if lane_group is None:
         lane_group = GroupModel(
@@ -2013,10 +2033,10 @@ def _lane_group(
 
 
 def _lane_group_identifier(lane_name: str, tenant_id: str | None) -> str:
-    normalized_lane = lane_name.strip()
+    normalized_lane = lane_name.strip().lower()
     if not tenant_id:
         return normalized_lane
-    return f"{tenant_id.strip()}:{normalized_lane}"
+    return f"{tenant_id.strip().lower()}:{normalized_lane}"
 
 
 def _sync_human_task_assignments(

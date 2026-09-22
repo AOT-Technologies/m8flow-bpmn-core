@@ -19,6 +19,7 @@ from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentMod
 from m8flow_bpmn_core.services.authorization import ROLE_ADMIN, ensure_v1_role
 from m8flow_bpmn_core.services.workflow_runtime import (
     _build_workflow,
+    _lane_group,
     _persist_service_task_failure_state_in_independent_session,
     _prepare_process_instance_from_definition_in_session,
     _restore_workflow,
@@ -217,7 +218,7 @@ def test_lane_owners_sync_into_lane_group_membership_on_import(
         api.resolve_lane_assignment_id("Operations", tenant.id),
     )
     assert lane_group is not None
-    assert lane_group.identifier == f"{tenant.id}:Operations"
+    assert lane_group.identifier == f"{tenant.id}:operations"
     assert sorted(
         session.scalars(
             select(UserGroupAssignmentModel.user_id).where(
@@ -225,6 +226,28 @@ def test_lane_owners_sync_into_lane_group_membership_on_import(
             )
         )
     ) == [user.id]
+
+
+def test_lane_group_identifier_is_case_insensitive(
+    session: Session,
+) -> None:
+    tenant, _ = _seed_tenant_and_admin(session)
+
+    upper_case_group = _lane_group(
+        session,
+        "Operations",
+        tenant_id=tenant.id,
+    )
+    lower_case_group = _lane_group(
+        session,
+        "operations",
+        tenant_id=tenant.id,
+    )
+
+    assert upper_case_group is not None
+    assert lower_case_group is not None
+    assert lower_case_group.id == upper_case_group.id
+    assert lower_case_group.identifier == f"{tenant.id}:operations"
 
 
 def test_group_membership_assigns_lane_tasks_without_lane_owners(
