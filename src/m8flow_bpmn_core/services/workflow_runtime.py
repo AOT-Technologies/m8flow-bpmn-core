@@ -86,6 +86,11 @@ from m8flow_bpmn_core.services.tenant_users import (
     tenant_identifiers_for,
     user_belongs_to_tenant,
 )
+from m8flow_bpmn_core.services.work_items import (
+    WorkItemState,
+    close_work_item,
+    prepare_work_item_for_ready_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1148,6 +1153,7 @@ def _resolve_or_create_bpmn_process(
         properties_json={"root": process_identifier},
         json_data_hash=JsonDataModel.create_or_update_from_payload(
             session,
+            tenant_id,
             {
                 "bpmn_process_definition_id": process_definition.id,
                 "process_identifier": process_identifier,
@@ -1422,6 +1428,7 @@ def _sync_bpmn_process_from_workflow(
     persisted_workflow_data[WORKFLOW_STATE_JSON_DATA_KEY] = serialized_state
     bpmn_process.json_data_hash = JsonDataModel.create_or_update_from_payload(
         session,
+        process_instance.m8f_tenant_id,
         persisted_workflow_data,
     )
 
@@ -1623,7 +1630,7 @@ def _sync_inactive_human_tasks(
             continue
         if task_model is None:
             continue
-        if task_model.state == "READY":
+        if task_model.state == TaskState.get_name(TaskState.READY):
             continue
 
         _close_inactive_human_task(
@@ -1648,7 +1655,7 @@ def _current_ready_manual_tasks(
             continue
         if task_model.process_instance_id != process_instance.id:
             continue
-        if task_model.state != "READY":
+        if task_model.state != TaskState.get_name(TaskState.READY):
             continue
         ready_tasks.append(task)
     return ready_tasks
@@ -1665,10 +1672,11 @@ def _close_inactive_human_task(
     if human_task.completed:
         return
 
-    human_task.completed = True
-    human_task.completed_by_user_id = None
-    human_task.task_status = _inactive_human_task_status(task_state_name)
-    human_task.updated_at_in_seconds = occurred_at
+    close_work_item(
+        human_task,
+        state=WorkItemState(_inactive_human_task_status(task_state_name)),
+        occurred_at=occurred_at,
+    )
 
     task_model = human_task.task_model
     if task_model is not None and task_model.future_task is not None:
@@ -1691,7 +1699,12 @@ def _close_inactive_human_task(
 
 
 def _inactive_human_task_status(task_state_name: str | None) -> str:
-    if task_state_name in {"CANCELLED", "COMPLETED", "ERROR", "TERMINATED"}:
+    if task_state_name in {
+        TaskState.get_name(TaskState.CANCELLED),
+        TaskState.get_name(TaskState.COMPLETED),
+        TaskState.get_name(TaskState.ERROR),
+        WorkItemState.TERMINATED.value,
+    }:
         return task_state_name
     return "TERMINATED"
 
@@ -1699,9 +1712,9 @@ def _inactive_human_task_status(task_state_name: str | None) -> str:
 def _inactive_human_task_event_type(
     task_state_name: str | None,
 ) -> ProcessInstanceEventType | None:
-    if task_state_name == "CANCELLED":
+    if task_state_name == TaskState.get_name(TaskState.CANCELLED):
         return ProcessInstanceEventType.task_cancelled
-    if task_state_name == "ERROR":
+    if task_state_name == TaskState.get_name(TaskState.ERROR):
         return ProcessInstanceEventType.task_failed
     return None
 
@@ -1828,9 +1841,12 @@ def _upsert_task_model_from_payload(
     task_data = properties_json.pop("data", {})
     json_data_hash = JsonDataModel.create_or_update_from_payload(
         session,
+        process_instance.m8f_tenant_id,
         task_data if isinstance(task_data, Mapping) else {},
     )
-    python_env_data_hash = JsonDataModel.create_or_update_from_payload(session, {})
+    python_env_data_hash = JsonDataModel.create_or_update_from_payload(
+        session, process_instance.m8f_tenant_id, {}
+    )
 
     serialized_state = properties_json.get("state")
     if not isinstance(serialized_state, int):
@@ -1842,7 +1858,11 @@ def _upsert_task_model_from_payload(
         "manual": task_definition.properties_json.get("manual", False),
         "lane": task_definition.properties_json.get("lane"),
     }
-    task_is_terminal = task_state_name in {"COMPLETED", "CANCELLED", "ERROR"}
+    task_is_terminal = task_state_name in {
+        TaskState.get_name(TaskState.COMPLETED),
+        TaskState.get_name(TaskState.CANCELLED),
+        TaskState.get_name(TaskState.ERROR),
+    }
 
     if task_model is None:
         task_model = TaskModel(
@@ -1935,7 +1955,7 @@ def _upsert_human_task(
             task_name=task.task_spec.name,
             task_title=getattr(task.task_spec, "bpmn_name", None),
             task_type=task_definition.typename,
-            task_status="READY",
+            task_status=WorkItemState.READY.value,
             process_model_display_name=process_instance.process_model_display_name,
             bpmn_process_identifier=process_instance.process_model_identifier,
             lane_name=lane_name,
@@ -1951,16 +1971,16 @@ def _upsert_human_task(
         human_task.task_name = task.task_spec.name
         human_task.task_title = getattr(task.task_spec, "bpmn_name", None)
         human_task.task_type = task_definition.typename
-        human_task.task_status = "READY"
+        prepare_work_item_for_ready_state(
+            human_task,
+            occurred_at=occurred_at,
+        )
         human_task.process_model_display_name = (
             process_instance.process_model_display_name
         )
         human_task.bpmn_process_identifier = process_instance.process_model_identifier
         human_task.lane_name = lane_name
         human_task.json_metadata = human_task_payload
-        human_task.completed = False
-        human_task.completed_by_user_id = None
-        human_task.actual_owner_id = None
 
     process_instance.task_updated_at_in_seconds = occurred_at
     session.flush()
@@ -2634,7 +2654,10 @@ def _get_ready_human_tasks(
     return [
         human_task
         for human_task in process_instance.human_tasks
-        if not human_task.completed and human_task.task_status == "READY"
+        if (
+            not human_task.completed
+            and human_task.task_status == WorkItemState.READY.value
+        )
     ]
 
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Enum, Integer, String
+from sqlalchemy import DateTime, Enum, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from m8flow_bpmn_core.models.base import Base
@@ -16,6 +17,10 @@ class TenantStatus(StrEnum):
 
 class M8flowTenantModel(Base):
     __tablename__ = "m8flow_tenant"
+    __timestamp_compatibility_pairs__ = (
+        ("created_at_in_seconds", "created_at"),
+        ("updated_at_in_seconds", "updated_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(255), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -46,4 +51,10 @@ class M8flowTenantModel(Base):
         Integer,
         default=0,
         nullable=False,
+    )
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

@@ -12,7 +12,7 @@ class UserGroupAssignmentModel(Base):
         UniqueConstraint(
             "user_id",
             "group_id",
-            name="user_group_assignment_unique",
+            name="m8f_user_group_assignment_user_group_key",
         ),
     )
 

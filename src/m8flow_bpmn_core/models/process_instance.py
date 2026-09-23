@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import (
     Mapped,
     mapped_column,
@@ -32,6 +33,13 @@ class ProcessInstanceStatus(StrEnum):
 
 class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "process_instance"
+    __timestamp_compatibility_pairs__ = (
+        ("start_in_seconds", "started_at"),
+        ("end_in_seconds", "ended_at"),
+        ("task_updated_at_in_seconds", "task_updated_at"),
+        ("updated_at_in_seconds", "updated_at"),
+        ("created_at_in_seconds", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     process_model_identifier: Mapped[str] = mapped_column(
@@ -61,6 +69,21 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
     task_updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
     updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
     created_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    task_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     bpmn_version_control_type: Mapped[str | None] = mapped_column(String(50))
     bpmn_version_control_identifier: Mapped[str | None] = mapped_column(String(255))
     last_milestone_bpmn_name: Mapped[str | None] = mapped_column(
@@ -155,7 +178,10 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
         session = object_session(self)
         if session is None:
             return None
-        json_data = session.get(JsonDataModel, self.bpmn_process.json_data_hash)
+        json_data = session.get(
+            JsonDataModel,
+            (self.bpmn_process.m8f_tenant_id, self.bpmn_process.json_data_hash),
+        )
         if json_data is None:
             return None
         value = json_data.data.get(WORKFLOW_STATE_JSON_DATA_KEY)

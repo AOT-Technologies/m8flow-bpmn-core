@@ -996,7 +996,13 @@ def _set_waiting_timer_event_value(
     if process_instance.bpmn_process is None:
         raise AssertionError("Process instance is missing its BPMN process")
 
-    json_data = session.get(JsonDataModel, process_instance.bpmn_process.json_data_hash)
+    json_data = session.get(
+        JsonDataModel,
+        (
+            process_instance.bpmn_process.m8f_tenant_id,
+            process_instance.bpmn_process.json_data_hash,
+        ),
+    )
     assert json_data is not None
     payload = dict(json_data.data)
     serialized_workflow = json.loads(payload[WORKFLOW_STATE_JSON_DATA_KEY])
@@ -1005,7 +1011,9 @@ def _set_waiting_timer_event_value(
     )
     payload[WORKFLOW_STATE_JSON_DATA_KEY] = json.dumps(serialized_workflow)
     process_instance.bpmn_process.json_data_hash = (
-        JsonDataModel.create_or_update_from_payload(session, payload)
+        JsonDataModel.create_or_update_from_payload(
+            session, process_instance.m8f_tenant_id, payload
+        )
     )
     session.flush()
 

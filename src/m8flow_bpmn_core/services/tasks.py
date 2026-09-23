@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Mapping
 
+from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import Select, exists, select
 from sqlalchemy.orm import Session
 
@@ -31,6 +32,10 @@ from m8flow_bpmn_core.services.process_instances import (
 )
 from m8flow_bpmn_core.services.tenant_users import (
     ensure_user_belongs_to_tenant,
+)
+from m8flow_bpmn_core.services.work_items import (
+    claim_work_item,
+    complete_work_item,
 )
 from m8flow_bpmn_core.services.workflow_runtime import (
     advance_process_instance_workflow,
@@ -162,10 +167,11 @@ def claim_task(
         raise AuthorizationError("Task is already claimed by another user")
 
     claimed_at = round(time.time())
-    human_task.task_id = human_task.task_id or human_task.task_guid
-    human_task.actual_owner_id = user_id
-    human_task.task_status = "CLAIMED"
-    human_task.updated_at_in_seconds = claimed_at
+    claim_work_item(
+        human_task,
+        user_id=user_id,
+        occurred_at=claimed_at,
+    )
     process_instance = session.get(ProcessInstanceModel, human_task.process_instance_id)
     if process_instance is not None:
         process_instance.task_updated_at_in_seconds = claimed_at
@@ -227,15 +233,14 @@ def complete_task(
         completed_at_in_seconds=completed_at,
     )
 
-    human_task.completed = True
-    human_task.completed_by_user_id = user_id
-    human_task.actual_owner_id = user_id
-    human_task.task_status = "COMPLETED"
-    human_task.task_id = human_task.task_id or human_task.task_guid
-    human_task.updated_at_in_seconds = completed_at
+    complete_work_item(
+        human_task,
+        user_id=user_id,
+        occurred_at=completed_at,
+    )
 
     if human_task.task_model is not None:
-        human_task.task_model.state = "COMPLETED"
+        human_task.task_model.state = TaskState.get_name(TaskState.COMPLETED)
         human_task.task_model.end_in_seconds = float(completed_at)
 
     if human_task.task_guid is not None:

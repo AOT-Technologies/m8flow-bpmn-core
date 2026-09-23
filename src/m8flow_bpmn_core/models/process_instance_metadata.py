@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -9,11 +11,15 @@ from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantSc
 
 class ProcessInstanceMetadataModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "process_instance_metadata"
+    __timestamp_compatibility_pairs__ = (
+        ("created_at_in_seconds", "created_at"),
+        ("updated_at_in_seconds", "updated_at"),
+    )
     __table_args__ = (
         UniqueConstraint(
             "process_instance_id",
             "key",
-            name="process_instance_metadata_unique",
+            name="m8f_process_instance_metadata_key",
         ),
     )
 
@@ -27,6 +33,12 @@ class ProcessInstanceMetadataModel(M8fTenantScopedMixin, TenantScoped, Base):
     value: Mapped[str] = mapped_column(String(255), nullable=False)
     updated_at_in_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at_in_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     process_instance = relationship(
         "ProcessInstanceModel",
