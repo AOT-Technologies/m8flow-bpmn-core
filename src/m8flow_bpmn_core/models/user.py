@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import BIGINT, DateTime, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -31,8 +31,8 @@ class UserModel(Base):
     tenant_specific_field_1: Mapped[str | None] = mapped_column(String(255))
     tenant_specific_field_2: Mapped[str | None] = mapped_column(String(255))
     tenant_specific_field_3: Mapped[str | None] = mapped_column(String(255))
-    updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
-    created_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
+    updated_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
+    created_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer
+from sqlalchemy import BIGINT, Boolean, DateTime, ForeignKey
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -28,9 +28,9 @@ class FutureTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
         ),
         primary_key=True,
     )
-    run_at_in_seconds: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    run_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False, index=True)
     queued_to_run_at_in_seconds: Mapped[int | None] = mapped_column(
-        Integer,
+        BIGINT,
         index=True,
     )
     completed: Mapped[bool] = mapped_column(
@@ -46,7 +46,7 @@ class FutureTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
         nullable=False,
         index=True,
     )
-    updated_at_in_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False)
     run_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

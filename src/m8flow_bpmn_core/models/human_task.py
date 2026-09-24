@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import BIGINT, JSON, Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -37,8 +37,8 @@ class HumanTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
     )
     form_file_name: Mapped[str | None] = mapped_column(String(255))
     ui_form_file_name: Mapped[str | None] = mapped_column(String(255))
-    updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
-    created_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
+    updated_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
+    created_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

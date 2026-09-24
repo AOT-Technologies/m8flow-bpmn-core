@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import BIGINT, DateTime, ForeignKey, String
 from sqlalchemy.orm import (
     Mapped,
     mapped_column,
@@ -64,11 +64,11 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
     status: Mapped[str] = mapped_column(
         String(50), index=True, nullable=False, default="running"
     )
-    start_in_seconds: Mapped[int | None] = mapped_column(Integer, index=True)
-    end_in_seconds: Mapped[int | None] = mapped_column(Integer, index=True)
-    task_updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
-    updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
-    created_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
+    start_in_seconds: Mapped[int | None] = mapped_column(BIGINT, index=True)
+    end_in_seconds: Mapped[int | None] = mapped_column(BIGINT, index=True)
+    task_updated_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
+    updated_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
+    created_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

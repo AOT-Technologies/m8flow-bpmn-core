@@ -71,8 +71,51 @@ TIMESTAMP_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
 }
 
+LEGACY_EPOCH_COLUMNS: dict[str, tuple[str, ...]] = {
+    "user": ("created_at_in_seconds", "updated_at_in_seconds"),
+    "m8flow_tenant": ("created_at_in_seconds", "updated_at_in_seconds"),
+    "bpmn_process_definition": (
+        "created_at_in_seconds",
+        "updated_at_in_seconds",
+    ),
+    "task_definition": ("created_at_in_seconds", "updated_at_in_seconds"),
+    "process_instance": (
+        "start_in_seconds",
+        "end_in_seconds",
+        "task_updated_at_in_seconds",
+        "created_at_in_seconds",
+        "updated_at_in_seconds",
+    ),
+    "human_task": ("created_at_in_seconds", "updated_at_in_seconds"),
+    "future_task": (
+        "run_at_in_seconds",
+        "queued_to_run_at_in_seconds",
+        "updated_at_in_seconds",
+    ),
+    "process_instance_metadata": (
+        "created_at_in_seconds",
+        "updated_at_in_seconds",
+    ),
+    "process_model_bpmn_version": ("created_at_in_seconds",),
+}
+
+
+def _alter_legacy_epoch_types(type_: sa.types.TypeEngine) -> None:
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        for table_name, column_names in LEGACY_EPOCH_COLUMNS.items():
+            with op.batch_alter_table(table_name, recreate="always") as batch_op:
+                for column_name in column_names:
+                    batch_op.alter_column(column_name, type_=type_)
+        return
+
+    for table_name, column_names in LEGACY_EPOCH_COLUMNS.items():
+        for column_name in column_names:
+            op.alter_column(table_name, column_name, type_=type_)
+
 
 def upgrade() -> None:
+    _alter_legacy_epoch_types(sa.BigInteger())
     for table_name, pairs in TIMESTAMP_COLUMNS.items():
         for _legacy_name, native_name in pairs:
             op.add_column(
@@ -106,3 +149,4 @@ def downgrade() -> None:
     for table_name, pairs in reversed(tuple(TIMESTAMP_COLUMNS.items())):
         for _legacy_name, native_name in reversed(pairs):
             op.drop_column(table_name, native_name)
+    _alter_legacy_epoch_types(sa.Integer())

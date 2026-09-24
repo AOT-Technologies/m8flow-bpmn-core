@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import BIGINT, JSON, DateTime, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -44,8 +44,8 @@ class BpmnProcessDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
     properties_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     bpmn_version_control_type: Mapped[str | None] = mapped_column(String(50))
     bpmn_version_control_identifier: Mapped[str | None] = mapped_column(String(255))
-    updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
-    created_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
+    updated_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
+    created_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

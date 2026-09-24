@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BIGINT, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -31,8 +31,8 @@ class ProcessInstanceMetadataModel(M8fTenantScopedMixin, TenantScoped, Base):
     )
     key: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     value: Mapped[str] = mapped_column(String(255), nullable=False)
-    updated_at_in_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at_in_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    created_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
