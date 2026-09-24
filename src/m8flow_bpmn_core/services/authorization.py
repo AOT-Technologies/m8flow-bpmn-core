@@ -461,7 +461,7 @@ def permission_assignment_matches_request(
         return False
 
     if permission_target.resource_type is not None:
-        return (
+        return bool(
             permission_target.resource_type == request.resource_type
             and permission_target.resource_id == request.resource_id
         )

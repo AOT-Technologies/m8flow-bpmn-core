@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import MetaData, event
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.engine import Connection
+from sqlalchemy.orm import DeclarativeBase, Mapper
 
 from m8flow_bpmn_core.models.timestamps import synchronize_timestamp_fields
 
@@ -19,10 +22,14 @@ class Base(DeclarativeBase):
 
 
 @event.listens_for(Base, "before_insert", propagate=True)
-def _synchronize_timestamps_before_insert(mapper, connection, target) -> None:
+def _synchronize_timestamps_before_insert(
+    mapper: Mapper[Any], connection: Connection, target: Any
+) -> None:
     synchronize_timestamp_fields(mapper, target, inserting=True)
 
 
 @event.listens_for(Base, "before_update", propagate=True)
-def _synchronize_timestamps_before_update(mapper, connection, target) -> None:
+def _synchronize_timestamps_before_update(
+    mapper: Mapper[Any], connection: Connection, target: Any
+) -> None:
     synchronize_timestamp_fields(mapper, target, inserting=False)

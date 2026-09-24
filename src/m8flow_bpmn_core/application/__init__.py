@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from importlib import import_module
+from typing import Any
 
 from m8flow_bpmn_core.application.commands import (
     ClaimTaskCommand,
@@ -30,7 +31,7 @@ from m8flow_bpmn_core.application.queries import (
 )
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     if name in {"execute_command", "execute_query"}:
         dispatcher = import_module("m8flow_bpmn_core.application.dispatcher")
         return getattr(dispatcher, name)
