@@ -108,6 +108,7 @@ from m8flow_bpmn_core.services.service_tasks import (
     split_service_task_operation_id,
 )
 from m8flow_bpmn_core.services.tasks import (
+    assign_pending_tasks_for_user,
     claim_task,
     complete_task,
     get_pending_tasks,
@@ -189,6 +190,7 @@ __all__ = [
     "UpsertProcessInstanceMetadataCommand",
     "ValidationError",
     "advance_process_instance_workflow",
+    "assign_pending_tasks_for_user",
     "authorization_policy_scope",
     "build_connector_proxy_service_task_connectors",
     "build_connector_proxy_service_task_registry",

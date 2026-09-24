@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import logging
 import math
 import re
 import time
@@ -85,6 +86,8 @@ from m8flow_bpmn_core.services.tenant_users import (
     tenant_identifiers_for,
     user_belongs_to_tenant,
 )
+
+logger = logging.getLogger(__name__)
 
 _WORKFLOW_SERIALIZER = BpmnWorkflowSerializer(
     registry=BpmnWorkflowSerializer.configure(SPIFF_CONFIG),
@@ -202,10 +205,25 @@ class _RuntimeServiceTaskScriptEngine(PythonScriptEngine):
             ) from exc
 
 
-def resolve_lane_assignment_id(lane_name: str) -> int:
-    """Return a stable lane identifier that fits m8flow's integer group ids."""
+def resolve_lane_assignment_id(
+    lane_name: str,
+    tenant_id: str | None = None,
+) -> int:
+    """Return a stable identifier for a tenant-qualified lane group.
+
+    ``tenant_id`` is optional for compatibility with callers that only need a
+    deterministic legacy identifier.  Workflow runtime paths always provide
+    it so identically named lanes in different tenants cannot share a group.
+    The corresponding group identifier is ``{tenant_id}:{lane_name}``.
+    """
     normalized_lane = lane_name.strip().lower()
-    digest = hashlib.sha256(normalized_lane.encode("utf-8")).hexdigest()
+    normalized_tenant = tenant_id.strip().lower() if tenant_id else None
+    hash_input = (
+        f"{normalized_tenant}:{normalized_lane}"
+        if normalized_tenant
+        else normalized_lane
+    )
+    digest = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()
     stable_int = int(digest[:8], 16) & 0x7FFFFFFF
     return stable_int or 1
 
@@ -1887,7 +1905,11 @@ def _upsert_human_task(
         )
     )
     lane_name = getattr(task.task_spec, "lane", None)
-    lane_group_id = _lane_group_id(session, lane_name)
+    lane_group_id = _lane_group_id(
+        session,
+        lane_name,
+        tenant_id=process_instance.m8f_tenant_id,
+    )
     lane_owners = _task_lane_owners(
         session,
         process_instance=process_instance,
@@ -1945,31 +1967,76 @@ def _upsert_human_task(
     return human_task
 
 
-def _lane_group_id(session: Session, lane_name: str | None) -> int | None:
-    lane_group = _lane_group(session, lane_name)
+def _lane_group_id(
+    session: Session,
+    lane_name: str | None,
+    *,
+    tenant_id: str | None = None,
+) -> int | None:
+    lane_group = _lane_group(session, lane_name, tenant_id=tenant_id)
     if lane_group is None:
         return None
     return lane_group.id
 
 
-def _lane_group(session: Session, lane_name: str | None) -> GroupModel | None:
+def _lane_group(
+    session: Session,
+    lane_name: str | None,
+    *,
+    tenant_id: str | None = None,
+) -> GroupModel | None:
     if lane_name is None:
         return None
     if re.match(r"(process.?)initiator", lane_name, re.IGNORECASE):
         return None
 
-    lane_group_id = resolve_lane_assignment_id(lane_name)
+    lane_group_identifier = _lane_group_identifier(lane_name, tenant_id)
+    lane_group_id = resolve_lane_assignment_id(lane_name, tenant_id=tenant_id)
     lane_group = session.get(GroupModel, lane_group_id)
+    if lane_group is not None and lane_group.identifier != lane_group_identifier:
+        existing_identifier = lane_group.identifier or ""
+        if (
+            existing_identifier.casefold() == lane_group_identifier.casefold()
+            or (
+                tenant_id
+                and existing_identifier.casefold() == lane_name.strip().casefold()
+            )
+        ):
+            # Canonicalize case-only differences and upgrade rows created by
+            # the short-lived tenant-column variant.
+            lane_group.name = lane_group_identifier
+            lane_group.identifier = lane_group_identifier
+            session.flush()
+        else:
+            # A deterministic hash collision or a legacy group with the same id
+            # must never be reused across tenant boundaries.
+            logger.warning(
+                "Lane group identifier mismatch for lane %r and tenant %r: "
+                "group id %s has identifier %r, expected %r",
+                lane_name,
+                tenant_id,
+                lane_group_id,
+                lane_group.identifier,
+                lane_group_identifier,
+            )
+            return None
     if lane_group is None:
         lane_group = GroupModel(
             id=lane_group_id,
-            name=lane_name,
-            identifier=lane_name,
+            name=lane_group_identifier,
+            identifier=lane_group_identifier,
             source_is_open_id=False,
         )
         session.add(lane_group)
         session.flush()
     return lane_group
+
+
+def _lane_group_identifier(lane_name: str, tenant_id: str | None) -> str:
+    normalized_lane = lane_name.strip().lower()
+    if not tenant_id:
+        return normalized_lane
+    return f"{tenant_id.strip().lower()}:{normalized_lane}"
 
 
 def _sync_human_task_assignments(
@@ -2038,17 +2105,11 @@ def _resolve_human_task_assignments(
         preferred_identifiers=preferred_identifiers,
     )
 
-    if not resolved_users:
-        if not isinstance(lane_owners, Mapping) or lane_name not in lane_owners:
-            raise NotFoundError(
-                f"Task {task.task_spec.name} does not define lane owners for "
-                f"lane {lane_name!r} and no users belong to that lane group"
-            )
-        raise NotFoundError(
-            f"No users were resolved for lane {lane_name!r} on task "
-            f"{task.task_spec.name}"
-        )
-
+    # A lane may be empty when a process is started.  Keep the human task in
+    # READY state with no potential owners so the host can reconcile it after
+    # a matching directory user is provisioned or signs in.  In particular,
+    # ``lane_owners`` is optional configuration and must not be required just
+    # to start a process whose lane is backed by a directory group.
     return resolved_users
 
 
@@ -2064,7 +2125,7 @@ def _sync_lane_owner_group_assignments(
     for lane_name, identifiers in lane_owners.items():
         if not isinstance(lane_name, str):
             continue
-        lane_group = _lane_group(session, lane_name)
+        lane_group = _lane_group(session, lane_name, tenant_id=tenant_id)
         if lane_group is None:
             continue
         for user in _resolved_lane_owner_users(
@@ -2095,7 +2156,7 @@ def _resolve_lane_group_users(
     lane_name: str,
     preferred_identifiers: tuple[Any, ...] = (),
 ) -> list[tuple[UserModel, HumanTaskUserAddedBy]]:
-    lane_group = _lane_group(session, lane_name)
+    lane_group = _lane_group(session, lane_name, tenant_id=tenant_id)
     if lane_group is None:
         return []
 
