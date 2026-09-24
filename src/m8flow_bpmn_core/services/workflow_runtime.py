@@ -2013,7 +2013,34 @@ def _lane_group(
     lane_group_identifier = _lane_group_identifier(lane_name, tenant_id)
     lane_group_id = resolve_lane_assignment_id(lane_name, tenant_id=tenant_id)
     lane_group = session.get(GroupModel, lane_group_id)
-    if lane_group is not None and lane_group.identifier != lane_group_identifier:
+    reused_legacy_group = False
+    if lane_group is None and tenant_id:
+        legacy_lane_identifier = lane_name.strip().casefold()
+        legacy_groups = session.scalars(
+            select(GroupModel).where(GroupModel.identifier.is_not(None))
+        ).all()
+        lane_group = next(
+            (
+                group
+                for group in legacy_groups
+                if (group.identifier or "").strip().casefold()
+                == legacy_lane_identifier
+            ),
+            None,
+        )
+        if lane_group is not None:
+            reused_legacy_group = True
+            logger.info(
+                "Reusing legacy lane group %s for lane %r in tenant %r",
+                lane_group.id,
+                lane_name,
+                tenant_id,
+            )
+    if (
+        lane_group is not None
+        and lane_group.identifier != lane_group_identifier
+        and not reused_legacy_group
+    ):
         existing_identifier = lane_group.identifier or ""
         if (
             existing_identifier.casefold() == lane_group_identifier.casefold()

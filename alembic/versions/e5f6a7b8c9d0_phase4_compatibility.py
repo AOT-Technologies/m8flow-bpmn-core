@@ -130,7 +130,13 @@ def _tenant_scope_json_data() -> None:
         bind.execute(
             sa.text(
                 "SELECT DISTINCT m8f_tenant_id, json_data_hash "
-                "FROM bpmn_process"
+                "FROM bpmn_process "
+                "UNION "
+                "SELECT DISTINCT m8f_tenant_id, json_data_hash "
+                "FROM task "
+                "UNION "
+                "SELECT DISTINCT m8f_tenant_id, python_env_data_hash "
+                "FROM task"
             )
         )
     )
@@ -160,8 +166,8 @@ def _tenant_scope_json_data() -> None:
             },
         )
 
-    # Unreferenced content cannot be safely assigned to a tenant and is not
-    # part of the runtime graph, so remove it before making the composite key.
+    # Only content unreferenced by both process and task rows is removed. Task
+    # rows have two independent JSON references, so both were included above.
     bind.execute(
         sa.text(
             "DELETE FROM json_data WHERE m8f_tenant_id IS NULL"
