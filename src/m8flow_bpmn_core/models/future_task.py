@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, Integer
+from sqlalchemy import BIGINT, Boolean, DateTime, ForeignKey
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -15,14 +16,21 @@ from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantSc
 
 class FutureTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "future_task"
+    __timestamp_compatibility_pairs__ = (
+        ("run_at_in_seconds", "run_at"),
+        ("queued_to_run_at_in_seconds", "queued_to_run_at"),
+        ("updated_at_in_seconds", "updated_at"),
+    )
 
     guid: Mapped[str] = mapped_column(
-        ForeignKey("task.guid", ondelete="CASCADE", name="future_task_task_guid_fk"),
+        ForeignKey(
+            "task.guid", ondelete="CASCADE", name="m8f_future_task_task_guid_fk"
+        ),
         primary_key=True,
     )
-    run_at_in_seconds: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    run_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False, index=True)
     queued_to_run_at_in_seconds: Mapped[int | None] = mapped_column(
-        Integer,
+        BIGINT,
         index=True,
     )
     completed: Mapped[bool] = mapped_column(
@@ -38,7 +46,16 @@ class FutureTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
         nullable=False,
         index=True,
     )
-    updated_at_in_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    queued_to_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     task_model = relationship("TaskModel", back_populates="future_task")
 
