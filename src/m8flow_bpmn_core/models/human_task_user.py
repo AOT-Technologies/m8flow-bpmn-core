@@ -21,7 +21,9 @@ class HumanTaskUserAddedBy(StrEnum):
 class HumanTaskUserModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "human_task_user"
     __table_args__ = (
-        UniqueConstraint("human_task_id", "user_id", name="human_task_user_unique"),
+        UniqueConstraint(
+            "human_task_id", "user_id", name="m8f_human_task_user_key"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Integer, String, UniqueConstraint
+from sqlalchemy import BIGINT, JSON, DateTime, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -15,17 +16,21 @@ PROCESS_MODEL_IDENTIFIER_PROPERTY_KEY = "__m8f_process_model_identifier"
 
 class BpmnProcessDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "bpmn_process_definition"
+    __timestamp_compatibility_pairs__ = (
+        ("created_at_in_seconds", "created_at"),
+        ("updated_at_in_seconds", "updated_at"),
+    )
     __table_args__ = (
         UniqueConstraint(
             "m8f_tenant_id",
             "full_process_model_hash",
-            name="bpmn_process_definition_full_process_model_hash_tenant_unique",
+            name="m8f_bpmn_process_definition_full_process_model_hash_tenant_key",
         ),
         UniqueConstraint(
             "m8f_tenant_id",
             "full_process_model_hash",
             "single_process_hash",
-            name="process_hash_unique",
+            name="m8f_bpmn_process_definition_process_hash_key",
         ),
     )
 
@@ -39,8 +44,14 @@ class BpmnProcessDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
     properties_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     bpmn_version_control_type: Mapped[str | None] = mapped_column(String(50))
     bpmn_version_control_identifier: Mapped[str | None] = mapped_column(String(255))
-    updated_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
-    created_at_in_seconds: Mapped[int | None] = mapped_column(Integer)
+    updated_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
+    created_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     bpmn_processes = relationship(
         "BpmnProcessModel",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core.application.commands import (
@@ -8,8 +9,16 @@ from m8flow_bpmn_core.application.commands import (
     InitializeProcessInstanceFromDefinitionCommand,
 )
 from m8flow_bpmn_core.errors import AuthorizationError
+from m8flow_bpmn_core.models.group import GroupModel
+from m8flow_bpmn_core.models.permission_assignment import PermissionAssignmentModel
+from m8flow_bpmn_core.models.permission_target import (
+    InvalidPermissionTargetError,
+    PermissionTargetModel,
+)
+from m8flow_bpmn_core.models.principal import PrincipalModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
 from m8flow_bpmn_core.services.authorization import (
     PROCESS_DEFINITION_IMPORT_COMMAND,
     PROCESS_START_COMMAND,
@@ -163,6 +172,82 @@ def test_database_authorization_policy_accepts_uri_only_grants_as_fallback(
     assert decision.allowed is True
 
 
+def test_database_authorization_policy_matches_explicit_resource_pairs(
+    session: Session,
+) -> None:
+    tenant, user = _seed_tenant_and_user(session, tenant_id="tenant-a")
+    grant_permission_to_user(
+        session,
+        user_id=user.id,
+        permission="execute",
+        target_uri="/tasks/%",
+        command=TASK_CLAIM_COMMAND,
+        resource_type="task",
+        resource_id=123,
+    )
+
+    matching = build_authorization_request(
+        tenant_id=tenant.id,
+        actor_user_id=user.id,
+        command_key=TASK_CLAIM_COMMAND,
+        resource_type="task",
+        resource_id="123",
+    )
+    non_matching = build_authorization_request(
+        tenant_id=tenant.id,
+        actor_user_id=user.id,
+        command_key=TASK_CLAIM_COMMAND,
+        resource_type="task",
+        resource_id="124",
+    )
+
+    policy = DatabaseAuthorizationPolicy()
+    assert policy.authorize(session, matching).allowed is True
+    assert policy.authorize(session, non_matching).allowed is False
+
+
+def test_explicit_request_does_not_fall_back_to_legacy_uri_target(
+    session: Session,
+) -> None:
+    tenant, user = _seed_tenant_and_user(session, tenant_id="tenant-a")
+    grant_permission_to_user(
+        session,
+        user_id=user.id,
+        permission="execute",
+        target_uri="/tasks/%",
+        command=TASK_CLAIM_COMMAND,
+    )
+
+    decision = DatabaseAuthorizationPolicy().authorize(
+        session,
+        build_authorization_request(
+            tenant_id=tenant.id,
+            actor_user_id=user.id,
+            command_key=TASK_CLAIM_COMMAND,
+            resource_type="task",
+            resource_id="123",
+        ),
+    )
+
+    assert decision.allowed is False
+
+
+def test_permission_target_requires_a_complete_resource_pair(
+    session: Session,
+) -> None:
+    _tenant, user = _seed_tenant_and_user(session, tenant_id="tenant-a")
+
+    with pytest.raises(InvalidPermissionTargetError):
+        grant_permission_to_user(
+            session,
+            user_id=user.id,
+            permission="execute",
+            target_uri="/tasks/123",
+            command=TASK_CLAIM_COMMAND,
+            resource_type="task",
+        )
+
+
 def test_authorization_policy_scope_overrides_db_policy(
     session: Session,
 ) -> None:
@@ -237,6 +322,76 @@ def test_ensure_v1_role_supports_basic_roles(session: Session) -> None:
     assert import_decision.allowed is True
     assert suspend_decision.allowed is True
     assert terminate_decision.allowed is True
+
+
+def test_authorization_setup_is_idempotent(session: Session) -> None:
+    tenant, user = _seed_tenant_and_user(session, tenant_id="tenant-a")
+
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_MANAGER,
+        user_ids=[user.id],
+    )
+    ensure_v1_role(
+        session,
+        tenant_id=tenant.id,
+        role_name=ROLE_MANAGER,
+        user_ids=[user.id],
+    )
+
+    group_identifier = f"{tenant.id}:{ROLE_MANAGER}"
+    group_id = session.scalar(
+        select(GroupModel.id).where(GroupModel.identifier == group_identifier)
+    )
+    assert group_id is not None
+    assert session.scalar(
+        select(func.count())
+        .select_from(GroupModel)
+        .where(GroupModel.identifier == group_identifier)
+    ) == 1
+    assert session.scalar(
+        select(func.count())
+        .select_from(UserGroupAssignmentModel)
+        .where(
+            UserGroupAssignmentModel.user_id == user.id,
+            UserGroupAssignmentModel.group_id == group_id,
+        )
+    ) == 1
+    assert session.scalar(
+        select(func.count())
+        .select_from(PrincipalModel)
+        .where(PrincipalModel.group_id == group_id)
+    ) == 1
+    assert session.scalar(
+        select(func.count())
+        .select_from(PermissionTargetModel)
+        .where(PermissionTargetModel.command == TASK_CLAIM_COMMAND)
+    ) == 1
+    assert session.scalar(
+        select(func.count()).select_from(PermissionAssignmentModel)
+    ) == 2
+
+
+def test_authorization_group_key_allows_duplicate_legacy_identifiers(
+    session: Session,
+) -> None:
+    legacy_group = GroupModel(
+        name="legacy manager",
+        identifier="tenant-a:manager",
+        source_is_open_id=False,
+    )
+    session.add(legacy_group)
+    session.flush()
+
+    resolved = ensure_v1_role(
+        session,
+        tenant_id="tenant-a",
+        role_name=ROLE_MANAGER,
+    )
+
+    assert resolved.id == legacy_group.id
+    assert resolved.authorization_key is None
 
 
 def _seed_tenant_and_user(

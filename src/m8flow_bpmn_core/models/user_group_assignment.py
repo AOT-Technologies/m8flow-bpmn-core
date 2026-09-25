@@ -12,7 +12,7 @@ class UserGroupAssignmentModel(Base):
         UniqueConstraint(
             "user_id",
             "group_id",
-            name="user_group_assignment_unique",
+            name="m8f_user_group_assignment_user_group_key",
         ),
     )
 
@@ -30,9 +30,11 @@ class UserGroupAssignmentModel(Base):
 
     user = relationship(
         "UserModel",
-        overlaps="groups,user_group_assignments,users",
+        back_populates="user_group_assignments",
+        overlaps="groups,users",
     )
     group = relationship(
         "GroupModel",
-        overlaps="groups,user_group_assignments,users",
+        back_populates="user_group_assignments",
+        overlaps="groups,users",
     )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 
+from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -35,6 +36,11 @@ from m8flow_bpmn_core.services.scheduler_jobs import (
 )
 from m8flow_bpmn_core.services.tenant_users import (
     ensure_user_belongs_to_tenant,
+)
+from m8flow_bpmn_core.services.work_items import (
+    WorkItemState,
+    close_work_item,
+    reopen_work_item,
 )
 
 
@@ -558,8 +564,8 @@ def _close_process_instance_runtime_state(
 ) -> None:
     process_instance.task_updated_at_in_seconds = occurred_at
     for task in process_instance.tasks:
-        if task.state != "COMPLETED":
-            task.state = "TERMINATED"
+        if task.state != TaskState.get_name(TaskState.COMPLETED):
+            task.state = WorkItemState.TERMINATED.value
         task.end_in_seconds = occurred_at
         if task.future_task is not None:
             task.future_task.completed = True
@@ -569,12 +575,12 @@ def _close_process_instance_runtime_state(
     for human_task in process_instance.human_tasks:
         if human_task.completed:
             continue
-        human_task.completed = True
-        human_task.task_status = "TERMINATED"
-        human_task.updated_at_in_seconds = occurred_at
-        if user_id is not None:
-            human_task.actual_owner_id = user_id
-            human_task.completed_by_user_id = user_id
+        close_work_item(
+            human_task,
+            state=WorkItemState.TERMINATED,
+            occurred_at=occurred_at,
+            user_id=user_id,
+        )
 
 
 def _reopen_process_instance_runtime_state(
@@ -584,9 +590,9 @@ def _reopen_process_instance_runtime_state(
 ) -> None:
     process_instance.task_updated_at_in_seconds = occurred_at
     for task in process_instance.tasks:
-        if task.state != "TERMINATED":
+        if task.state != WorkItemState.TERMINATED.value:
             continue
-        task.state = "READY"
+        task.state = TaskState.get_name(TaskState.READY)
         task.start_in_seconds = None
         task.end_in_seconds = None
         if task.future_task is not None:
@@ -597,11 +603,7 @@ def _reopen_process_instance_runtime_state(
     for human_task in process_instance.human_tasks:
         if human_task.task_status != "TERMINATED" and not human_task.completed:
             continue
-        human_task.completed = False
-        human_task.completed_by_user_id = None
-        human_task.actual_owner_id = None
-        human_task.task_status = "READY"
-        human_task.updated_at_in_seconds = occurred_at
+        reopen_work_item(human_task, occurred_at=occurred_at)
 
 
 def _delete_scheduled_process_retry_job(

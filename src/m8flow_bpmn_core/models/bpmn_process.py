@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Numeric, String
+from sqlalchemy import JSON, DateTime, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -11,6 +12,10 @@ from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantSc
 
 class BpmnProcessModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "bpmn_process"
+    __timestamp_compatibility_pairs__ = (
+        ("start_in_seconds", "started_at"),
+        ("end_in_seconds", "ended_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     guid: Mapped[str | None] = mapped_column(String(36), unique=True)
@@ -30,6 +35,12 @@ class BpmnProcessModel(M8fTenantScopedMixin, TenantScoped, Base):
     json_data_hash: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     start_in_seconds: Mapped[float | None] = mapped_column(Numeric(17, 6))
     end_in_seconds: Mapped[float | None] = mapped_column(Numeric(17, 6))
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     bpmn_process_definition = relationship(
         "BpmnProcessDefinitionModel",
