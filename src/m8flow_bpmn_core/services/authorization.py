@@ -571,6 +571,10 @@ def _get_or_create[ModelT](
             with session.begin_nested():
                 session.execute(statement)
         except IntegrityError:
+            # A concurrent transaction may have won the unique constraint;
+            # reload below after the savepoint rolls back this insert.
+            # Non-unique integrity failures also become the explicit reload
+            # failure below instead of poisoning the caller's transaction.
             pass
 
     existing = session.scalar(select(model).filter_by(**lookup))
