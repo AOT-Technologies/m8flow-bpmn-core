@@ -14,7 +14,7 @@ class PrincipalModel(Base):
                 "(user_id IS NOT NULL AND group_id IS NULL) OR "
                 "(user_id IS NULL AND group_id IS NOT NULL)"
             ),
-            name="principal_exactly_one_subject",
+            name="m8f_principal_exactly_one_subject",
         ),
     )
 
@@ -35,12 +35,12 @@ class PrincipalModel(Base):
     user = relationship(
         "UserModel",
         viewonly=True,
-        overlaps="principal",
+        back_populates="principal",
     )
     group = relationship(
         "GroupModel",
         viewonly=True,
-        overlaps="principal",
+        back_populates="principal",
     )
     permission_assignments = relationship(
         "PermissionAssignmentModel",

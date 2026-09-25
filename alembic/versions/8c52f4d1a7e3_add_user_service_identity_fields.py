@@ -43,8 +43,9 @@ def upgrade() -> None:
         {"service": DEFAULT_SERVICE_URL},
     )
 
-    op.alter_column("user", "service", nullable=False)
-    op.alter_column("user", "service_id", nullable=False)
+    with op.batch_alter_table("user", recreate="always") as batch_op:
+        batch_op.alter_column("service", nullable=False)
+        batch_op.alter_column("service_id", nullable=False)
 
     op.drop_index(op.f("ix_user_username"), table_name="user")
     op.create_index(op.f("ix_user_username"), "user", ["username"], unique=False)
@@ -53,7 +54,10 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_user_service_id"), "user", ["service_id"], unique=False
     )
-    op.create_unique_constraint("service_key", "user", ["service", "service_id"])
+    with op.batch_alter_table("user", recreate="always") as batch_op:
+        batch_op.create_unique_constraint(
+            "service_key", ["service", "service_id"]
+        )
 
 
 def downgrade() -> None:

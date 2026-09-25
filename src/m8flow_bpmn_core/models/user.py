@@ -43,17 +43,17 @@ class UserModel(Base):
     user_group_assignments = relationship(
         "UserGroupAssignmentModel",
         cascade="all, delete-orphan",
-        overlaps="groups,users",
+        back_populates="user",
     )
     groups = relationship(
         "GroupModel",
         viewonly=True,
         secondary="user_group_assignment",
-        overlaps="user_group_assignments,users",
+        overlaps="user_group_assignments,user,group",
     )
     principal = relationship(
         "PrincipalModel",
         uselist=False,
         cascade="all, delete-orphan",
-        overlaps="user",
+        back_populates="user",
     )

@@ -254,9 +254,16 @@ The library includes a minimal V1 RBAC layer for workflow commands.
 - User-scoped operations first validate tenant membership, then
   evaluate command permission, then apply runtime checks such as task
   assignment or claimed-task ownership.
-- A `permission_target` row is matched by URI plus optional command. A
-  row with `command = NULL` behaves like a URI-only target; a row with a
-  command is specific to that command key.
+- A `permission_target` row with both `resource_type` and `resource_id` is
+  matched by that exact resource pair plus the optional command. New explicit
+  targets must provide both resource fields together; partial pairs are
+  rejected. Legacy rows without either resource field remain readable through
+  their normalized URI target, so existing m8flow permission data continues to
+  work during the migration period.
+- The authorization migrations preserve existing target, principal, group, and
+  assignment IDs. They rename legacy constraints into the `m8f_*` namespace.
+  If an existing database contains a partial resource pair, migration stops
+  and reports the affected `permission_target` IDs for manual remediation.
 - Custom policies can extend or replace the built-in
   database-backed policy through `authorization_policy_scope(...)` or
   `set_default_authorization_policy_factory(...)`.

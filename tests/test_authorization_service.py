@@ -11,7 +11,10 @@ from m8flow_bpmn_core.application.commands import (
 from m8flow_bpmn_core.errors import AuthorizationError
 from m8flow_bpmn_core.models.group import GroupModel
 from m8flow_bpmn_core.models.permission_assignment import PermissionAssignmentModel
-from m8flow_bpmn_core.models.permission_target import PermissionTargetModel
+from m8flow_bpmn_core.models.permission_target import (
+    InvalidPermissionTargetError,
+    PermissionTargetModel,
+)
 from m8flow_bpmn_core.models.principal import PrincipalModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
@@ -203,6 +206,48 @@ def test_database_authorization_policy_matches_explicit_resource_pairs(
     assert policy.authorize(session, non_matching).allowed is False
 
 
+def test_explicit_request_does_not_fall_back_to_legacy_uri_target(
+    session: Session,
+) -> None:
+    tenant, user = _seed_tenant_and_user(session, tenant_id="tenant-a")
+    grant_permission_to_user(
+        session,
+        user_id=user.id,
+        permission="execute",
+        target_uri="/tasks/%",
+        command=TASK_CLAIM_COMMAND,
+    )
+
+    decision = DatabaseAuthorizationPolicy().authorize(
+        session,
+        build_authorization_request(
+            tenant_id=tenant.id,
+            actor_user_id=user.id,
+            command_key=TASK_CLAIM_COMMAND,
+            resource_type="task",
+            resource_id="123",
+        ),
+    )
+
+    assert decision.allowed is False
+
+
+def test_permission_target_requires_a_complete_resource_pair(
+    session: Session,
+) -> None:
+    _tenant, user = _seed_tenant_and_user(session, tenant_id="tenant-a")
+
+    with pytest.raises(InvalidPermissionTargetError):
+        grant_permission_to_user(
+            session,
+            user_id=user.id,
+            permission="execute",
+            target_uri="/tasks/123",
+            command=TASK_CLAIM_COMMAND,
+            resource_type="task",
+        )
+
+
 def test_authorization_policy_scope_overrides_db_policy(
     session: Session,
 ) -> None:
@@ -326,6 +371,27 @@ def test_authorization_setup_is_idempotent(session: Session) -> None:
     assert session.scalar(
         select(func.count()).select_from(PermissionAssignmentModel)
     ) == 2
+
+
+def test_authorization_group_key_allows_duplicate_legacy_identifiers(
+    session: Session,
+) -> None:
+    legacy_group = GroupModel(
+        name="legacy manager",
+        identifier="tenant-a:manager",
+        source_is_open_id=False,
+    )
+    session.add(legacy_group)
+    session.flush()
+
+    resolved = ensure_v1_role(
+        session,
+        tenant_id="tenant-a",
+        role_name=ROLE_MANAGER,
+    )
+
+    assert resolved.id == legacy_group.id
+    assert resolved.authorization_key is None
 
 
 def _seed_tenant_and_user(
