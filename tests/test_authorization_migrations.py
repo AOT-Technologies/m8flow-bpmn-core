@@ -158,3 +158,118 @@ def test_authorization_migrations_preserve_legacy_rows(
     finally:
         engine.dispose()
         get_settings.cache_clear()
+
+
+def test_tenant_json_migration_preserves_populated_legacy_data(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'tenant-json.db'}"
+    monkeypatch.setenv("M8FLOW_DATABASE_URL", database_url)
+    get_settings.cache_clear()
+
+    config = _alembic_config()
+    command.upgrade(config, "d2e4f6a8b0c1")
+    engine = sa.create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    "INSERT INTO m8flow_tenant "
+                    "(id, name, slug, created_by, modified_by, "
+                    "created_at_in_seconds, updated_at_in_seconds) VALUES "
+                    "('tenant-a', 'Tenant A', 'tenant-a', 'system', 'system', 1, 1), "
+                    "('tenant-b', 'Tenant B', 'tenant-b', 'system', 'system', 1, 1)"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO json_data (hash, data) VALUES "
+                    "('shared-json', '{\"value\": \"shared\"}'), "
+                    "('task-env-only', '{\"value\": \"env\"}')"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO bpmn_process_definition "
+                    "(id, single_process_hash, full_process_model_hash, "
+                    "bpmn_identifier, bpmn_name, properties_json, "
+                    "bpmn_version_control_type, bpmn_version_control_identifier, "
+                    "updated_at_in_seconds, created_at_in_seconds, m8f_tenant_id) "
+                    "VALUES (1, 'definition-hash', NULL, 'definition', 'Definition', "
+                    "'{}', NULL, NULL, 1, 1, 'tenant-a')"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO bpmn_process "
+                    "(id, guid, bpmn_process_definition_id, top_level_process_id, "
+                    "direct_parent_process_id, properties_json, json_data_hash, "
+                    "start_in_seconds, end_in_seconds, m8f_tenant_id) VALUES "
+                    "(1, 'process-guid', 1, NULL, NULL, '{}', 'shared-json', "
+                    "NULL, NULL, 'tenant-a')"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO task_definition "
+                    "(id, bpmn_process_definition_id, bpmn_identifier, bpmn_name, "
+                    "typename, properties_json, updated_at_in_seconds, "
+                    "created_at_in_seconds, m8f_tenant_id) VALUES "
+                    "(1, 1, 'task', 'Task', 'UserTask', '{}', 1, 1, 'tenant-b')"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO process_instance "
+                    "(id, process_model_identifier, process_model_display_name, "
+                    "summary, process_initiator_id, bpmn_process_definition_id, "
+                    "bpmn_process_id, status, start_in_seconds, "
+                    "end_in_seconds, updated_at_in_seconds, created_at_in_seconds, "
+                    "m8f_tenant_id) VALUES "
+                    "(1, 'model', 'Model', NULL, NULL, 1, 1, 'RUNNING', "
+                    "NULL, NULL, 1, 1, 'tenant-b')"
+                )
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO task "
+                    "(guid, bpmn_process_id, process_instance_id, task_definition_id, "
+                    "state, properties_json, json_data_hash, python_env_data_hash, "
+                    "runtime_info, start_in_seconds, end_in_seconds, m8f_tenant_id) "
+                    "VALUES ('task-guid', 1, 1, 1, 'READY', '{}', 'shared-json', "
+                    "'task-env-only', NULL, NULL, NULL, 'tenant-b')"
+                )
+            )
+
+        command.upgrade(config, "head")
+
+        with engine.connect() as connection:
+            rows = connection.execute(
+                sa.text(
+                    "SELECT m8f_tenant_id, hash FROM json_data "
+                    "ORDER BY hash, m8f_tenant_id"
+                )
+            ).all()
+            assert rows == [
+                ("tenant-a", "shared-json"),
+                ("tenant-b", "shared-json"),
+                ("tenant-b", "task-env-only"),
+            ]
+            primary_key = inspect(engine).get_pk_constraint("json_data")
+            assert primary_key["constrained_columns"] == ["m8f_tenant_id", "hash"]
+
+        command.downgrade(config, "d2e4f6a8b0c1")
+
+        with engine.connect() as connection:
+            primary_key = inspect(engine).get_pk_constraint("json_data")
+            assert primary_key["constrained_columns"] == ["hash"]
+            assert connection.scalar(
+                sa.text(
+                    "SELECT COUNT(*) FROM json_data "
+                    "WHERE hash = 'shared-json'"
+                )
+            ) == 1
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()

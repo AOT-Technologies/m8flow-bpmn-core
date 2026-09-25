@@ -148,6 +148,20 @@ def test_public_result_models_retain_response_attributes() -> None:
     }.issubset(ProcessInstanceEventModel.__mapper__.attrs.keys())
 
 
+def test_native_timestamp_attributes_are_additive() -> None:
+    assert {
+        "started_at",
+        "ended_at",
+        "task_updated_at",
+        "created_at",
+        "updated_at",
+    }.issubset(ProcessInstanceModel.__mapper__.attrs.keys())
+    assert {"created_at", "updated_at"}.issubset(
+        HumanTaskModel.__mapper__.attrs.keys()
+    )
+    assert "occurred_at" in ProcessInstanceEventModel.__mapper__.attrs
+
+
 def test_schema_table_names_are_compatible_baseline() -> None:
     expected_tables = {
         "user",

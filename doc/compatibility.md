@@ -66,6 +66,20 @@ The additive migration is
 columns from existing epoch values and does not remove or rename any existing
 column. Removing the legacy fields remains a future breaking migration.
 
+## Part 6 public API compatibility
+
+The public command and query dataclasses continue to accept the existing
+`*_at_in_seconds` inputs, including values beyond 2038. Dispatch behavior,
+field ordering, tenant-first validation, returned ORM model types, and legacy
+epoch attributes are unchanged.
+
+Returned models now expose additive timezone-aware DateTime attributes such as
+`created_at`, `updated_at`, `started_at`, `ended_at`, `run_at`, and
+`occurred_at`. Callers can migrate reads incrementally: existing consumers can
+continue reading epoch attributes, while new consumers should prefer the native
+UTC-aware attributes. The ORM keeps both representations synchronized, with a
+native DateTime value taking precedence when both values are supplied.
+
 ## Phase 3 work-item compatibility layer
 
 Phase 3 introduces internal work-item state transitions in

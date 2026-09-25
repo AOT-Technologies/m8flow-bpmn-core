@@ -51,9 +51,7 @@ def synchronize_timestamp_fields(
         native_changed = inserting or state.attrs[native_name].history.has_changes()
 
         if inserting:
-            if legacy_value is not None:
-                setattr(target, native_name, epoch_to_datetime(legacy_value))
-            elif native_value is not None:
+            if native_value is not None:
                 setattr(
                     target,
                     legacy_name,
@@ -62,11 +60,11 @@ def synchronize_timestamp_fields(
                         integer=isinstance(mapper.columns[legacy_name].type, Integer),
                     ),
                 )
+            elif legacy_value is not None:
+                setattr(target, native_name, epoch_to_datetime(legacy_value))
             continue
 
-        if legacy_changed:
-            setattr(target, native_name, epoch_to_datetime(legacy_value))
-        elif native_changed:
+        if native_changed:
             setattr(
                 target,
                 legacy_name,
@@ -75,3 +73,5 @@ def synchronize_timestamp_fields(
                     integer=isinstance(mapper.columns[legacy_name].type, Integer),
                 ),
             )
+        elif legacy_changed:
+            setattr(target, native_name, epoch_to_datetime(legacy_value))

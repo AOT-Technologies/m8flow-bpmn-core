@@ -239,6 +239,12 @@ Only the columns and semantics documented in this file are part of the
 stable contract. Internal relationships and implementation-only columns
 may change without a major-version bump.
 
+Timestamp compatibility: command and query inputs retain their documented
+`*_at_in_seconds` fields. Returned models also expose additive timezone-aware
+UTC fields (`created_at`, `updated_at`, `started_at`, `ended_at`, `run_at`, or
+`occurred_at`, as applicable). Existing callers may continue using epoch
+attributes while migrating reads to the native DateTime attributes.
+
 ---
 
 ## Authorization Model

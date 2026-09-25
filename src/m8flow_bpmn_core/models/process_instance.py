@@ -178,9 +178,10 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
         session = object_session(self)
         if session is None:
             return None
-        json_data = session.get(
-            JsonDataModel,
-            (self.bpmn_process.m8f_tenant_id, self.bpmn_process.json_data_hash),
+        json_data = JsonDataModel.get_for_tenant(
+            session,
+            self.bpmn_process.m8f_tenant_id,
+            self.bpmn_process.json_data_hash,
         )
         if json_data is None:
             return None

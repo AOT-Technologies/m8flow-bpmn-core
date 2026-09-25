@@ -2,52 +2,51 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime
-from sqlalchemy.orm import Session
-
 from m8flow_bpmn_core.models.base import Base
+from m8flow_bpmn_core.models.timestamps import (
+    datetime_to_epoch,
+    epoch_to_datetime,
+)
 from m8flow_bpmn_core.models.user import UserModel
 
+POST_2038 = datetime(2040, 1, 1, 12, 30, tzinfo=UTC)
 
-def test_legacy_epoch_values_populate_native_utc_columns(session: Session) -> None:
+
+def test_epoch_conversion_supports_post_2038_values() -> None:
+    epoch = datetime_to_epoch(POST_2038, integer=True)
+
+    assert epoch == 2_209_033_800
+    assert epoch_to_datetime(epoch) == POST_2038
+
+
+def test_timezone_aware_columns_are_present_for_all_compatibility_pairs() -> None:
+    for mapper in Base.registry.mappers:
+        pairs = getattr(mapper.class_, "__timestamp_compatibility_pairs__", ())
+        for _legacy_name, native_name in pairs:
+            native_type = mapper.columns[native_name].type
+            assert native_type.timezone is True
+
+
+def test_native_datetime_is_canonical_but_legacy_epoch_remains_compatible(
+    session,
+) -> None:
     user = UserModel(
-        username="timestamp-user",
-        email="timestamp@example.com",
-        service="timestamp-service",
-        service_id="timestamp-user",
-        created_at_in_seconds=1_700_000_000,
-        updated_at_in_seconds=1_700_000_001,
+        username="future-user",
+        service="test",
+        service_id="future-user",
+        created_at_in_seconds=1,
+        created_at=POST_2038,
+        updated_at_in_seconds=1,
     )
     session.add(user)
     session.flush()
 
-    assert user.created_at == datetime.fromtimestamp(1_700_000_000, UTC)
-    assert user.updated_at == datetime.fromtimestamp(1_700_000_001, UTC)
+    assert user.created_at == POST_2038
+    assert user.created_at_in_seconds == 2_209_033_800
 
-
-def test_native_datetime_values_populate_legacy_epoch_columns(session: Session) -> None:
-    created_at = datetime(2040, 1, 2, 3, 4, 5, 600_000, tzinfo=UTC)
-    updated_at = datetime(2040, 1, 2, 3, 4, 6, 600_000, tzinfo=UTC)
-    user = UserModel(
-        username="native-timestamp-user",
-        email="native-timestamp@example.com",
-        service="timestamp-service",
-        service_id="native-timestamp-user",
-        created_at=created_at,
-        updated_at=updated_at,
-    )
-    session.add(user)
+    later = datetime(2041, 1, 1, 12, 30, tzinfo=UTC)
+    user.updated_at = later
     session.flush()
 
-    assert user.created_at_in_seconds == round(created_at.timestamp())
-    assert user.updated_at_in_seconds == round(updated_at.timestamp())
-
-
-def test_timestamp_columns_are_timezone_aware_datetime_columns() -> None:
-    user_table = Base.metadata.tables["user"]
-    tenant_table = Base.metadata.tables["m8flow_tenant"]
-
-    assert isinstance(user_table.c.created_at.type, DateTime)
-    assert user_table.c.created_at.type.timezone is True
-    assert isinstance(tenant_table.c.updated_at.type, DateTime)
-    assert tenant_table.c.updated_at.type.timezone is True
+    assert user.updated_at == later
+    assert user.updated_at_in_seconds == datetime_to_epoch(later, integer=True)
