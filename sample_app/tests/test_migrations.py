@@ -58,6 +58,7 @@ def test_migrations_reuse_existing_secret_table_and_foreign_alembic_state(
 
     inspector = inspect(create_engine(database_url))
     assert "secret" in inspector.get_table_names()
+    assert "work_item" in inspector.get_table_names()
     assert "m8flow_sample_app_alembic_version" in inspector.get_table_names()
 
     verification_engine = create_engine(database_url)
