@@ -995,7 +995,10 @@ def _force_waiting_timer_due(
 
     json_data = db_session.get(
         JsonDataModel,
-        process_instance.bpmn_process.json_data_hash,
+        (
+            process_instance.bpmn_process.m8f_tenant_id,
+            process_instance.bpmn_process.json_data_hash,
+        ),
     )
     assert json_data is not None
     payload = dict(json_data.data)
@@ -1005,7 +1008,9 @@ def _force_waiting_timer_due(
     )
     payload[WORKFLOW_STATE_JSON_DATA_KEY] = json.dumps(serialized_workflow)
     process_instance.bpmn_process.json_data_hash = (
-        JsonDataModel.create_or_update_from_payload(db_session, payload)
+        JsonDataModel.create_or_update_from_payload(
+            db_session, process_instance.m8f_tenant_id, payload
+        )
     )
     db_session.flush()
 

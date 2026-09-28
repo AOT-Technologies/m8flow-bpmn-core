@@ -26,8 +26,11 @@ from m8flow_bpmn_core.models.process_instance import (
     ProcessInstanceStatus,
 )
 from m8flow_bpmn_core.models.process_instance_event import (
+    ProcessInstanceEventCategory,
     ProcessInstanceEventModel,
     ProcessInstanceEventType,
+    ProcessLifecycleEventType,
+    TaskEventType,
 )
 from m8flow_bpmn_core.models.process_instance_metadata import (
     ProcessInstanceMetadataModel,
@@ -66,7 +69,9 @@ __all__ = [
     "PrincipalModel",
     "ProcessInstanceModel",
     "ProcessInstanceEventModel",
+    "ProcessInstanceEventCategory",
     "ProcessInstanceEventType",
+    "ProcessLifecycleEventType",
     "ProcessInstanceMetadataModel",
     "ProcessModelBpmnVersionModel",
     "ProcessInstanceStatus",
@@ -74,6 +79,7 @@ __all__ = [
     "SchedulerJobType",
     "TaskModel",
     "TaskDefinitionModel",
+    "TaskEventType",
     "TenantScoped",
     "UserGroupAssignmentModel",
     "UserModel",

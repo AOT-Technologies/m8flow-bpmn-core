@@ -895,7 +895,10 @@ def _assemble_m8flow_process_instance_dict(
     process_dict.update(dict(process_instance.bpmn_process.properties_json))
     process_data = session.get(
         JsonDataModel,
-        process_instance.bpmn_process.json_data_hash,
+        (
+            process_instance.bpmn_process.m8f_tenant_id,
+            process_instance.bpmn_process.json_data_hash,
+        ),
     )
     assert process_data is not None
     process_dict["data"] = dict(process_data.data)
@@ -904,7 +907,9 @@ def _assemble_m8flow_process_instance_dict(
     for task in session.scalars(
         select(TaskModel).where(TaskModel.process_instance_id == process_instance.id)
     ).all():
-        task_data = session.get(JsonDataModel, task.json_data_hash)
+        task_data = session.get(
+            JsonDataModel, (task.m8f_tenant_id, task.json_data_hash)
+        )
         assert task_data is not None
         serialized_task = dict(task.properties_json)
         serialized_task["data"] = dict(task_data.data)

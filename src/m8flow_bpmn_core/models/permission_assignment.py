@@ -31,7 +31,7 @@ class PermissionAssignmentModel(Base):
             "principal_id",
             "permission_target_id",
             "permission",
-            name="permission_assignment_unique",
+            name="m8f_permission_assignment_principal_target_permission_key",
         ),
     )
 

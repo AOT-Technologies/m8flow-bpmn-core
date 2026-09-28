@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import BIGINT, JSON, ForeignKey, String, UniqueConstraint
+from sqlalchemy import BIGINT, JSON, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from m8flow_bpmn_core.models.base import Base
@@ -21,6 +22,12 @@ class SchedulerJobType(StrEnum):
 
 class SchedulerJobModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "scheduler_job"
+    __timestamp_compatibility_pairs__ = (
+        ("locked_at_in_seconds", "locked_at"),
+        ("run_at_in_seconds", "run_at"),
+        ("updated_at_in_seconds", "updated_at"),
+        ("created_at_in_seconds", "created_at"),
+    )
     __table_args__ = (
         UniqueConstraint(
             "m8f_tenant_id",
@@ -50,6 +57,18 @@ class SchedulerJobModel(M8fTenantScopedMixin, TenantScoped, Base):
     )
     updated_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False)
     created_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    locked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     process_instance = relationship(
         "ProcessInstanceModel",

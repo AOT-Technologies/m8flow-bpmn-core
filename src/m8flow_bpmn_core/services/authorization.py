@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core.application.commands import (
@@ -62,7 +63,6 @@ ROLE_MANAGER = "manager"
 ROLE_ADMIN = "admin"
 BASIC_ROLE_NAMES = frozenset({ROLE_USER, ROLE_MANAGER, ROLE_ADMIN})
 
-
 @dataclass(frozen=True, slots=True)
 class CommandAuthorizationSpec:
     command_key: str
@@ -79,6 +79,8 @@ class AuthorizationRequest:
     permission: str
     target_uri: str
     target_id: int | None = None
+    resource_type: str | None = None
+    resource_id: str | None = None
     metadata: Mapping[str, object] | None = None
 
 
@@ -308,6 +310,8 @@ def build_authorization_request(
     permission: str | None = None,
     target_uri: str | None = None,
     target_id: int | None = None,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
     metadata: Mapping[str, object] | None = None,
 ) -> AuthorizationRequest:
     spec = authorization_spec_for_command_key(command_key)
@@ -318,6 +322,8 @@ def build_authorization_request(
         permission=permission or spec.permission,
         target_uri=target_uri or spec.target_uri,
         target_id=target_id,
+        resource_type=resource_type,
+        resource_id=resource_id,
         metadata=metadata,
     )
 
@@ -366,6 +372,8 @@ def require_command_authorization(
     permission: str | None = None,
     target_uri: str | None = None,
     target_id: int | None = None,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
     metadata: Mapping[str, object] | None = None,
     policy: AuthorizationPolicy | None = None,
 ) -> None:
@@ -376,6 +384,8 @@ def require_command_authorization(
         permission=permission,
         target_uri=target_uri,
         target_id=target_id,
+        resource_type=resource_type,
+        resource_id=resource_id,
         metadata=metadata,
     )
     decision = resolve_authorization_policy(policy).authorize(session, request)
@@ -450,6 +460,11 @@ def permission_assignment_matches_request(
     if target_command is not None and target_command != request.command_key:
         return False
 
+    if permission_target.resource_type is not None:
+        return bool(
+            permission_target.resource_type == request.resource_type
+            and permission_target.resource_id == request.resource_id
+        )
     return permission_target_matches_uri(permission_target, request.target_uri)
 
 
@@ -487,6 +502,37 @@ def tenant_role_group_identifier(tenant_id: str, role_name: str) -> str:
     return f"{tenant_id.strip()}:{role_name.strip()}"
 
 
+def _get_or_create[ModelT](
+    session: Session,
+    model: type[ModelT],
+    *,
+    lookup: Mapping[str, object],
+    factory: Callable[[], ModelT],
+) -> ModelT:
+    """Return a row, safely creating it when concurrent callers race.
+
+    The nested transaction limits a uniqueness failure to a savepoint. This
+    keeps the caller's transaction usable, then reloads the row inserted by
+    the winning transaction. The database's existing unique constraints remain
+    the source of truth for each lookup.
+    """
+    existing = session.scalar(select(model).filter_by(**lookup))
+    if existing is not None:
+        return existing
+
+    try:
+        with session.begin_nested():
+            created = factory()
+            session.add(created)
+            session.flush()
+    except IntegrityError:
+        existing = session.scalar(select(model).filter_by(**lookup))
+        if existing is None:
+            raise
+        return existing
+    return created
+
+
 def find_or_create_group(
     session: Session,
     *,
@@ -494,18 +540,16 @@ def find_or_create_group(
     name: str | None = None,
     source_is_open_id: bool = False,
 ) -> GroupModel:
-    group = session.scalar(
-        select(GroupModel).where(GroupModel.identifier == identifier)
-    )
-    if group is None:
-        group = GroupModel(
+    return _get_or_create(
+        session,
+        GroupModel,
+        lookup={"identifier": identifier},
+        factory=lambda: GroupModel(
             name=name or identifier,
             identifier=identifier,
             source_is_open_id=source_is_open_id,
-        )
-        session.add(group)
-        session.flush()
-    return group
+        ),
+    )
 
 
 def add_user_to_group(
@@ -522,20 +566,15 @@ def add_user_to_group(
         name=group_name,
         source_is_open_id=source_is_open_id,
     )
-    assignment = session.scalar(
-        select(UserGroupAssignmentModel).where(
-            UserGroupAssignmentModel.user_id == user_id,
-            UserGroupAssignmentModel.group_id == group.id,
-        )
-    )
-    if assignment is None:
-        assignment = UserGroupAssignmentModel(
+    return _get_or_create(
+        session,
+        UserGroupAssignmentModel,
+        lookup={"user_id": user_id, "group_id": group.id},
+        factory=lambda: UserGroupAssignmentModel(
             user_id=user_id,
             group_id=group.id,
-        )
-        session.add(assignment)
-        session.flush()
-    return assignment
+        ),
+    )
 
 
 def find_or_create_principal_for_user(
@@ -543,14 +582,12 @@ def find_or_create_principal_for_user(
     *,
     user_id: int,
 ) -> PrincipalModel:
-    principal = session.scalar(
-        select(PrincipalModel).where(PrincipalModel.user_id == user_id)
+    return _get_or_create(
+        session,
+        PrincipalModel,
+        lookup={"user_id": user_id},
+        factory=lambda: PrincipalModel(user_id=user_id),
     )
-    if principal is None:
-        principal = PrincipalModel(user_id=user_id)
-        session.add(principal)
-        session.flush()
-    return principal
 
 
 def find_or_create_principal_for_group(
@@ -558,14 +595,12 @@ def find_or_create_principal_for_group(
     *,
     group_id: int,
 ) -> PrincipalModel:
-    principal = session.scalar(
-        select(PrincipalModel).where(PrincipalModel.group_id == group_id)
+    return _get_or_create(
+        session,
+        PrincipalModel,
+        lookup={"group_id": group_id},
+        factory=lambda: PrincipalModel(group_id=group_id),
     )
-    if principal is None:
-        principal = PrincipalModel(group_id=group_id)
-        session.add(principal)
-        session.flush()
-    return principal
 
 
 def find_or_create_permission_target(
@@ -573,18 +608,34 @@ def find_or_create_permission_target(
     *,
     uri: str,
     command: str | None = None,
+    resource_type: str | None = None,
+    resource_id: str | int | None = None,
 ) -> PermissionTargetModel:
-    permission_target = session.scalar(
-        select(PermissionTargetModel).where(
-            PermissionTargetModel.uri == uri.replace("*", "%"),
-            PermissionTargetModel.command == command,
-        )
+    normalized_uri = uri.strip().replace("*", "%")
+    normalized_command = command.strip() if command is not None else None
+    normalized_resource_type = (
+        resource_type.strip() if resource_type is not None else None
     )
-    if permission_target is None:
-        permission_target = PermissionTargetModel(uri=uri, command=command)
-        session.add(permission_target)
-        session.flush()
-    return permission_target
+    normalized_resource_id = (
+        str(resource_id).strip() if resource_id is not None else None
+    )
+    lookup = {
+        "uri": normalized_uri,
+        "command": normalized_command,
+        "resource_type": normalized_resource_type,
+        "resource_id": normalized_resource_id,
+    }
+    return _get_or_create(
+        session,
+        PermissionTargetModel,
+        lookup=lookup,
+        factory=lambda: PermissionTargetModel(
+            uri=uri,
+            command=command,
+            resource_type=resource_type,
+            resource_id=normalized_resource_id,
+        ),
+    )
 
 
 def grant_permission_to_group(
@@ -594,6 +645,8 @@ def grant_permission_to_group(
     permission: str,
     target_uri: str,
     command: str | None = None,
+    resource_type: str | None = None,
+    resource_id: str | int | None = None,
     grant_type: str = PermitDeny.permit.value,
     group_name: str | None = None,
     source_is_open_id: bool = False,
@@ -609,6 +662,8 @@ def grant_permission_to_group(
         session,
         uri=target_uri,
         command=command,
+        resource_type=resource_type,
+        resource_id=resource_id,
     )
     return _find_or_create_permission_assignment(
         session,
@@ -626,6 +681,8 @@ def grant_permission_to_user(
     permission: str,
     target_uri: str,
     command: str | None = None,
+    resource_type: str | None = None,
+    resource_id: str | int | None = None,
     grant_type: str = PermitDeny.permit.value,
 ) -> PermissionAssignmentModel:
     principal = find_or_create_principal_for_user(session, user_id=user_id)
@@ -633,6 +690,8 @@ def grant_permission_to_user(
         session,
         uri=target_uri,
         command=command,
+        resource_type=resource_type,
+        resource_id=resource_id,
     )
     return _find_or_create_permission_assignment(
         session,
@@ -712,24 +771,21 @@ def _find_or_create_permission_assignment(
     permission: str,
     grant_type: str,
 ) -> PermissionAssignmentModel:
-    assignment = session.scalar(
-        select(PermissionAssignmentModel).where(
-            PermissionAssignmentModel.principal_id == principal_id,
-            PermissionAssignmentModel.permission_target_id == permission_target_id,
-            PermissionAssignmentModel.permission == permission,
-        )
-    )
-    if assignment is None:
-        assignment = PermissionAssignmentModel(
+    assignment = _get_or_create(
+        session,
+        PermissionAssignmentModel,
+        lookup={
+            "principal_id": principal_id,
+            "permission_target_id": permission_target_id,
+            "permission": permission,
+        },
+        factory=lambda: PermissionAssignmentModel(
             principal_id=principal_id,
             permission_target_id=permission_target_id,
             permission=permission,
             grant_type=grant_type,
-        )
-        session.add(assignment)
-        session.flush()
-        return assignment
-
+        ),
+    )
     if assignment.grant_type != grant_type:
         assignment.grant_type = grant_type
         session.flush()

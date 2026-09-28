@@ -250,6 +250,39 @@ def test_lane_group_identifier_is_case_insensitive(
     assert lower_case_group.identifier == f"{tenant.id}:operations"
 
 
+def test_lane_group_reuses_legacy_bare_identifier(
+    session: Session,
+) -> None:
+    tenant, user = _seed_tenant_and_admin(session)
+    legacy_group = GroupModel(
+        name="operations",
+        identifier="operations",
+        source_is_open_id=False,
+    )
+    session.add(legacy_group)
+    session.flush()
+    session.add(
+        UserGroupAssignmentModel(user_id=user.id, group_id=legacy_group.id)
+    )
+    session.flush()
+
+    resolved_group = _lane_group(
+        session,
+        "Operations",
+        tenant_id=tenant.id,
+    )
+
+    assert resolved_group is not None
+    assert resolved_group.id == legacy_group.id
+    assert resolved_group.identifier == "operations"
+    assert session.scalar(
+        select(UserGroupAssignmentModel.id).where(
+            UserGroupAssignmentModel.user_id == user.id,
+            UserGroupAssignmentModel.group_id == resolved_group.id,
+        )
+    ) is not None
+
+
 def test_group_membership_assigns_lane_tasks_without_lane_owners(
     session: Session,
 ) -> None:
