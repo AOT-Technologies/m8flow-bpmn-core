@@ -48,7 +48,12 @@ from m8flow_bpmn_core.errors import (
     ValidationError,
 )
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceStatus
-from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.process_instance_event import (
+    ProcessInstanceEventCategory,
+    ProcessInstanceEventType,
+    ProcessLifecycleEventType,
+    TaskEventType,
+)
 from m8flow_bpmn_core.services.authorization import (
     PROCESS_DEFINITION_IMPORT_COMMAND,
     PROCESS_RESUME_COMMAND,
@@ -169,6 +174,8 @@ __all__ = [
     "PROCESS_SUSPEND_COMMAND",
     "PROCESS_TERMINATE_COMMAND",
     "ProcessInstanceEventType",
+    "ProcessInstanceEventCategory",
+    "ProcessLifecycleEventType",
     "ProcessInstanceStatus",
     "RecordProcessInstanceEventCommand",
     "ResumeProcessInstanceCommand",
@@ -186,6 +193,7 @@ __all__ = [
     "SuspendProcessInstanceCommand",
     "TASK_CLAIM_COMMAND",
     "TASK_COMPLETE_COMMAND",
+    "TaskEventType",
     "TerminateProcessInstanceCommand",
     "UpsertProcessInstanceMetadataCommand",
     "ValidationError",

@@ -32,7 +32,7 @@ def test_full_migration_chain_reaches_head_on_sqlite(
             with engine.connect() as connection:
                 assert connection.scalar(
                     sa.text("SELECT version_num FROM alembic_version")
-                ) == "d0e1f2a3b4c5"
+                ) == "e1f2a3b4c5d6"
         finally:
             engine.dispose()
     finally:
@@ -241,6 +241,21 @@ def test_tenant_json_migration_preserves_populated_legacy_data(
                     "'task-env-only', NULL, NULL, NULL, 'tenant-b')"
                 )
             )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO human_task "
+                    "(id, process_instance_id, task_id, task_guid, "
+                    "lane_assignment_id, completed_by_user_id, actual_owner_id, "
+                    "form_file_name, ui_form_file_name, updated_at_in_seconds, "
+                    "created_at_in_seconds, task_name, task_title, task_type, "
+                    "task_status, process_model_display_name, "
+                    "bpmn_process_identifier, lane_name, json_metadata, completed, "
+                    "m8f_tenant_id) VALUES "
+                    "(1, 1, 'task-id', 'task-guid', NULL, NULL, NULL, NULL, NULL, "
+                    "1, 1, 'Task', NULL, 'UserTask', 'READY', 'Model', "
+                    "'definition', NULL, NULL, 0, 'tenant-b')"
+                )
+            )
 
         command.upgrade(config, "head")
 
@@ -258,12 +273,24 @@ def test_tenant_json_migration_preserves_populated_legacy_data(
             ]
             primary_key = inspect(engine).get_pk_constraint("json_data")
             assert primary_key["constrained_columns"] == ["m8f_tenant_id", "hash"]
+            work_item = connection.execute(
+                sa.text(
+                    "SELECT id, m8f_tenant_id, task_guid, task_status, completed "
+                    "FROM work_item"
+                )
+            ).one()
+            assert tuple(work_item) == (1, "tenant-b", "task-guid", "READY", False)
 
         command.downgrade(config, "d2e4f6a8b0c1")
 
         with engine.connect() as connection:
             primary_key = inspect(engine).get_pk_constraint("json_data")
             assert primary_key["constrained_columns"] == ["hash"]
+            assert "work_item" not in inspect(engine).get_table_names()
+            assert "category" not in {
+                column["name"]
+                for column in inspect(engine).get_columns("process_instance_event")
+            }
             assert connection.scalar(
                 sa.text(
                     "SELECT COUNT(*) FROM json_data "

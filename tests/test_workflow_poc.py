@@ -25,6 +25,7 @@ from m8flow_bpmn_core.services.authorization import (
     ROLE_ADMIN,
     ensure_v1_role,
 )
+from m8flow_bpmn_core.services.work_items import ensure_work_item
 
 EXAMPLE_BPMN_PATH = Path(__file__).with_name("fixtures") / "invoice_approval_poc.bpmn"
 
@@ -133,6 +134,9 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
     )
     assert claimed_task.actual_owner_id == user.id
     assert claimed_task.task_status == "CLAIMED"
+    assert claimed_task.work_item is not None
+    assert claimed_task.work_item.actual_owner_id == user.id
+    assert claimed_task.work_item.task_status == "CLAIMED"
 
     suspended_process_instance = api.execute_command(
         session,
@@ -474,6 +478,9 @@ def test_invoice_approval_workflow_scenarios(
     assert completed_task.task_status == "COMPLETED"
     assert completed_task.task_model.state == "COMPLETED"
     assert completed_task.task_model.end_in_seconds == completed_at
+    assert completed_task.work_item is not None
+    assert completed_task.work_item.completed is True
+    assert completed_task.work_item.task_status == "COMPLETED"
 
     api.execute_command(
         session,
@@ -694,6 +701,7 @@ def _seed_example_workflow(
     )
     session.add(human_task)
     session.flush()
+    ensure_work_item(session, human_task)
 
     session.add(
         HumanTaskUserModel(

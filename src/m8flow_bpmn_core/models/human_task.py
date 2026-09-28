@@ -60,6 +60,12 @@ class HumanTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
     process_instance = relationship(
         "ProcessInstanceModel", back_populates="human_tasks"
     )
+    work_item = relationship(
+        "WorkItemModel",
+        back_populates="human_task",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
     task_model = relationship("TaskModel", back_populates="human_tasks")
     human_task_users = relationship(
         "HumanTaskUserModel", back_populates="human_task", cascade="all, delete-orphan"

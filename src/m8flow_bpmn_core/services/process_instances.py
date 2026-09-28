@@ -14,6 +14,8 @@ from m8flow_bpmn_core.models.process_instance import (
 from m8flow_bpmn_core.models.process_instance_event import (
     ProcessInstanceEventModel,
     ProcessInstanceEventType,
+    ProcessLifecycleEventType,
+    TaskEventType,
 )
 from m8flow_bpmn_core.models.process_instance_metadata import (
     ProcessInstanceMetadataModel,
@@ -22,6 +24,7 @@ from m8flow_bpmn_core.models.scheduler_job import (
     SchedulerJobModel,
     SchedulerJobType,
 )
+from m8flow_bpmn_core.models.task import M8F_TERMINATED_TASK_STATE
 from m8flow_bpmn_core.services.authorization import (
     PROCESS_RESUME_COMMAND,
     PROCESS_RETRY_COMMAND,
@@ -149,7 +152,9 @@ def record_process_instance_event(
     *,
     tenant_id: str,
     process_instance_id: int,
-    event_type: ProcessInstanceEventType | str,
+    event_type: (
+        ProcessInstanceEventType | ProcessLifecycleEventType | TaskEventType | str
+    ),
     timestamp: float | None = None,
     task_guid: str | None = None,
     user_id: int | None = None,
@@ -279,7 +284,7 @@ def suspend_process_instance(
         session,
         tenant_id=tenant_id,
         process_instance_id=process_instance_id,
-        event_type=ProcessInstanceEventType.process_instance_suspended,
+        event_type=ProcessLifecycleEventType.process_instance_suspended,
         timestamp=float(occurred_at),
         user_id=user_id,
     )
@@ -328,7 +333,7 @@ def error_process_instance(
         session,
         tenant_id=tenant_id,
         process_instance_id=process_instance_id,
-        event_type=ProcessInstanceEventType.process_instance_error,
+        event_type=ProcessLifecycleEventType.process_instance_error,
         timestamp=float(occurred_at),
         user_id=user_id,
     )
@@ -374,7 +379,7 @@ def resume_process_instance(
         session,
         tenant_id=tenant_id,
         process_instance_id=process_instance_id,
-        event_type=ProcessInstanceEventType.process_instance_resumed,
+        event_type=ProcessLifecycleEventType.process_instance_resumed,
         timestamp=float(occurred_at),
         user_id=user_id,
     )
@@ -436,7 +441,7 @@ def retry_process_instance(
         session,
         tenant_id=tenant_id,
         process_instance_id=process_instance_id,
-        event_type=ProcessInstanceEventType.process_instance_retried,
+        event_type=ProcessLifecycleEventType.process_instance_retried,
         timestamp=float(occurred_at),
         user_id=user_id,
     )
@@ -548,7 +553,7 @@ def terminate_process_instance(
         session,
         tenant_id=tenant_id,
         process_instance_id=process_instance_id,
-        event_type=ProcessInstanceEventType.process_instance_terminated,
+        event_type=ProcessLifecycleEventType.process_instance_terminated,
         timestamp=float(occurred_at),
         user_id=user_id,
     )
@@ -565,7 +570,7 @@ def _close_process_instance_runtime_state(
     process_instance.task_updated_at_in_seconds = occurred_at
     for task in process_instance.tasks:
         if task.state != TaskState.get_name(TaskState.COMPLETED):
-            task.state = WorkItemState.TERMINATED.value
+            task.state = M8F_TERMINATED_TASK_STATE
         task.end_in_seconds = occurred_at
         if task.future_task is not None:
             task.future_task.completed = True
@@ -590,7 +595,7 @@ def _reopen_process_instance_runtime_state(
 ) -> None:
     process_instance.task_updated_at_in_seconds = occurred_at
     for task in process_instance.tasks:
-        if task.state != WorkItemState.TERMINATED.value:
+        if task.state != M8F_TERMINATED_TASK_STATE:
             continue
         task.state = TaskState.get_name(TaskState.READY)
         task.start_in_seconds = None

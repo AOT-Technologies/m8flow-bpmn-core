@@ -86,8 +86,8 @@ Phase 3 introduces internal work-item state transitions in
 `services/work_items.py` over the existing `human_task` row. Claim,
 completion, termination, reopening, and ready-state transitions are centralized
 there while `HumanTaskModel`, the `human_task` table, task IDs, and returned
-attributes remain unchanged. A physical `work_item` table split is deferred
-until downstream consumers are migrated.
+attributes remain unchanged. The additive `work_item` table is backfilled and
+runtime transitions dual-write both rows.
 
 ## Phase 4 tenant and event compatibility layer
 
@@ -112,7 +112,8 @@ with `SpiffWorkflow.util.task.TaskState` members. Persisted state names such as
 `READY`, `COMPLETED`, `CANCELLED`, and `ERROR` remain unchanged because the
 code uses the enum member names when storing them. The internal
 `WorkItemState` enum continues to represent M8Flow-specific human-work-item
-states such as `CLAIMED` and `TERMINATED`.
+states such as `CLAIMED` and `TERMINATED`. `TaskModel.state` validates Spiff
+state names and preserves the legacy process-operation value `TERMINATED`.
 
 ## Phase 6 authorization target compatibility layer
 
@@ -121,3 +122,25 @@ When both are present, authorization uses exact pair matching; URI-based
 targets continue to use the existing compatibility matcher. Existing grants
 and URI helper signatures remain valid, so consumers can migrate target by
 target.
+
+## Workflow model and event-state redesign contract
+
+The workflow model redesign uses an additive transition for compatibility with
+existing `m8flow` consumers. The new `work_item` table has been added and
+backfilled using the legacy human-task ID, while existing `human_task` rows and
+query-facing attributes remain available. Runtime claim-state transitions now
+dual-write the legacy human-task row and its normalized work-item companion.
+The work-item table does not duplicate task,
+process, lane, form, or JSON metadata.
+
+`ProcessLifecycleEventType` and `TaskEventType` are the preferred internal
+event vocabularies. The combined `ProcessInstanceEventType` enum and existing
+event string values remain supported. The additive event `category` column is
+backfilled and legacy null categories remain readable.
+
+Runtime task-state logic uses SpiffWorkflow's `TaskState`, while persisted
+state names remain compatible strings such as `READY`, `COMPLETED`, `ERROR`,
+and `CANCELLED`.
+
+The detailed field-ownership and migration contract is documented in
+`doc/workflow_model_event_state_redesign.md`.

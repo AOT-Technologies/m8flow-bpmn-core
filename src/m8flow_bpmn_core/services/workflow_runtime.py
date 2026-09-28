@@ -48,7 +48,11 @@ from m8flow_bpmn_core.models.process_instance import (
     ProcessInstanceModel,
     ProcessInstanceStatus,
 )
-from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.process_instance_event import (
+    ProcessInstanceEventType,
+    ProcessLifecycleEventType,
+    TaskEventType,
+)
 from m8flow_bpmn_core.models.process_model_bpmn_version import (
     ProcessModelBpmnVersionModel,
 )
@@ -56,7 +60,7 @@ from m8flow_bpmn_core.models.scheduler_job import (
     SchedulerJobModel,
     SchedulerJobType,
 )
-from m8flow_bpmn_core.models.task import TaskModel
+from m8flow_bpmn_core.models.task import M8F_TERMINATED_TASK_STATE, TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
@@ -89,6 +93,7 @@ from m8flow_bpmn_core.services.tenant_users import (
 from m8flow_bpmn_core.services.work_items import (
     WorkItemState,
     close_work_item,
+    ensure_work_item,
     prepare_work_item_for_ready_state,
 )
 
@@ -747,7 +752,7 @@ def _finalize_initialized_process_instance_workflow(
         session,
         tenant_id=tenant_id,
         process_instance_id=process_instance.id,
-        event_type=ProcessInstanceEventType.process_instance_created,
+        event_type=ProcessLifecycleEventType.process_instance_created,
         timestamp=float(occurred_at),
         task_guid=ready_tasks[0].task_guid if ready_tasks else None,
         user_id=process_instance.process_initiator_id,
@@ -1082,7 +1087,7 @@ def _transition_process_instance_to_error_for_service_task_failure(
             session,
             tenant_id=tenant_id,
             process_instance_id=process_instance.id,
-            event_type=ProcessInstanceEventType.task_failed,
+            event_type=TaskEventType.task_failed,
             timestamp=float(occurred_at),
             task_guid=failed_task_guid,
             user_id=None,
@@ -1703,7 +1708,7 @@ def _inactive_human_task_status(task_state_name: str | None) -> str:
         TaskState.get_name(TaskState.CANCELLED),
         TaskState.get_name(TaskState.COMPLETED),
         TaskState.get_name(TaskState.ERROR),
-        WorkItemState.TERMINATED.value,
+        M8F_TERMINATED_TASK_STATE,
     }:
         return task_state_name
     return "TERMINATED"
@@ -1713,9 +1718,9 @@ def _inactive_human_task_event_type(
     task_state_name: str | None,
 ) -> ProcessInstanceEventType | None:
     if task_state_name == TaskState.get_name(TaskState.CANCELLED):
-        return ProcessInstanceEventType.task_cancelled
+        return TaskEventType.task_cancelled
     if task_state_name == TaskState.get_name(TaskState.ERROR):
-        return ProcessInstanceEventType.task_failed
+        return TaskEventType.task_failed
     return None
 
 
@@ -1984,6 +1989,7 @@ def _upsert_human_task(
 
     process_instance.task_updated_at_in_seconds = occurred_at
     session.flush()
+    ensure_work_item(session, human_task)
     return human_task
 
 

@@ -3,11 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import JSON, DateTime, ForeignKey, Numeric, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from m8flow_bpmn_core.models.base import Base
 from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantScoped
+
+# SpiffWorkflow has no TERMINATED execution state.  M8Flow historically uses
+# this compatibility value when a process-level operation closes a task.
+M8F_TERMINATED_TASK_STATE = "TERMINATED"
 
 
 class TaskModel(M8fTenantScopedMixin, TenantScoped, Base):
@@ -62,3 +67,28 @@ class TaskModel(M8fTenantScopedMixin, TenantScoped, Base):
         single_parent=True,
         uselist=False,
     )
+
+    @validates("state")
+    def validate_state(self, key: str, value: Any) -> str:
+        from m8flow_bpmn_core.errors import ValidationError
+
+        if value == M8F_TERMINATED_TASK_STATE:
+            return M8F_TERMINATED_TASK_STATE
+        try:
+            state_value = (
+                value
+                if isinstance(value, int)
+                else TaskState.get_value(value)
+            )
+            if state_value not in TaskState._values:
+                raise ValueError(f"Unknown TaskState value: {state_value}")
+            normalized = TaskState.get_name(state_value)
+            if not normalized:
+                raise ValueError(f"Unknown TaskState value: {state_value}")
+            return str(normalized)
+        except (KeyError, TypeError, ValueError) as exc:
+            allowed_values = ", ".join(TaskState._names)
+            raise ValidationError(
+                f"Invalid task state: {value!r}. Expected one of: "
+                f"{allowed_values}, {M8F_TERMINATED_TASK_STATE}"
+            ) from exc

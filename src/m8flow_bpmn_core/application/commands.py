@@ -3,7 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.process_instance_event import (
+    ProcessInstanceEventType,
+    ProcessLifecycleEventType,
+    TaskEventType,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,7 +31,9 @@ class CompleteTaskCommand:
 class RecordProcessInstanceEventCommand:
     tenant_id: str
     process_instance_id: int
-    event_type: ProcessInstanceEventType | str
+    event_type: (
+        ProcessInstanceEventType | ProcessLifecycleEventType | TaskEventType | str
+    )
     task_guid: str | None = None
     user_id: int | None = None
     timestamp: float | None = None

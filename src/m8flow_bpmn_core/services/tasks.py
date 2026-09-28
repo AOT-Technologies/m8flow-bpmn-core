@@ -19,7 +19,10 @@ from m8flow_bpmn_core.models.process_instance import (
     ProcessInstanceModel,
     ProcessInstanceStatus,
 )
-from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.process_instance_event import (
+    ProcessLifecycleEventType,
+    TaskEventType,
+)
 from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
 from m8flow_bpmn_core.services.authorization import (
     TASK_CLAIM_COMMAND,
@@ -266,7 +269,7 @@ def complete_task(
             session,
             tenant_id=tenant_id,
             process_instance_id=human_task.process_instance_id,
-            event_type=ProcessInstanceEventType.task_completed,
+            event_type=TaskEventType.task_completed,
             task_guid=human_task.task_guid,
             user_id=user_id,
             timestamp=float(completed_at),
@@ -276,7 +279,7 @@ def complete_task(
                 session,
                 tenant_id=tenant_id,
                 process_instance_id=human_task.process_instance_id,
-                event_type=ProcessInstanceEventType.process_instance_completed,
+                event_type=ProcessLifecycleEventType.process_instance_completed,
                 task_guid=human_task.task_guid,
                 user_id=user_id,
                 timestamp=float(completed_at),

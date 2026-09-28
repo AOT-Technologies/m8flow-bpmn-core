@@ -46,9 +46,9 @@ from m8flow_bpmn_core.models.tenant import M8flowTenantModel  # noqa: E402
 from m8flow_bpmn_core.models.user import UserModel  # noqa: E402
 from m8flow_bpmn_core.services.authorization import (  # noqa: E402
     ROLE_ADMIN,
-    ROLE_USER,
     ensure_v1_role,
 )
+from m8flow_bpmn_core.services.work_items import WorkItemState  # noqa: E402
 
 TENANT_ID = "tenant-errors-demo"
 TENANT_SLUG = "tenant-errors-demo"
@@ -316,7 +316,7 @@ def _seed(session: Session) -> dict[str, int]:
         task_name="completed-task",
         task_title="Completed Task",
         task_type="UserTask",
-        task_status="COMPLETED",
+        task_status=WorkItemState.COMPLETED.value,
         process_model_display_name="Demo Process",
         bpmn_process_identifier="demo-process",
         lane_name=None,
@@ -333,7 +333,7 @@ def _seed(session: Session) -> dict[str, int]:
         task_name="unassigned-task",
         task_title="Unassigned Task",
         task_type="UserTask",
-        task_status="READY",
+        task_status=WorkItemState.READY.value,
         process_model_display_name="Demo Process",
         bpmn_process_identifier="demo-process",
         lane_name=None,

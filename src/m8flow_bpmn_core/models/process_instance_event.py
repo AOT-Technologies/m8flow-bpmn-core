@@ -12,6 +12,8 @@ from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantSc
 
 
 class ProcessInstanceEventType(StrEnum):
+    """Compatibility enum containing the original combined event values."""
+
     process_instance_created = "process_instance_created"
     process_instance_completed = "process_instance_completed"
     process_instance_error = "process_instance_error"
@@ -32,35 +34,52 @@ class ProcessInstanceEventType(StrEnum):
 
 
 class ProcessLifecycleEventType(StrEnum):
-    process_instance_created = ProcessInstanceEventType.process_instance_created
-    process_instance_completed = ProcessInstanceEventType.process_instance_completed
-    process_instance_error = ProcessInstanceEventType.process_instance_error
-    process_instance_force_run = ProcessInstanceEventType.process_instance_force_run
-    process_instance_migrated = ProcessInstanceEventType.process_instance_migrated
-    process_instance_resumed = ProcessInstanceEventType.process_instance_resumed
-    process_instance_retried = ProcessInstanceEventType.process_instance_retried
-    process_instance_rewound_to_task = (
-        ProcessInstanceEventType.process_instance_rewound_to_task
-    )
-    process_instance_suspended = ProcessInstanceEventType.process_instance_suspended
-    process_instance_suspended_for_error = (
-        ProcessInstanceEventType.process_instance_suspended_for_error
-    )
-    process_instance_terminated = ProcessInstanceEventType.process_instance_terminated
+    process_instance_created = "process_instance_created"
+    process_instance_completed = "process_instance_completed"
+    process_instance_error = "process_instance_error"
+    process_instance_force_run = "process_instance_force_run"
+    process_instance_migrated = "process_instance_migrated"
+    process_instance_resumed = "process_instance_resumed"
+    process_instance_retried = "process_instance_retried"
+    process_instance_rewound_to_task = "process_instance_rewound_to_task"
+    process_instance_suspended = "process_instance_suspended"
+    process_instance_suspended_for_error = "process_instance_suspended_for_error"
+    process_instance_terminated = "process_instance_terminated"
 
 
 class TaskEventType(StrEnum):
-    task_cancelled = ProcessInstanceEventType.task_cancelled
-    task_completed = ProcessInstanceEventType.task_completed
-    task_data_edited = ProcessInstanceEventType.task_data_edited
-    task_executed_manually = ProcessInstanceEventType.task_executed_manually
-    task_failed = ProcessInstanceEventType.task_failed
-    task_skipped = ProcessInstanceEventType.task_skipped
+    task_cancelled = "task_cancelled"
+    task_completed = "task_completed"
+    task_data_edited = "task_data_edited"
+    task_executed_manually = "task_executed_manually"
+    task_failed = "task_failed"
+    task_skipped = "task_skipped"
 
 
 class ProcessInstanceEventCategory(StrEnum):
     process = "process"
     task = "task"
+
+
+def event_category_for_type(
+    event_type: (
+        ProcessInstanceEventType
+        | ProcessLifecycleEventType
+        | TaskEventType
+        | str
+    ),
+) -> ProcessInstanceEventCategory:
+    """Return the persisted category for any supported event enum/value."""
+    value = event_type.value if isinstance(event_type, StrEnum) else event_type
+    try:
+        ProcessLifecycleEventType(value)
+    except ValueError:
+        try:
+            TaskEventType(value)
+        except ValueError as exc:
+            raise ValueError(f"Unknown process instance event type: {value!r}") from exc
+        return ProcessInstanceEventCategory.task
+    return ProcessInstanceEventCategory.process
 
 
 class ProcessInstanceEventModel(M8fTenantScopedMixin, TenantScoped, Base):
@@ -97,12 +116,12 @@ class ProcessInstanceEventModel(M8fTenantScopedMixin, TenantScoped, Base):
         from m8flow_bpmn_core.errors import ValidationError
 
         try:
-            normalized = ProcessInstanceEventType(value).value
-            self.category = (
-                ProcessInstanceEventCategory.task.value
-                if normalized.startswith("task_")
-                else ProcessInstanceEventCategory.process.value
+            normalized = (
+                value.value
+                if isinstance(value, StrEnum)
+                else ProcessInstanceEventType(value).value
             )
+            self.category = event_category_for_type(normalized).value
             return normalized
         except ValueError as exc:  # pragma: no cover - defensive guard
             allowed_values = ", ".join(

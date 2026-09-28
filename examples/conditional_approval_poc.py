@@ -13,6 +13,7 @@ from pprint import pformat
 from typing import Any
 from uuid import uuid4
 
+from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import inspect, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
@@ -48,6 +49,7 @@ from m8flow_bpmn_core.services.authorization import (
     ensure_v1_role,
 )
 from m8flow_bpmn_core.services.tenant_users import user_belongs_to_tenant
+from m8flow_bpmn_core.services.work_items import WorkItemState
 from m8flow_bpmn_core.services.workflow_runtime import (
     repair_process_instance_runtime_representation,
 )
@@ -1848,7 +1850,7 @@ def _reset_noise_work_item(
     lane_name: str,
 ) -> None:
     task_identifier = f"{label.replace('-', '_')}_task"
-    task.state = "READY"
+    task.state = TaskState.READY
     task.properties_json = {"task_spec": task_title, "noise": True}
     task.start_in_seconds = None
     task.end_in_seconds = None
@@ -1863,7 +1865,7 @@ def _reset_noise_work_item(
     human_task.actual_owner_id = None
     human_task.task_name = task_identifier
     human_task.task_title = task_title
-    human_task.task_status = "READY"
+    human_task.task_status = WorkItemState.READY.value
     human_task.task_type = "UserTask"
     human_task.process_model_display_name = process_display_name
     human_task.bpmn_process_identifier = f"{label}-process"

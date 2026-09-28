@@ -52,6 +52,13 @@ under the dataclass entry rather than repeated twice.
   `process_instance_error`, `process_instance_retried`,
   `process_instance_suspended`, `process_instance_terminated`,
   `task_completed`, `task_failed`, and `task_cancelled`.
+- `ProcessLifecycleEventType`
+  Process-only event vocabulary with the same persisted string values.
+- `TaskEventType`
+  Task-only event vocabulary with the same persisted string values.
+- `ProcessInstanceEventCategory`
+  Persisted event categories: `process` and `task`. Legacy rows may have a
+  null category while remaining queryable.
 
 ---
 
@@ -470,7 +477,7 @@ Append an event to the process-instance event history.
 | --- | --- | --- | --- |
 | `tenant_id` | `str` | yes | |
 | `process_instance_id` | `int` | yes | |
-| `event_type` | `ProcessInstanceEventType \| str` | yes | |
+| `event_type` | `ProcessInstanceEventType \| ProcessLifecycleEventType \| TaskEventType \| str` | yes | |
 | `task_guid` | `str \| None` | no | |
 | `user_id` | `int \| None` | no | When provided, tenant membership is enforced. |
 | `timestamp` | `float \| None` | no | Defaults to current time with microsecond precision. |
