@@ -526,44 +526,46 @@ def _get_or_create[ModelT](
     model: type[ModelT],
     *,
     lookup: Mapping[str, object],
-    factory: Callable[[], ModelT],
+    values: Mapping[str, object],
+    conflict_columns: Sequence[str] = (),
 ) -> ModelT:
-    """Return a row using a database-native conflict-safe insert."""
+    """Return a row using explicit values and a conflict-safe insert.
+
+    Values are supplied by the caller instead of being extracted from an
+    unflushed ORM instance. This preserves SQLAlchemy Python-side defaults by
+    omitting columns that the database or ORM should populate. The conflict
+    action never updates an existing row.
+    """
     existing = session.scalar(select(model).filter_by(**lookup))
     if existing is not None:
         return existing
 
-    created = factory()
     table = model.__table__  # type: ignore[attr-defined]
-    values: dict[str, Any] = {
-        column.key: getattr(created, column.key)
-        for column in table.columns
-        if not column.primary_key
-    }
     dialect_name = session.get_bind().dialect.name
     statement: Any
     if dialect_name == "postgresql":
-        statement = postgresql_insert(model).values(**values)
+        statement = postgresql_insert(model).values(**dict(values))
     elif dialect_name in {"mysql", "mariadb"}:
-        statement = mysql_insert(model).values(**values)
+        statement = mysql_insert(model).values(**dict(values))
     elif dialect_name == "sqlite":
-        statement = sqlite_insert(model).values(**values)
+        statement = sqlite_insert(model).values(**dict(values))
     else:
         # Keep unsupported dialects usable while requiring their unique
         # constraints to arbitrate concurrent calls.
-        statement = insert(model).values(**values)
+        statement = insert(model).values(**dict(values))
 
     if dialect_name in {"postgresql", "sqlite"}:
-        session.execute(statement.on_conflict_do_nothing())
-    elif dialect_name in {"mysql", "mariadb"}:
-        update_column = next(
-            column for column in table.columns if not column.primary_key
+        conflict_kwargs = (
+            {"index_elements": list(conflict_columns)}
+            if conflict_columns
+            else {}
         )
+        session.execute(statement.on_conflict_do_nothing(**conflict_kwargs))
+    elif dialect_name in {"mysql", "mariadb"}:
+        primary_key = next(iter(table.primary_key.columns))
         session.execute(
             statement.on_duplicate_key_update(
-                **{
-                    update_column.key: statement.inserted[update_column.key],
-                }
+                **{primary_key.key: primary_key},
             )
         )
     else:
@@ -603,12 +605,13 @@ def find_or_create_group(
         session,
         GroupModel,
         lookup={"authorization_key": authorization_key},
-        factory=lambda: GroupModel(
-            name=name or identifier,
-            identifier=identifier,
-            authorization_key=authorization_key,
-            source_is_open_id=source_is_open_id,
-        ),
+        values={
+            "name": name or identifier,
+            "identifier": identifier,
+            "authorization_key": authorization_key,
+            "source_is_open_id": source_is_open_id,
+        },
+        conflict_columns=("authorization_key",),
     )
 
 
@@ -630,10 +633,8 @@ def add_user_to_group(
         session,
         UserGroupAssignmentModel,
         lookup={"user_id": user_id, "group_id": group.id},
-        factory=lambda: UserGroupAssignmentModel(
-            user_id=user_id,
-            group_id=group.id,
-        ),
+        values={"user_id": user_id, "group_id": group.id},
+        conflict_columns=("user_id", "group_id"),
     )
 
 
@@ -646,7 +647,8 @@ def find_or_create_principal_for_user(
         session,
         PrincipalModel,
         lookup={"user_id": user_id},
-        factory=lambda: PrincipalModel(user_id=user_id),
+        values={"user_id": user_id},
+        conflict_columns=("user_id",),
     )
 
 
@@ -659,7 +661,8 @@ def find_or_create_principal_for_group(
         session,
         PrincipalModel,
         lookup={"group_id": group_id},
-        factory=lambda: PrincipalModel(group_id=group_id),
+        values={"group_id": group_id},
+        conflict_columns=("group_id",),
     )
 
 
@@ -671,8 +674,6 @@ def find_or_create_permission_target(
     resource_type: str | None = None,
     resource_id: str | int | None = None,
 ) -> PermissionTargetModel:
-    normalized_uri = uri.strip().replace("*", "%")
-    normalized_command = command.strip() if command is not None else None
     normalized_resource_type = (
         resource_type.strip() if resource_type is not None else None
     )
@@ -683,22 +684,41 @@ def find_or_create_permission_target(
         raise InvalidPermissionTargetError(
             "resource_type and resource_id must be provided together"
         )
-    lookup = {
-        "uri": normalized_uri,
-        "command": normalized_command,
-        "resource_type": normalized_resource_type,
-        "resource_id": normalized_resource_id,
-    }
+    candidate = PermissionTargetModel(
+        uri=uri,
+        command=command,
+        resource_type=resource_type,
+        resource_id=normalized_resource_id,
+    )
+    conflict_columns: tuple[str, ...]
+    if normalized_resource_type is not None:
+        lookup = {
+            "resource_type": candidate.resource_type,
+            "resource_id": candidate.resource_id,
+            "command": candidate.command,
+        }
+        conflict_columns = (
+            ("resource_type", "resource_id", "command")
+            if candidate.command is not None
+            else ()
+        )
+    else:
+        lookup = {
+            "uri": candidate.uri,
+            "command": candidate.command,
+        }
+        conflict_columns = ("uri", "command") if candidate.command is not None else ()
     return _get_or_create(
         session,
         PermissionTargetModel,
         lookup=lookup,
-        factory=lambda: PermissionTargetModel(
-            uri=uri,
-            command=command,
-            resource_type=resource_type,
-            resource_id=normalized_resource_id,
-        ),
+        values={
+            "uri": candidate.uri,
+            "command": candidate.command,
+            "resource_type": candidate.resource_type,
+            "resource_id": candidate.resource_id,
+        },
+        conflict_columns=conflict_columns,
     )
 
 
@@ -843,11 +863,16 @@ def _find_or_create_permission_assignment(
             "permission_target_id": permission_target_id,
             "permission": permission,
         },
-        factory=lambda: PermissionAssignmentModel(
-            principal_id=principal_id,
-            permission_target_id=permission_target_id,
-            permission=permission,
-            grant_type=grant_type,
+        values={
+            "principal_id": principal_id,
+            "permission_target_id": permission_target_id,
+            "permission": permission,
+            "grant_type": grant_type,
+        },
+        conflict_columns=(
+            "principal_id",
+            "permission_target_id",
+            "permission",
         ),
     )
     if assignment.grant_type != grant_type:

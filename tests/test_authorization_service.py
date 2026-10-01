@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core.application.commands import (
@@ -30,14 +31,99 @@ from m8flow_bpmn_core.services.authorization import (
     TASK_COMPLETE_COMMAND,
     AuthorizationDecision,
     DatabaseAuthorizationPolicy,
+    _get_or_create,
     actor_user_id_from_command,
     authorization_policy_scope,
     authorization_spec_for_command,
     build_authorization_request,
     ensure_v1_role,
+    find_or_create_group,
+    find_or_create_permission_target,
     grant_permission_to_user,
     require_command_authorization,
 )
+
+
+def test_get_or_create_preserves_explicit_defaults_and_existing_values(
+    session: Session,
+) -> None:
+    group = find_or_create_group(
+        session,
+        identifier="tenant-a:reviewers",
+        name="Reviewers",
+    )
+    assert group.source_is_open_id is False
+
+    same_group = find_or_create_group(
+        session,
+        identifier="tenant-a:reviewers",
+        name="Renamed reviewers",
+        source_is_open_id=True,
+    )
+    assert same_group.id == group.id
+    assert same_group.name == "Reviewers"
+    assert same_group.source_is_open_id is False
+
+
+def test_resource_target_conflict_does_not_overwrite_existing_uri(
+    session: Session,
+) -> None:
+    first = find_or_create_permission_target(
+        session,
+        uri="/tasks/first",
+        command="task.read",
+        resource_type="task",
+        resource_id="42",
+    )
+    second = find_or_create_permission_target(
+        session,
+        uri="/tasks/second",
+        command="task.read",
+        resource_type="task",
+        resource_id="42",
+    )
+
+    assert second.id == first.id
+    assert second.uri == "/tasks/first"
+
+
+def test_mysql_get_or_create_uses_a_non_mutating_duplicate_action() -> None:
+    class FakeBind:
+        dialect = mysql.dialect()
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.executed = []
+            self.scalar_calls = 0
+
+        def get_bind(self) -> FakeBind:
+            return FakeBind()
+
+        def scalar(self, statement):
+            self.scalar_calls += 1
+            return None if self.scalar_calls == 1 else GroupModel()
+
+        def execute(self, statement) -> None:
+            self.executed.append(statement)
+
+    session = FakeSession()
+    result = _get_or_create(
+        session,
+        GroupModel,
+        lookup={"authorization_key": "authorization:reviewers"},
+        values={
+            "name": "Reviewers",
+            "identifier": "tenant-a:reviewers",
+            "authorization_key": "authorization:reviewers",
+            "source_is_open_id": False,
+        },
+        conflict_columns=("authorization_key",),
+    )
+
+    sql = str(session.executed[0].compile(dialect=mysql.dialect()))
+    assert "ON DUPLICATE KEY UPDATE" in sql
+    assert "id = `group`.id" in sql
+    assert result is not None
 
 
 def test_authorization_specs_resolve_command_keys_and_actor_fields() -> None:
