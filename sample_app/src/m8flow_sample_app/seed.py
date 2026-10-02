@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -18,6 +19,7 @@ from m8flow_sample_app.models import ALL_METADATA, SecretModel
 from m8flow_sample_app.shared_m8flow import SharedM8flowAuditContext
 
 ROLE_USER = "user"
+EPOCH = datetime.fromtimestamp(0, UTC)
 ROLE_MANAGER = "manager"
 ROLE_ADMIN = "admin"
 KEYCLOAK_GROUPS_BY_ROLE = {
@@ -313,8 +315,8 @@ def _ensure_tenant(
             status=TenantStatus.ACTIVE,
             created_by="sample-app",
             modified_by="sample-app",
-            created_at_in_seconds=0,
-            updated_at_in_seconds=0,
+            created_at=EPOCH,
+            updated_at=EPOCH,
         )
         session.add(tenant)
         session.flush()
@@ -364,8 +366,8 @@ def _ensure_user(
             display_name=user_definition.display_name,
             tenant_specific_field_1=tenant.id,
             tenant_specific_field_2=tenant.slug,
-            updated_at_in_seconds=0,
-            created_at_in_seconds=0,
+            updated_at=EPOCH,
+            created_at=EPOCH,
         )
         session.add(user)
         session.flush()
@@ -378,7 +380,7 @@ def _ensure_user(
     user.display_name = user_definition.display_name
     user.tenant_specific_field_1 = tenant.id
     user.tenant_specific_field_2 = tenant.slug
-    user.updated_at_in_seconds = 0
+    user.updated_at = EPOCH
     return user
 
 
@@ -491,8 +493,8 @@ def _realign_tenant_to_canonical_id(
         status=tenant.status,
         created_by=tenant.created_by,
         modified_by=tenant.modified_by,
-        created_at_in_seconds=tenant.created_at_in_seconds,
-        updated_at_in_seconds=tenant.updated_at_in_seconds,
+        created_at=tenant.created_at,
+        updated_at=tenant.updated_at,
     )
     session.add(canonical_tenant)
     session.flush()

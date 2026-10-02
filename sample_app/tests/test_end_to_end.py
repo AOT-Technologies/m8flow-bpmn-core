@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -528,7 +529,7 @@ def test_review_timeout_escalates_to_supervisor(
         assert isinstance(timer_task_payload, dict)
         timer_task_guid = timer_task_payload["task_guid"]
         assert isinstance(timer_task_guid, str)
-        scheduler_job.run_at_in_seconds = 0
+        scheduler_job.run_at = datetime.fromtimestamp(0, UTC)
         _force_waiting_timer_due(
             db_session,
             process_instance_id=process_instance_id,
@@ -864,8 +865,8 @@ def _import_definition_version(
                 properties_json={},
                 bpmn_version_control_type="sample-app-test",
                 bpmn_version_control_identifier=version_marker,
-                created_at_in_seconds=1,
-                updated_at_in_seconds=1,
+                created_at=datetime.fromtimestamp(1, UTC),
+                updated_at=datetime.fromtimestamp(1, UTC),
             ),
         )
 

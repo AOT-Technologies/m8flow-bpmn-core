@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -254,8 +255,8 @@ def test_shared_seed_backfills_missing_principal_for_existing_user(
             status=TenantStatus.ACTIVE,
             created_by="test",
             modified_by="test",
-            created_at_in_seconds=0,
-            updated_at_in_seconds=0,
+            created_at=datetime.fromtimestamp(0, UTC),
+            updated_at=datetime.fromtimestamp(0, UTC),
         )
         db_session.add(tenant)
         db_session.flush()
@@ -269,8 +270,8 @@ def test_shared_seed_backfills_missing_principal_for_existing_user(
                 display_name="Beta Admin",
                 tenant_specific_field_1="org-beta",
                 tenant_specific_field_2="sample-tenant-beta",
-                created_at_in_seconds=0,
-                updated_at_in_seconds=0,
+                created_at=datetime.fromtimestamp(0, UTC),
+                updated_at=datetime.fromtimestamp(0, UTC),
             )
         )
 
