@@ -226,8 +226,8 @@ def _seed(session: Session) -> dict[str, int]:
         service=f"http://localhost/realms/{TENANT_SLUG}",
         service_id="primary-keycloak",
         display_name="Primary User",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     other_user = UserModel(
         username="other",
@@ -235,8 +235,8 @@ def _seed(session: Session) -> dict[str, int]:
         service=f"http://localhost/realms/{TENANT_SLUG}",
         service_id="other-keycloak",
         display_name="Other User",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     foreign_user = UserModel(
         username="foreigner",
@@ -244,8 +244,8 @@ def _seed(session: Session) -> dict[str, int]:
         service=f"http://localhost/realms/{FOREIGN_TENANT_SLUG}",
         service_id="foreigner-keycloak",
         display_name="Foreign User",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, foreign_tenant, primary_user, other_user, foreign_user])
     session.flush()
@@ -265,8 +265,8 @@ def _seed(session: Session) -> dict[str, int]:
         source_bpmn_xml="<bpmn />",
         source_dmn_xml=None,
         properties_json={},
-        created_at_in_seconds=10,
-        updated_at_in_seconds=10,
+        created_at=10,
+        updated_at=10,
     )
     session.add(definition)
     session.flush()
@@ -292,8 +292,8 @@ def _seed(session: Session) -> dict[str, int]:
             bpmn_process_definition_id=definition.id,
             bpmn_process_id=bpmn_process.id,
             status=status,
-            created_at_in_seconds=20,
-            updated_at_in_seconds=20,
+            created_at=20,
+            updated_at=20,
         )
         session.add(instance)
         session.flush()

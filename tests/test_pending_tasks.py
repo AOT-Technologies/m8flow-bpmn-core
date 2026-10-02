@@ -26,8 +26,8 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
         service=service_url,
         service_id="alice-keycloak",
         display_name="Alice",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
 
     session.add_all([tenant_a, tenant_b, user])
@@ -42,8 +42,8 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=900,
-        updated_at_in_seconds=900,
+        created_at=900,
+        updated_at=900,
     )
     definition_b = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant_b.id,
@@ -54,8 +54,8 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=1_900,
-        updated_at_in_seconds=1_900,
+        created_at=1_900,
+        updated_at=1_900,
     )
     session.add_all([definition_a, definition_b])
     session.flush()
@@ -88,8 +88,8 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at_in_seconds=950,
-        updated_at_in_seconds=950,
+        created_at=950,
+        updated_at=950,
     )
     task_definition_b = TaskDefinitionModel(
         m8f_tenant_id=tenant_b.id,
@@ -98,8 +98,8 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at_in_seconds=1_950,
-        updated_at_in_seconds=1_950,
+        created_at=1_950,
+        updated_at=1_950,
     )
     session.add_all([task_definition_a, task_definition_b])
     session.flush()
@@ -112,8 +112,8 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
         bpmn_process_definition_id=definition_a.id,
         bpmn_process_id=bpmn_process_a.id,
         status="running",
-        created_at_in_seconds=1_000,
-        updated_at_in_seconds=1_000,
+        created_at=1_000,
+        updated_at=1_000,
     )
     process_b = ProcessInstanceModel(
         m8f_tenant_id=tenant_b.id,
@@ -123,8 +123,8 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
         bpmn_process_definition_id=definition_b.id,
         bpmn_process_id=bpmn_process_b.id,
         status="running",
-        created_at_in_seconds=2_000,
-        updated_at_in_seconds=2_000,
+        created_at=2_000,
+        updated_at=2_000,
     )
     session.add_all([process_a, process_b])
     session.flush()

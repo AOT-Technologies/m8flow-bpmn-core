@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from SpiffWorkflow.util.task import TaskState
-from sqlalchemy import JSON, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import JSON, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from m8flow_bpmn_core.models.base import Base
@@ -17,11 +17,6 @@ M8F_TERMINATED_TASK_STATE = "TERMINATED"
 
 class TaskModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "task"
-    __timestamp_compatibility_pairs__ = (
-        ("start_in_seconds", "started_at"),
-        ("end_in_seconds", "ended_at"),
-    )
-
     guid: Mapped[str] = mapped_column(String(36), primary_key=True)
     bpmn_process_id: Mapped[int] = mapped_column(
         ForeignKey("bpmn_process.id"),
@@ -45,8 +40,6 @@ class TaskModel(M8fTenantScopedMixin, TenantScoped, Base):
         String(255), index=True, nullable=False
     )
     runtime_info: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    start_in_seconds: Mapped[float | None] = mapped_column(Numeric(17, 6))
-    end_in_seconds: Mapped[float | None] = mapped_column(Numeric(17, 6))
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

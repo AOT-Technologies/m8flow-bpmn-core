@@ -83,8 +83,8 @@ def test_authorization_initialization_is_race_safe(tmp_path: Path) -> None:
                 service="http://localhost:7002/realms/tenant-concurrent",
                 service_id="concurrent-user-keycloak",
                 display_name="Concurrent User",
-                created_at_in_seconds=1,
-                updated_at_in_seconds=1,
+                created_at=1,
+                updated_at=1,
             )
             session.add(user)
             session.commit()

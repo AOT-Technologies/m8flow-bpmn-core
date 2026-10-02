@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import time
+from datetime import UTC, datetime
 
 from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import select
@@ -58,15 +58,15 @@ def create_process_instance(
     bpmn_process_id: int,
     summary: str | None = None,
     process_version: int = 1,
-    created_at_in_seconds: int | None = None,
-    updated_at_in_seconds: int | None = None,
+    created_at: datetime | None = None,
+    updated_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     ensure_user_belongs_to_tenant(
         session,
         tenant_id=tenant_id,
         user_id=process_initiator_id,
     )
-    occurred_at = _resolve_timestamp(created_at_in_seconds)
+    occurred_at = _resolve_timestamp(created_at)
     process_instance = ProcessInstanceModel(
         m8f_tenant_id=tenant_id,
         process_model_identifier=process_model_identifier,
@@ -76,10 +76,10 @@ def create_process_instance(
         bpmn_process_definition_id=bpmn_process_definition_id,
         bpmn_process_id=bpmn_process_id,
         status=ProcessInstanceStatus.not_started.value,
-        created_at_in_seconds=occurred_at,
-        updated_at_in_seconds=(
-            updated_at_in_seconds
-            if updated_at_in_seconds is not None
+        created_at=occurred_at,
+        updated_at=(
+            updated_at
+            if updated_at is not None
             else occurred_at
         ),
     )
@@ -155,7 +155,7 @@ def record_process_instance_event(
     event_type: (
         ProcessInstanceEventType | ProcessLifecycleEventType | TaskEventType | str
     ),
-    timestamp: float | None = None,
+    occurred_at: datetime | None = None,
     task_guid: str | None = None,
     user_id: int | None = None,
 ) -> ProcessInstanceEventModel:
@@ -173,7 +173,7 @@ def record_process_instance_event(
         process_instance_id=process_instance_id,
         task_guid=task_guid,
         event_type=event_type,
-        timestamp=round(time.time(), 6) if timestamp is None else timestamp,
+        occurred_at=occurred_at or datetime.now(UTC),
         user_id=user_id,
     )
     session.add(event)
@@ -197,7 +197,7 @@ def get_process_instance_events(
             ProcessInstanceEventModel.process_instance_id == process_instance_id,
         )
         .order_by(
-            ProcessInstanceEventModel.timestamp,
+            ProcessInstanceEventModel.occurred_at,
             ProcessInstanceEventModel.id,
         )
     )
@@ -211,8 +211,8 @@ def upsert_process_instance_metadata(
     process_instance_id: int,
     key: str,
     value: str,
-    updated_at_in_seconds: int,
-    created_at_in_seconds: int | None = None,
+    updated_at: datetime,
+    created_at: datetime | None = None,
 ) -> ProcessInstanceMetadataModel:
     _load_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
@@ -230,19 +230,19 @@ def upsert_process_instance_metadata(
             process_instance_id=process_instance_id,
             key=key,
             value=value,
-            updated_at_in_seconds=updated_at_in_seconds,
-            created_at_in_seconds=(
-                created_at_in_seconds
-                if created_at_in_seconds is not None
-                else updated_at_in_seconds
+            updated_at=updated_at,
+            created_at=(
+                created_at
+                if created_at is not None
+                else updated_at
             ),
         )
         session.add(metadata)
     else:
         metadata.value = value
-        metadata.updated_at_in_seconds = updated_at_in_seconds
-        if created_at_in_seconds is not None:
-            metadata.created_at_in_seconds = created_at_in_seconds
+        metadata.updated_at = updated_at
+        if created_at is not None:
+            metadata.created_at = created_at
 
     session.flush()
     return metadata
@@ -254,7 +254,7 @@ def suspend_process_instance(
     tenant_id: str,
     process_instance_id: int,
     user_id: int,
-    suspended_at_in_seconds: int | None = None,
+    suspended_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     ensure_user_belongs_to_tenant(
         session,
@@ -277,15 +277,15 @@ def suspend_process_instance(
     if process_instance.has_terminal_status():
         raise InvalidStateError("Cannot suspend a terminal process instance")
 
-    occurred_at = _resolve_timestamp(suspended_at_in_seconds)
+    occurred_at = _resolve_timestamp(suspended_at)
     process_instance.status = ProcessInstanceStatus.suspended.value
-    process_instance.updated_at_in_seconds = occurred_at
+    process_instance.updated_at = occurred_at
     record_process_instance_event(
         session,
         tenant_id=tenant_id,
         process_instance_id=process_instance_id,
         event_type=ProcessLifecycleEventType.process_instance_suspended,
-        timestamp=float(occurred_at),
+        occurred_at=occurred_at,
         user_id=user_id,
     )
     session.flush()
@@ -298,7 +298,7 @@ def error_process_instance(
     tenant_id: str,
     process_instance_id: int,
     user_id: int | None = None,
-    errored_at_in_seconds: int | None = None,
+    errored_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     if user_id is not None:
         ensure_user_belongs_to_tenant(
@@ -320,10 +320,10 @@ def error_process_instance(
             "Cannot mark a terminated process instance as errored"
         )
 
-    occurred_at = _resolve_timestamp(errored_at_in_seconds)
+    occurred_at = _resolve_timestamp(errored_at)
     process_instance.status = ProcessInstanceStatus.error.value
-    process_instance.end_in_seconds = occurred_at
-    process_instance.updated_at_in_seconds = occurred_at
+    process_instance.ended_at = occurred_at
+    process_instance.updated_at = occurred_at
     _close_process_instance_runtime_state(
         process_instance,
         occurred_at=occurred_at,
@@ -334,7 +334,7 @@ def error_process_instance(
         tenant_id=tenant_id,
         process_instance_id=process_instance_id,
         event_type=ProcessLifecycleEventType.process_instance_error,
-        timestamp=float(occurred_at),
+        occurred_at=occurred_at,
         user_id=user_id,
     )
     session.flush()
@@ -347,7 +347,7 @@ def resume_process_instance(
     tenant_id: str,
     process_instance_id: int,
     user_id: int,
-    resumed_at_in_seconds: int | None = None,
+    resumed_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     ensure_user_belongs_to_tenant(
         session,
@@ -372,15 +372,15 @@ def resume_process_instance(
     if process_instance.status != ProcessInstanceStatus.suspended.value:
         raise InvalidStateError("Only suspended process instances can be resumed")
 
-    occurred_at = _resolve_timestamp(resumed_at_in_seconds)
+    occurred_at = _resolve_timestamp(resumed_at)
     process_instance.status = ProcessInstanceStatus.running.value
-    process_instance.updated_at_in_seconds = occurred_at
+    process_instance.updated_at = occurred_at
     record_process_instance_event(
         session,
         tenant_id=tenant_id,
         process_instance_id=process_instance_id,
         event_type=ProcessLifecycleEventType.process_instance_resumed,
-        timestamp=float(occurred_at),
+        occurred_at=occurred_at,
         user_id=user_id,
     )
     session.flush()
@@ -393,7 +393,7 @@ def retry_process_instance(
     tenant_id: str,
     process_instance_id: int,
     user_id: int,
-    retried_at_in_seconds: int | None = None,
+    retried_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     from m8flow_bpmn_core.services.workflow_runtime import (
         retry_errored_service_task_workflow_if_needed,
@@ -418,10 +418,10 @@ def retry_process_instance(
     if process_instance.status != ProcessInstanceStatus.error.value:
         raise InvalidStateError("Only errored process instances can be retried")
 
-    occurred_at = _resolve_timestamp(retried_at_in_seconds)
+    occurred_at = _resolve_timestamp(retried_at)
     process_instance.status = ProcessInstanceStatus.running.value
-    process_instance.end_in_seconds = None
-    process_instance.updated_at_in_seconds = occurred_at
+    process_instance.ended_at = None
+    process_instance.updated_at = occurred_at
     _reopen_process_instance_runtime_state(
         process_instance,
         occurred_at=occurred_at,
@@ -442,7 +442,7 @@ def retry_process_instance(
         tenant_id=tenant_id,
         process_instance_id=process_instance_id,
         event_type=ProcessLifecycleEventType.process_instance_retried,
-        timestamp=float(occurred_at),
+        occurred_at=occurred_at,
         user_id=user_id,
     )
     retry_errored_service_task_workflow_if_needed(
@@ -461,8 +461,8 @@ def schedule_process_instance_retry(
     tenant_id: str,
     process_instance_id: int,
     user_id: int,
-    retry_at_in_seconds: int,
-    scheduled_at_in_seconds: int | None = None,
+    retry_at: datetime,
+    scheduled_at: datetime | None = None,
 ) -> SchedulerJobModel:
     ensure_user_belongs_to_tenant(
         session,
@@ -485,7 +485,7 @@ def schedule_process_instance_retry(
             "Only errored process instances can be scheduled for retry"
         )
 
-    occurred_at = _resolve_timestamp(scheduled_at_in_seconds)
+    occurred_at = _resolve_timestamp(scheduled_at)
     return upsert_scheduler_job(
         session,
         tenant_id=tenant_id,
@@ -495,13 +495,13 @@ def schedule_process_instance_retry(
         job_type=SchedulerJobType.process_retry,
         process_instance_id=process_instance.id,
         bpmn_process_definition_id=process_instance.bpmn_process_definition_id,
-        run_at_in_seconds=retry_at_in_seconds,
+        run_at=retry_at,
         payload_json={
             "requested_by_user_id": user_id,
-            "scheduled_at_in_seconds": occurred_at,
+            "scheduled_at_in_seconds": occurred_at.timestamp(),
         },
-        updated_at_in_seconds=occurred_at,
-        created_at_in_seconds=occurred_at,
+        updated_at=occurred_at,
+        created_at=occurred_at,
     )
 
 
@@ -511,7 +511,7 @@ def terminate_process_instance(
     tenant_id: str,
     process_instance_id: int,
     user_id: int,
-    terminated_at_in_seconds: int | None = None,
+    terminated_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     ensure_user_belongs_to_tenant(
         session,
@@ -539,10 +539,10 @@ def terminate_process_instance(
             "Cannot terminate a completed or errored process instance"
         )
 
-    occurred_at = _resolve_timestamp(terminated_at_in_seconds)
+    occurred_at = _resolve_timestamp(terminated_at)
     process_instance.status = ProcessInstanceStatus.terminated.value
-    process_instance.end_in_seconds = occurred_at
-    process_instance.updated_at_in_seconds = occurred_at
+    process_instance.ended_at = occurred_at
+    process_instance.updated_at = occurred_at
     _close_process_instance_runtime_state(
         process_instance,
         occurred_at=occurred_at,
@@ -554,7 +554,7 @@ def terminate_process_instance(
         tenant_id=tenant_id,
         process_instance_id=process_instance_id,
         event_type=ProcessLifecycleEventType.process_instance_terminated,
-        timestamp=float(occurred_at),
+        occurred_at=occurred_at,
         user_id=user_id,
     )
     session.flush()
@@ -564,18 +564,18 @@ def terminate_process_instance(
 def _close_process_instance_runtime_state(
     process_instance: ProcessInstanceModel,
     *,
-    occurred_at: int,
+    occurred_at: datetime,
     user_id: int | None,
 ) -> None:
-    process_instance.task_updated_at_in_seconds = occurred_at
+    process_instance.task_updated_at = occurred_at
     for task in process_instance.tasks:
         if task.state != TaskState.get_name(TaskState.COMPLETED):
             task.state = M8F_TERMINATED_TASK_STATE
-        task.end_in_seconds = occurred_at
+        task.ended_at = occurred_at
         if task.future_task is not None:
             task.future_task.completed = True
             task.future_task.archived_for_process_instance_status = True
-            task.future_task.updated_at_in_seconds = occurred_at
+            task.future_task.updated_at = occurred_at
 
     for human_task in process_instance.human_tasks:
         if human_task.completed:
@@ -591,19 +591,19 @@ def _close_process_instance_runtime_state(
 def _reopen_process_instance_runtime_state(
     process_instance: ProcessInstanceModel,
     *,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
-    process_instance.task_updated_at_in_seconds = occurred_at
+    process_instance.task_updated_at = occurred_at
     for task in process_instance.tasks:
         if task.state != M8F_TERMINATED_TASK_STATE:
             continue
         task.state = TaskState.get_name(TaskState.READY)
-        task.start_in_seconds = None
-        task.end_in_seconds = None
+        task.started_at = None
+        task.ended_at = None
         if task.future_task is not None:
             task.future_task.completed = False
             task.future_task.archived_for_process_instance_status = False
-            task.future_task.updated_at_in_seconds = occurred_at
+            task.future_task.updated_at = occurred_at
 
     for human_task in process_instance.human_tasks:
         if human_task.task_status != "TERMINATED" and not human_task.completed:
@@ -677,9 +677,9 @@ def _process_retry_scheduler_job_key(*, process_instance_id: int) -> str:
     )
 
 
-def _resolve_timestamp(timestamp_in_seconds: int | None) -> int:
-    return (
-        timestamp_in_seconds
-        if timestamp_in_seconds is not None
-        else round(time.time())
-    )
+def _resolve_timestamp(timestamp: datetime | int | float | None) -> datetime:
+    if isinstance(timestamp, datetime):
+        return timestamp
+    if timestamp is not None:
+        return datetime.fromtimestamp(float(timestamp), UTC)
+    return datetime.now(UTC)

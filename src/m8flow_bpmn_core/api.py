@@ -9,6 +9,8 @@ fields, return types, and the error classes each operation may raise.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
@@ -127,7 +129,7 @@ from m8flow_bpmn_core.services.workflow_runtime import (
 def run_due_scheduler_jobs(
     session_or_connection: Session | Connection,
     *,
-    now_in_seconds: int | None = None,
+    now: datetime | None = None,
     limit: int = 100,
     worker_id: str = "inline",
     tenant_id: str | None = None,
@@ -135,7 +137,7 @@ def run_due_scheduler_jobs(
     with _session_scope(session_or_connection) as session:
         return _run_due_scheduler_jobs(
             session,
-            now_in_seconds=now_in_seconds,
+            now=now,
             limit=limit,
             worker_id=worker_id,
             tenant_id=tenant_id,

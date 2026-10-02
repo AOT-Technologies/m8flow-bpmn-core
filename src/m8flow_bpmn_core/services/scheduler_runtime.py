@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
@@ -42,24 +41,24 @@ _TIMER_START_SYSTEM_SERVICE_ID_PREFIX = "__m8f_timer_start__"
 def claim_due_scheduler_jobs(
     session: Session,
     *,
-    now_in_seconds: int | None = None,
+    now: datetime | None = None,
     limit: int = 100,
     worker_id: str = "inline",
     tenant_id: str | None = None,
 ) -> list[SchedulerJobModel]:
     normalized_worker_id = _normalize_worker_id(worker_id)
-    occurred_at = _resolve_timestamp(now_in_seconds)
+    occurred_at = _resolve_timestamp(now)
     claimed_jobs: list[SchedulerJobModel] = []
 
     for job in list_due_scheduler_jobs(
         session,
-        now_in_seconds=occurred_at,
+        now=occurred_at,
         limit=limit,
         tenant_id=tenant_id,
     ):
         job.locked_by = normalized_worker_id
-        job.locked_at_in_seconds = occurred_at
-        job.updated_at_in_seconds = occurred_at
+        job.locked_at = occurred_at
+        job.updated_at = occurred_at
         claimed_jobs.append(job)
 
     session.flush()
@@ -69,15 +68,15 @@ def claim_due_scheduler_jobs(
 def run_due_scheduler_jobs(
     session: Session,
     *,
-    now_in_seconds: int | None = None,
+    now: datetime | None = None,
     limit: int = 100,
     worker_id: str = "inline",
     tenant_id: str | None = None,
 ) -> int:
-    occurred_at = _resolve_timestamp(now_in_seconds)
+    occurred_at = _resolve_timestamp(now)
     claimed_jobs = claim_due_scheduler_jobs(
         session,
-        now_in_seconds=occurred_at,
+        now=occurred_at,
         limit=limit,
         worker_id=worker_id,
         tenant_id=tenant_id,
@@ -96,14 +95,14 @@ def run_due_scheduler_jobs(
             _release_scheduler_job_lock(
                 session,
                 job=job,
-                updated_at_in_seconds=occurred_at,
+                updated_at=occurred_at,
             )
             batch_errors.append((job.job_key, exc))
         except Exception as exc:
             _release_scheduler_job_lock(
                 session,
                 job=job,
-                updated_at_in_seconds=occurred_at,
+                updated_at=occurred_at,
             )
             wrapped_error = BpmnCoreError(
                 f"Scheduled job {job.job_key!r} failed during execution"
@@ -125,7 +124,7 @@ def _execute_claimed_scheduler_job(
     session: Session,
     *,
     job: SchedulerJobModel,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     if job.job_type == SchedulerJobType.intermediate_timer.value:
         _execute_intermediate_timer_job(
@@ -158,7 +157,7 @@ def _execute_intermediate_timer_job(
     session: Session,
     *,
     job: SchedulerJobModel,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     if job.process_instance_id is None:
         delete_scheduler_job(
@@ -203,7 +202,7 @@ def _execute_process_retry_job(
     session: Session,
     *,
     job: SchedulerJobModel,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     if job.process_instance_id is None:
         delete_scheduler_job(
@@ -234,7 +233,7 @@ def _execute_process_retry_job(
             job.payload_json,
             key="requested_by_user_id",
         ),
-        retried_at_in_seconds=occurred_at,
+        retried_at=occurred_at,
     )
 
 
@@ -242,7 +241,7 @@ def _execute_timer_start_job(
     session: Session,
     *,
     job: SchedulerJobModel,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     if job.bpmn_process_definition_id is None:
         delete_scheduler_job(
@@ -278,7 +277,7 @@ def _execute_timer_start_job(
         process_definition_id=job.bpmn_process_definition_id,
         process_initiator_id=system_user.id,
         timer_start_task_spec_name=_scheduler_job_task_spec_name(timer_task_payload),
-        started_at_in_seconds=occurred_at,
+        started_at=occurred_at,
     )
     _reschedule_or_delete_timer_start_job(
         session,
@@ -292,15 +291,15 @@ def _release_scheduler_job_lock(
     session: Session,
     *,
     job: SchedulerJobModel,
-    updated_at_in_seconds: int,
+    updated_at: datetime,
 ) -> None:
     existing_job = session.get(SchedulerJobModel, job.id)
     if existing_job is None:
         return
 
     existing_job.locked_by = None
-    existing_job.locked_at_in_seconds = None
-    existing_job.updated_at_in_seconds = updated_at_in_seconds
+    existing_job.locked_at = None
+    existing_job.updated_at = updated_at
     session.flush()
 
 
@@ -362,7 +361,7 @@ def _ensure_timer_start_system_user(
     session: Session,
     *,
     tenant_id: str,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> UserModel:
     tenant = session.scalar(
         select(M8flowTenantModel).where(
@@ -392,13 +391,13 @@ def _ensure_timer_start_system_user(
             service=tenant.id,
             service_id=service_id,
             display_name="Timer Start System",
-            created_at_in_seconds=occurred_at,
-            updated_at_in_seconds=occurred_at,
+            created_at=occurred_at,
+            updated_at=occurred_at,
         )
         session.add(system_user)
         session.flush()
     else:
-        system_user.updated_at_in_seconds = occurred_at
+        system_user.updated_at = occurred_at
         session.flush()
 
     ensure_v1_role(
@@ -415,7 +414,7 @@ def _reschedule_or_delete_timer_start_job(
     *,
     job: SchedulerJobModel,
     timer_task_payload: Mapping[str, object],
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     next_timer_task_payload = _next_timer_start_task_payload_after_fire(
         timer_task_payload
@@ -434,12 +433,14 @@ def _reschedule_or_delete_timer_start_job(
         job_key=job.job_key,
         job_type=SchedulerJobType.timer_start,
         bpmn_process_definition_id=job.bpmn_process_definition_id,
-        run_at_in_seconds=next_timer_task_payload["run_at_in_seconds"],
+        run_at=datetime.fromtimestamp(
+            float(next_timer_task_payload["run_at_in_seconds"]), UTC
+        ),
         payload_json={
             "scheduled_from": "timer_start_runtime",
             "timer_task": next_timer_task_payload,
         },
-        updated_at_in_seconds=occurred_at,
+        updated_at=occurred_at,
     )
 
 
@@ -497,9 +498,9 @@ def _parse_scheduler_job_due_at(value: str) -> datetime:
     return due_at
 
 
-def _resolve_timestamp(timestamp_in_seconds: int | None) -> int:
-    return (
-        timestamp_in_seconds
-        if timestamp_in_seconds is not None
-        else round(time.time())
-    )
+def _resolve_timestamp(timestamp: datetime | int | float | None) -> datetime:
+    if isinstance(timestamp, datetime):
+        return timestamp
+    if timestamp is not None:
+        return datetime.fromtimestamp(float(timestamp), UTC)
+    return datetime.now(UTC)

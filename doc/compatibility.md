@@ -1,7 +1,9 @@
 # Compatibility Baseline
 
 This document records the Phase 0 compatibility surface for consumers such as
-`m8flow`. It is intentionally a baseline, not a redesign proposal.
+`m8flow`. The `f7a8b9c0d1e2` migration is an explicit breaking transition
+away from the legacy epoch persistence columns; downstream reconciliation is
+required before applying that revision.
 
 ## Public API
 
@@ -10,8 +12,8 @@ command/query dataclasses, error hierarchy, and public enum values are treated
 as compatibility-sensitive.
 
 Commands and queries are frozen, slotted dataclasses. `tenant_id` is the first
-field on every command and query. Existing timestamp inputs use the
-`*_in_seconds` naming convention and remain part of the compatibility surface.
+field on every command and query. Timestamp inputs use timezone-aware UTC
+`datetime` values.
 
 The public dispatchers return the underlying service results directly. In
 practice, callers can receive SQLAlchemy models such as process instances,
@@ -32,8 +34,8 @@ coordinated consumer migration:
   `human_task_user`, `future_task`
 - `json_data`, `process_instance_event`, `process_instance_metadata`,
   `scheduler_job`
-- epoch attributes such as `created_at_in_seconds`, `updated_at_in_seconds`,
-  `start_in_seconds`, `end_in_seconds`, and `timestamp`
+- timezone-aware attributes such as `created_at`, `updated_at`, `started_at`,
+  `ended_at`, and `occurred_at`
 - `ProcessInstanceEventType` and `ProcessInstanceStatus` values
 - `ProcessInstanceModel.spiff_serializer_version`
 
@@ -53,32 +55,32 @@ Until a consumer migration is complete:
 The executable baseline for these rules is in
 `tests/test_compatibility_contract.py`.
 
-## Phase 2 timestamp compatibility layer
+## Timestamp removal transition
 
-Phase 2 adds nullable UTC-aware DateTime columns alongside the existing epoch
-columns. The legacy fields remain available for existing callers and are
-dual-written by the ORM model hooks. Existing epoch values populate the native
-columns on insert/update, while callers that write a native DateTime value also
-receive the corresponding legacy epoch value.
+The additive migration first adds nullable UTC-aware DateTime columns alongside
+the existing epoch columns and backfills them.
 
 The additive migration is
 `d2e4f6a8b0c1_add_datetime_compatibility_columns.py`. It backfills the native
 columns from existing epoch values and does not remove or rename any existing
-column. Removing the legacy fields remains a future breaking migration.
+column. The follow-up migration
+`f7a8b9c0d1e2_remove_legacy_epoch_columns.py` removes the legacy persistence
+columns. This release's ORM and service layer use only the native datetime
+columns, so the removal migration can be applied without runtime queries that
+reference dropped columns. Consumers must migrate command inputs, queries,
+serializers, and fixtures before applying it; its downgrade recreates empty
+columns and cannot restore removed values.
 
 ## Part 6 public API compatibility
 
-The public command and query dataclasses continue to accept the existing
-`*_at_in_seconds` inputs, including values beyond 2038. Dispatch behavior,
-field ordering, tenant-first validation, returned ORM model types, and legacy
-epoch attributes are unchanged.
+The public command and query dataclasses accept timezone-aware datetime inputs.
+Dispatch behavior, field ordering, tenant-first validation, and returned ORM
+model types remain unchanged apart from timestamp field names.
 
 Returned models now expose additive timezone-aware DateTime attributes such as
 `created_at`, `updated_at`, `started_at`, `ended_at`, `run_at`, and
-`occurred_at`. Callers can migrate reads incrementally: existing consumers can
-continue reading epoch attributes, while new consumers should prefer the native
-UTC-aware attributes. The ORM keeps both representations synchronized, with a
-native DateTime value taking precedence when both values are supplied.
+`occurred_at`. Callers must migrate reads and writes to these native UTC-aware
+attributes before the destructive schema migration is applied.
 
 ## Phase 3 work-item compatibility layer
 

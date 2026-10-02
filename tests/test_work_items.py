@@ -19,7 +19,7 @@ def _work_item() -> SimpleNamespace:
         completed_by_user_id=None,
         task_status=WorkItemState.READY.value,
         completed=False,
-        updated_at_in_seconds=None,
+        updated_at=None,
     )
 
 
@@ -32,7 +32,7 @@ def _companion() -> SimpleNamespace:
         completed_by_user_id=None,
         task_status=WorkItemState.READY.value,
         completed=False,
-        updated_at_in_seconds=None,
+        updated_at=None,
     )
 
 
@@ -45,17 +45,17 @@ def test_work_item_claim_and_complete_transitions_preserve_legacy_fields() -> No
     assert work_item.actual_owner_id == 7
     assert work_item.task_status == WorkItemState.CLAIMED.value
     assert work_item.completed is False
-    assert work_item.updated_at_in_seconds == 100
+    assert work_item.updated_at.timestamp() == 100
 
     complete_work_item(work_item, user_id=7, occurred_at=110)
     assert work_item.completed is True
     assert work_item.completed_by_user_id == 7
     assert work_item.task_status == WorkItemState.COMPLETED.value
-    assert work_item.updated_at_in_seconds == 110
+    assert work_item.updated_at.timestamp() == 110
     assert work_item.work_item.completed is True
     assert work_item.work_item.actual_owner_id == 7
     assert work_item.work_item.task_status == WorkItemState.COMPLETED.value
-    assert work_item.work_item.updated_at_in_seconds == 110
+    assert work_item.work_item.updated_at.timestamp() == 110
 
 
 def test_work_item_close_and_reopen_transitions() -> None:
@@ -78,7 +78,7 @@ def test_work_item_close_and_reopen_transitions() -> None:
     assert work_item.actual_owner_id is None
     assert work_item.completed_by_user_id is None
     assert work_item.task_status == WorkItemState.READY.value
-    assert work_item.updated_at_in_seconds == 210
+    assert work_item.updated_at.timestamp() == 210
     assert work_item.work_item.completed is False
     assert work_item.work_item.task_status == WorkItemState.READY.value
-    assert work_item.work_item.updated_at_in_seconds == 210
+    assert work_item.work_item.updated_at.timestamp() == 210

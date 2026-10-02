@@ -97,11 +97,19 @@ Take another backup first, stop all writers, and verify the resulting schema
 and tenant data before restarting the application. Do not use downgrade as a
 substitute for restoring production data after a failed upgrade.
 
-## Compatibility expectations
+## Timestamp-column removal
 
-- Existing epoch timestamp inputs remain accepted by the public API.
-- Native timezone-aware timestamp attributes are populated and should be used
-  for new reads.
+The `f7a8b9c0d1e2` migration removes every legacy `*_in_seconds` persistence
+column from the core schema. The timezone-aware datetime columns added by
+`d2e4f6a8b0c1` are now canonical. Downstream applications must migrate their
+ORM queries, writes, serializers, and fixtures before applying this revision.
+
+The downgrade recreates empty compatibility columns only; it cannot restore
+values removed by the upgrade. Restore the pre-upgrade database backup when
+legacy timestamp values must be recovered.
+
+Other compatibility expectations:
+
 - JSON payload access must always use both tenant id and hash.
 - A successful migration must leave no staging table and must report the new
   Alembic head revision.

@@ -98,8 +98,8 @@ def test_user_group_principal_and_permission_assignment_link_up(
         service="http://localhost:7002/realms/tenant-a",
         service_id="alice-keycloak",
         display_name="Alice",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     group = GroupModel(
         name="Tenant A Manager",

@@ -52,7 +52,7 @@ def test_initialize_process_instance_rejects_initiator_from_other_tenant(
                 process_initiator_id=context.foreign_user.id,
                 summary="Cross-tenant workflow start should fail",
                 process_version=1,
-                started_at_in_seconds=100,
+                started_at=100,
                 bpmn_process_id="invoice_approval_poc",
             ),
         )
@@ -138,7 +138,7 @@ def test_claim_and_complete_task_reject_cross_tenant_users(
                 tenant_id=context.tenant.id,
                 human_task_id=context.human_task.id,
                 user_id=context.foreign_user.id,
-                completed_at_in_seconds=120,
+                completed_at=120,
             ),
         )
 
@@ -166,8 +166,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         service=tenant_service,
         service_id="tenant-user-keycloak",
         display_name="Tenant User",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     tenant_observer = UserModel(
         username="tenant-observer",
@@ -175,8 +175,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         service=tenant_service,
         service_id="tenant-observer-keycloak",
         display_name="Tenant Observer",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     foreign_user = UserModel(
         username="tenant-user",
@@ -184,8 +184,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         service=foreign_service,
         service_id="foreign-user-keycloak",
         display_name="Foreign User",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all(
         [tenant, foreign_tenant, tenant_user, tenant_observer, foreign_user]
@@ -203,8 +203,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=900,
-        updated_at_in_seconds=900,
+        created_at=900,
+        updated_at=900,
     )
     session.add(definition)
     session.flush()
@@ -228,8 +228,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         bpmn_name="Approve Expense",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at_in_seconds=950,
-        updated_at_in_seconds=950,
+        created_at=950,
+        updated_at=950,
     )
     session.add(task_definition)
     session.flush()
@@ -242,8 +242,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at_in_seconds=1_000,
-        updated_at_in_seconds=1_000,
+        created_at=1_000,
+        updated_at=1_000,
     )
     session.add(process_instance)
     session.flush()
@@ -259,8 +259,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=901,
-        updated_at_in_seconds=901,
+        created_at=901,
+        updated_at=901,
     )
     session.add(foreign_definition)
     session.flush()
@@ -284,8 +284,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         bpmn_name="Approve Expense",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at_in_seconds=951,
-        updated_at_in_seconds=951,
+        created_at=951,
+        updated_at=951,
     )
     session.add(foreign_task_definition)
     session.flush()
@@ -298,8 +298,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         bpmn_process_definition_id=foreign_definition.id,
         bpmn_process_id=foreign_bpmn_process.id,
         status="running",
-        created_at_in_seconds=1_001,
-        updated_at_in_seconds=1_001,
+        created_at=1_001,
+        updated_at=1_001,
     )
     session.add(foreign_process_instance)
     session.flush()

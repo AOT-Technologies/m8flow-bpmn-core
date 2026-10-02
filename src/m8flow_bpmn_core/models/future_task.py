@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import time
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import BIGINT, Boolean, DateTime, ForeignKey
+from sqlalchemy import Boolean, DateTime, ForeignKey
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -16,22 +15,17 @@ from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantSc
 
 class FutureTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "future_task"
-    __timestamp_compatibility_pairs__ = (
-        ("run_at_in_seconds", "run_at"),
-        ("queued_to_run_at_in_seconds", "queued_to_run_at"),
-        ("updated_at_in_seconds", "updated_at"),
-    )
-
     guid: Mapped[str] = mapped_column(
         ForeignKey(
             "task.guid", ondelete="CASCADE", name="m8f_future_task_task_guid_fk"
         ),
         primary_key=True,
     )
-    run_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False, index=True)
-    queued_to_run_at_in_seconds: Mapped[int | None] = mapped_column(
-        BIGINT,
-        index=True,
+    run_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    queued_to_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
     )
     completed: Mapped[bool] = mapped_column(
         Boolean,
@@ -46,15 +40,8 @@ class FutureTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
         nullable=False,
         index=True,
     )
-    updated_at_in_seconds: Mapped[int] = mapped_column(BIGINT, nullable=False)
-    run_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    queued_to_run_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
     )
 
     task_model = relationship("TaskModel", back_populates="future_task")
@@ -66,17 +53,21 @@ class FutureTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
         *,
         tenant_id: str,
         guid: str,
-        run_at_in_seconds: int,
-        queued_to_run_at_in_seconds: int | None = None,
+        run_at: datetime,
+        queued_to_run_at: datetime | None = None,
     ) -> None:
-        task_info: dict[str, int | str | None] = {
+        run_at = _as_datetime(run_at)
+        queued_to_run_at = (
+            _as_datetime(queued_to_run_at) if queued_to_run_at is not None else None
+        )
+        task_info: dict[str, object] = {
             "m8f_tenant_id": tenant_id,
             "guid": guid,
-            "run_at_in_seconds": run_at_in_seconds,
-            "updated_at_in_seconds": round(time.time()),
+            "run_at": run_at,
+            "updated_at": datetime.now(UTC),
         }
-        if queued_to_run_at_in_seconds is not None:
-            task_info["queued_to_run_at_in_seconds"] = queued_to_run_at_in_seconds
+        if queued_to_run_at is not None:
+            task_info["queued_to_run_at"] = queued_to_run_at
 
         new_values = task_info.copy()
         del new_values["guid"]
@@ -107,11 +98,17 @@ class FutureTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
                 cls(
                     guid=guid,
                     m8f_tenant_id=tenant_id,
-                    run_at_in_seconds=run_at_in_seconds,
-                    queued_to_run_at_in_seconds=queued_to_run_at_in_seconds,
-                    updated_at_in_seconds=task_info["updated_at_in_seconds"],
+                    run_at=run_at,
+                    queued_to_run_at=queued_to_run_at,
+                    updated_at=task_info["updated_at"],
                 )
             )
             return
 
         session.execute(on_duplicate_key_stmt)
+
+
+def _as_datetime(value: datetime | int | float) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromtimestamp(float(value), UTC)

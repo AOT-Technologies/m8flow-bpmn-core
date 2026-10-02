@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BIGINT, JSON, Boolean, DateTime, ForeignKey, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
@@ -12,11 +12,6 @@ from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantSc
 
 class HumanTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "human_task"
-    __timestamp_compatibility_pairs__ = (
-        ("created_at_in_seconds", "created_at"),
-        ("updated_at_in_seconds", "updated_at"),
-    )
-
     id: Mapped[int] = mapped_column(primary_key=True)
     process_instance_id: Mapped[int] = mapped_column(
         ForeignKey("process_instance.id"),
@@ -37,8 +32,6 @@ class HumanTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
     )
     form_file_name: Mapped[str | None] = mapped_column(String(255))
     ui_form_file_name: Mapped[str | None] = mapped_column(String(255))
-    updated_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
-    created_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

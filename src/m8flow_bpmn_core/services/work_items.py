@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -47,13 +48,17 @@ def ensure_work_item(session: Session, human_task: HumanTaskModel) -> WorkItemMo
             actual_owner_id=human_task.actual_owner_id,
             task_status=human_task.task_status,
             completed=human_task.completed,
-            created_at_in_seconds=human_task.created_at_in_seconds,
-            updated_at_in_seconds=human_task.updated_at_in_seconds,
             created_at=human_task.created_at,
             updated_at=human_task.updated_at,
         )
         session.add(companion)
     return companion
+
+
+def _as_datetime(value: datetime | int | float) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromtimestamp(float(value), UTC)
 
 
 def _sync_companion_work_item(work_item: Any) -> None:
@@ -70,7 +75,7 @@ def _sync_companion_work_item(work_item: Any) -> None:
         "actual_owner_id",
         "task_status",
         "completed",
-        "updated_at_in_seconds",
+        "updated_at",
     ):
         if hasattr(work_item, field) and hasattr(companion, field):
             setattr(companion, field, getattr(work_item, field))
@@ -80,12 +85,12 @@ def claim_work_item(
     work_item: Any,
     *,
     user_id: int,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     work_item.task_id = work_item.task_id or work_item.task_guid
     work_item.actual_owner_id = user_id
     work_item.task_status = WorkItemState.CLAIMED.value
-    work_item.updated_at_in_seconds = occurred_at
+    work_item.updated_at = _as_datetime(occurred_at)
     _sync_companion_work_item(work_item)
 
 
@@ -93,14 +98,14 @@ def complete_work_item(
     work_item: Any,
     *,
     user_id: int,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     work_item.completed = True
     work_item.completed_by_user_id = user_id
     work_item.actual_owner_id = user_id
     work_item.task_status = WorkItemState.COMPLETED.value
     work_item.task_id = work_item.task_id or work_item.task_guid
-    work_item.updated_at_in_seconds = occurred_at
+    work_item.updated_at = _as_datetime(occurred_at)
     _sync_companion_work_item(work_item)
 
 
@@ -108,35 +113,35 @@ def close_work_item(
     work_item: Any,
     *,
     state: WorkItemState,
-    occurred_at: int,
+    occurred_at: datetime,
     user_id: int | None = None,
 ) -> None:
     work_item.completed = True
     work_item.completed_by_user_id = user_id
     work_item.task_status = state.value
-    work_item.updated_at_in_seconds = occurred_at
+    work_item.updated_at = _as_datetime(occurred_at)
     if user_id is not None:
         work_item.actual_owner_id = user_id
     _sync_companion_work_item(work_item)
 
 
-def reopen_work_item(work_item: Any, *, occurred_at: int) -> None:
+def reopen_work_item(work_item: Any, *, occurred_at: datetime) -> None:
     work_item.completed = False
     work_item.completed_by_user_id = None
     work_item.actual_owner_id = None
     work_item.task_status = WorkItemState.READY.value
-    work_item.updated_at_in_seconds = occurred_at
+    work_item.updated_at = _as_datetime(occurred_at)
     _sync_companion_work_item(work_item)
 
 
 def prepare_work_item_for_ready_state(
     work_item: Any,
     *,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     work_item.task_status = WorkItemState.READY.value
     work_item.completed = False
     work_item.completed_by_user_id = None
     work_item.actual_owner_id = None
-    work_item.updated_at_in_seconds = occurred_at
+    work_item.updated_at = _as_datetime(occurred_at)
     _sync_companion_work_item(work_item)

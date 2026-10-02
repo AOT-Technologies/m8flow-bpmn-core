@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String
+from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from m8flow_bpmn_core.models.base import Base
@@ -84,8 +84,6 @@ def event_category_for_type(
 
 class ProcessInstanceEventModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "process_instance_event"
-    __timestamp_compatibility_pairs__ = (("timestamp", "occurred_at"),)
-
     id: Mapped[int] = mapped_column(primary_key=True)
     task_guid: Mapped[str | None] = mapped_column(String(36), index=True)
     process_instance_id: Mapped[int] = mapped_column(
@@ -95,13 +93,8 @@ class ProcessInstanceEventModel(M8fTenantScopedMixin, TenantScoped, Base):
     )
     event_type: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
     category: Mapped[str | None] = mapped_column(String(20), index=True)
-    timestamp: Mapped[float] = mapped_column(
-        Numeric(17, 6),
-        index=True,
-        nullable=False,
-    )
     occurred_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime(timezone=True), nullable=False, index=True
     )
     user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"), index=True)
 

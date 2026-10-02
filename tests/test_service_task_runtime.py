@@ -109,8 +109,8 @@ def test_service_tasks_execute_before_and_after_manual_task(
                 properties_json={
                     "lane_owners": {"Operations": [user.username]},
                 },
-                created_at_in_seconds=10,
-                updated_at_in_seconds=10,
+                created_at=10,
+                updated_at=10,
             ),
         )
         process_instance = api.execute_command(
@@ -120,7 +120,7 @@ def test_service_tasks_execute_before_and_after_manual_task(
                 bpmn_process_definition_id=definition.id,
                 process_initiator_id=user.id,
                 submission_metadata={"submission_message": "hello-service-task"},
-                started_at_in_seconds=20,
+                started_at=20,
             ),
         )
 
@@ -161,7 +161,7 @@ def test_service_tasks_execute_before_and_after_manual_task(
                 tenant_id=tenant.id,
                 human_task_id=pending_tasks[0].id,
                 user_id=user.id,
-                completed_at_in_seconds=30,
+                completed_at=30,
                 task_payload={"decision": "approved"},
             ),
         )
@@ -208,8 +208,8 @@ def test_lane_owners_sync_into_lane_group_membership_on_import(
             properties_json={
                 "lane_owners": {"Operations": [user.username]},
             },
-            created_at_in_seconds=10,
-            updated_at_in_seconds=10,
+            created_at=10,
+            updated_at=10,
         ),
     )
 
@@ -293,8 +293,8 @@ def test_group_membership_assigns_lane_tasks_without_lane_owners(
         service="http://localhost:7002/realms/tenant-service-task-runtime",
         service_id="group-reviewer-keycloak",
         display_name="Group Reviewer",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add(reviewer)
     session.flush()
@@ -335,8 +335,8 @@ def test_group_membership_assigns_lane_tasks_without_lane_owners(
                 bpmn_name="Service Task Runtime Group Membership POC",
                 source_bpmn_xml=bpmn_xml,
                 properties_json={},
-                created_at_in_seconds=10,
-                updated_at_in_seconds=10,
+                created_at=10,
+                updated_at=10,
             ),
         )
         api.execute_command(
@@ -346,7 +346,7 @@ def test_group_membership_assigns_lane_tasks_without_lane_owners(
                 bpmn_process_definition_id=definition.id,
                 process_initiator_id=admin.id,
                 submission_metadata={"submission_message": "hello-group-reviewer"},
-                started_at_in_seconds=20,
+                started_at=20,
             ),
         )
 
@@ -381,8 +381,8 @@ def test_empty_lane_does_not_block_process_start(
                 bpmn_name="Service Task Runtime Empty Lane POC",
                 source_bpmn_xml=bpmn_xml,
                 properties_json={},
-                created_at_in_seconds=10,
-                updated_at_in_seconds=10,
+                created_at=10,
+                updated_at=10,
             ),
         )
         process_instance = api.execute_command(
@@ -392,7 +392,7 @@ def test_empty_lane_does_not_block_process_start(
                 bpmn_process_definition_id=definition.id,
                 process_initiator_id=admin.id,
                 submission_metadata={"submission_message": "hello-empty-lane"},
-                started_at_in_seconds=20,
+                started_at=20,
             ),
         )
 
@@ -416,8 +416,8 @@ def test_empty_lane_does_not_block_process_start(
         service="http://localhost:7002/realms/tenant-service-task-runtime",
         service_id="late-group-reviewer-keycloak",
         display_name="Late Group Reviewer",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add(reviewer)
     session.flush()
@@ -472,8 +472,8 @@ def test_missing_service_task_connector_surfaces_service_task_execution_error(
                 properties_json={
                     "lane_owners": {"Operations": [user.username]},
                 },
-                created_at_in_seconds=10,
-                updated_at_in_seconds=10,
+                created_at=10,
+                updated_at=10,
             ),
         )
         with pytest.raises(api.ServiceTaskExecutionError) as exc_info:
@@ -484,7 +484,7 @@ def test_missing_service_task_connector_surfaces_service_task_execution_error(
                     bpmn_process_definition_id=definition.id,
                     process_initiator_id=user.id,
                     submission_metadata={"submission_message": "hello-service-task"},
-                    started_at_in_seconds=20,
+                    started_at=20,
                 ),
             )
 
@@ -497,8 +497,8 @@ def test_missing_service_task_connector_surfaces_service_task_execution_error(
     )
     assert len(process_instances) == 1
     assert process_instances[0].status == api.ProcessInstanceStatus.error
-    assert process_instances[0].start_in_seconds == 20
-    assert process_instances[0].end_in_seconds == 20
+    assert process_instances[0].started_at.timestamp() == 20
+    assert process_instances[0].ended_at.timestamp() == 20
     assert (
         api.execute_query(
             session,
@@ -548,8 +548,8 @@ def test_service_task_failure_persists_error_state_across_session_scope_rollback
                 properties_json={
                     "lane_owners": {"Operations": [user.username]},
                 },
-                created_at_in_seconds=10,
-                updated_at_in_seconds=10,
+                created_at=10,
+                updated_at=10,
             ),
         )
         tenant_id = tenant.id
@@ -568,7 +568,7 @@ def test_service_task_failure_persists_error_state_across_session_scope_rollback
                         submission_metadata={
                             "submission_message": "hello-service-task"
                         },
-                        started_at_in_seconds=20,
+                        started_at=20,
                     ),
                 )
 
@@ -580,8 +580,8 @@ def test_service_task_failure_persists_error_state_across_session_scope_rollback
 
         assert len(process_instances) == 1
         assert process_instances[0].status == api.ProcessInstanceStatus.error
-        assert process_instances[0].start_in_seconds == 20
-        assert process_instances[0].end_in_seconds == 20
+        assert process_instances[0].started_at.timestamp() == 20
+        assert process_instances[0].ended_at.timestamp() == 20
 
         events = api.execute_query(
             verification_session,
@@ -622,8 +622,8 @@ def test_initialize_workflow_service_task_failure_persists_error_state_across_ro
                 properties_json={
                     "lane_owners": {"Operations": [user.username]},
                 },
-                created_at_in_seconds=10,
-                updated_at_in_seconds=10,
+                created_at=10,
+                updated_at=10,
             ),
         )
         process_model_identifier = (
@@ -641,7 +641,7 @@ def test_initialize_workflow_service_task_failure_persists_error_state_across_ro
                 },
                 summary="initialize-workflow-session-scope",
                 process_version=1,
-                started_at_in_seconds=15,
+                started_at=15,
                 bpmn_process_id=None,
             )
         )
@@ -658,7 +658,7 @@ def test_initialize_workflow_service_task_failure_persists_error_state_across_ro
                         process_instance_id=process_instance_id,
                         bpmn_xml=bpmn_xml,
                         bpmn_process_id=selected_process_id,
-                        started_at_in_seconds=20,
+                        started_at=20,
                     ),
                 )
 
@@ -672,8 +672,8 @@ def test_initialize_workflow_service_task_failure_persists_error_state_across_ro
         )
 
         assert process_instance.status == api.ProcessInstanceStatus.error
-        assert process_instance.start_in_seconds == 20
-        assert process_instance.end_in_seconds == 20
+        assert process_instance.started_at.timestamp() == 20
+        assert process_instance.ended_at.timestamp() == 20
 
         events = api.execute_query(
             verification_session,
@@ -712,8 +712,8 @@ def test_retry_service_task_failure_persists_error_state_across_session_scope_ro
                 properties_json={
                     "lane_owners": {"Operations": [user.username]},
                 },
-                created_at_in_seconds=10,
-                updated_at_in_seconds=10,
+                created_at=10,
+                updated_at=10,
             ),
         )
         tenant_id = tenant.id
@@ -735,7 +735,7 @@ def test_retry_service_task_failure_persists_error_state_across_session_scope_ro
                         submission_metadata={
                             "submission_message": "hello-service-task"
                         },
-                        started_at_in_seconds=20,
+                        started_at=20,
                     ),
                 )
 
@@ -747,7 +747,7 @@ def test_retry_service_task_failure_persists_error_state_across_session_scope_ro
         assert len(process_instances) == 1
         process_instance_id = process_instances[0].id
         assert process_instances[0].status == api.ProcessInstanceStatus.error
-        assert process_instances[0].end_in_seconds == 20
+        assert process_instances[0].ended_at.timestamp() == 20
 
     with api.service_task_registry_scope(failing_registry):
         with pytest.raises(api.ServiceTaskExecutionError):
@@ -758,7 +758,7 @@ def test_retry_service_task_failure_persists_error_state_across_session_scope_ro
                         tenant_id=tenant_id,
                         process_instance_id=process_instance_id,
                         user_id=user_id,
-                        retried_at_in_seconds=30,
+                        retried_at=30,
                     ),
                 )
 
@@ -771,8 +771,8 @@ def test_retry_service_task_failure_persists_error_state_across_session_scope_ro
             ),
         )
         assert process_instance.status == api.ProcessInstanceStatus.error
-        assert process_instance.start_in_seconds == 20
-        assert process_instance.end_in_seconds == 30
+        assert process_instance.started_at.timestamp() == 20
+        assert process_instance.ended_at.timestamp() == 30
 
         events = api.execute_query(
             verification_session,
@@ -809,8 +809,8 @@ def test_autonomous_failure_persistence_skips_task_definition_sync(
             properties_json={
                 "lane_owners": {"Operations": [user.username]},
             },
-            created_at_in_seconds=10,
-            updated_at_in_seconds=10,
+            created_at=10,
+            updated_at=10,
         ),
     )
     process_model_identifier = definition.process_model_identifier or str(definition.id)
@@ -824,7 +824,7 @@ def test_autonomous_failure_persistence_skips_task_definition_sync(
             submission_metadata={"submission_message": "recovery-only"},
             summary="recovery-only",
             process_version=1,
-            started_at_in_seconds=15,
+            started_at=15,
             bpmn_process_id=None,
         )
     )
@@ -877,8 +877,8 @@ def test_autonomous_failure_persistence_skips_task_definition_sync(
     ).all()
 
     assert persisted_process_instance.status == api.ProcessInstanceStatus.error
-    assert persisted_process_instance.start_in_seconds == 20
-    assert persisted_process_instance.end_in_seconds == 20
+    assert persisted_process_instance.started_at.timestamp() == 20
+    assert persisted_process_instance.ended_at.timestamp() == 20
     assert persisted_process_instance.workflow_state_json is not None
     assert [event.event_type for event in persisted_events] == [
         api.ProcessInstanceEventType.task_failed.value,
@@ -907,8 +907,8 @@ def test_retry_process_instance_reruns_failed_service_task(
                 properties_json={
                     "lane_owners": {"Operations": [user.username]},
                 },
-                created_at_in_seconds=10,
-                updated_at_in_seconds=10,
+                created_at=10,
+                updated_at=10,
             ),
         )
         with pytest.raises(api.ServiceTaskExecutionError):
@@ -919,7 +919,7 @@ def test_retry_process_instance_reruns_failed_service_task(
                     bpmn_process_definition_id=definition.id,
                     process_initiator_id=user.id,
                     submission_metadata={"submission_message": "retry-me"},
-                    started_at_in_seconds=20,
+                    started_at=20,
                 ),
             )
 
@@ -936,7 +936,7 @@ def test_retry_process_instance_reruns_failed_service_task(
                 tenant_id=tenant.id,
                 process_instance_id=process_instance.id,
                 user_id=user.id,
-                retried_at_in_seconds=30,
+                retried_at=30,
             ),
         )
 
@@ -956,7 +956,7 @@ def test_retry_process_instance_reruns_failed_service_task(
         retried_process_instance.status
         == api.ProcessInstanceStatus.user_input_required
     )
-    assert retried_process_instance.end_in_seconds is None
+    assert retried_process_instance.ended_at is None
     assert len(pending_tasks) == 1
     assert pending_tasks[0].task_name == "Task_review"
     assert [request.operation_id for request in connector.recorded_requests] == [
@@ -995,8 +995,8 @@ def test_scheduled_retry_reruns_failed_service_task(
                 properties_json={
                     "lane_owners": {"Operations": [user.username]},
                 },
-                created_at_in_seconds=10,
-                updated_at_in_seconds=10,
+                created_at=10,
+                updated_at=10,
             ),
         )
         with pytest.raises(api.ServiceTaskExecutionError):
@@ -1007,7 +1007,7 @@ def test_scheduled_retry_reruns_failed_service_task(
                     bpmn_process_definition_id=definition.id,
                     process_initiator_id=user.id,
                     submission_metadata={"submission_message": "scheduled-retry"},
-                    started_at_in_seconds=20,
+                    started_at=20,
                 ),
             )
 
@@ -1021,8 +1021,8 @@ def test_scheduled_retry_reruns_failed_service_task(
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            retry_at_in_seconds=40,
-            scheduled_at_in_seconds=30,
+            retry_at=40,
+            scheduled_at=30,
         ),
     )
     connector.fail_operation_id = None
@@ -1030,7 +1030,7 @@ def test_scheduled_retry_reruns_failed_service_task(
     with api.service_task_registry_scope(registry):
         processed_count = api.run_due_scheduler_jobs(
             session,
-            now_in_seconds=40,
+            now=40,
             worker_id="service-task-retry-worker",
             tenant_id=tenant.id,
         )
@@ -1059,7 +1059,7 @@ def test_scheduled_retry_reruns_failed_service_task(
         refreshed_process_instance.status
         == api.ProcessInstanceStatus.user_input_required
     )
-    assert refreshed_process_instance.end_in_seconds is None
+    assert refreshed_process_instance.ended_at is None
     assert len(pending_tasks) == 1
     assert pending_tasks[0].task_name == "Task_review"
     assert [request.operation_id for request in connector.recorded_requests] == [
@@ -1094,8 +1094,8 @@ def test_failed_scheduled_retry_keeps_scheduler_job_available_for_retry(
                 properties_json={
                     "lane_owners": {"Operations": [user.username]},
                 },
-                created_at_in_seconds=10,
-                updated_at_in_seconds=10,
+                created_at=10,
+                updated_at=10,
             ),
         )
         with pytest.raises(api.ServiceTaskExecutionError):
@@ -1106,7 +1106,7 @@ def test_failed_scheduled_retry_keeps_scheduler_job_available_for_retry(
                     bpmn_process_definition_id=definition.id,
                     process_initiator_id=user.id,
                     submission_metadata={"submission_message": "scheduled-retry"},
-                    started_at_in_seconds=20,
+                    started_at=20,
                 ),
             )
 
@@ -1120,8 +1120,8 @@ def test_failed_scheduled_retry_keeps_scheduler_job_available_for_retry(
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            retry_at_in_seconds=40,
-            scheduled_at_in_seconds=30,
+            retry_at=40,
+            scheduled_at=30,
         ),
     )
 
@@ -1129,7 +1129,7 @@ def test_failed_scheduled_retry_keeps_scheduler_job_available_for_retry(
         with pytest.raises(api.ServiceTaskExecutionError):
             api.run_due_scheduler_jobs(
                 session,
-                now_in_seconds=40,
+                now=40,
                 worker_id="service-task-retry-worker",
                 tenant_id=tenant.id,
             )
@@ -1159,7 +1159,7 @@ def test_failed_scheduled_retry_keeps_scheduler_job_available_for_retry(
     assert persisted_scheduler_job is not None
     assert persisted_scheduler_job.job_key == scheduler_job.job_key
     assert persisted_scheduler_job.locked_by is None
-    assert persisted_scheduler_job.locked_at_in_seconds is None
+    assert persisted_scheduler_job.locked_at is None
     assert [event.event_type for event in events] == [
         api.ProcessInstanceEventType.task_failed.value,
         api.ProcessInstanceEventType.process_instance_error.value,
@@ -1180,8 +1180,8 @@ def _seed_tenant_and_admin(
         service="http://localhost:7002/realms/tenant-service-task-runtime",
         service_id="service-admin-keycloak",
         display_name="Service Admin",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, user])
     session.flush()

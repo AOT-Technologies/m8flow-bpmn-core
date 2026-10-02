@@ -25,8 +25,8 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
         service=service_url,
         service_id="alice-keycloak",
         display_name="Alice",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
 
     session.add_all([tenant, user])
@@ -47,8 +47,8 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=900,
-        updated_at_in_seconds=900,
+        created_at=900,
+        updated_at=900,
     )
     session.add(definition)
     session.flush()
@@ -72,8 +72,8 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at_in_seconds=950,
-        updated_at_in_seconds=950,
+        created_at=950,
+        updated_at=950,
     )
     session.add(task_definition)
     session.flush()
@@ -86,8 +86,8 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at_in_seconds=1_000,
-        updated_at_in_seconds=1_000,
+        created_at=1_000,
+        updated_at=1_000,
     )
     session.add(process_instance)
     session.flush()
@@ -139,21 +139,21 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
         session,
         tenant_id=tenant.id,
         guid=task.guid,
-        run_at_in_seconds=100,
-        queued_to_run_at_in_seconds=90,
+        run_at=100,
+        queued_to_run_at=90,
     )
     FutureTaskModel.insert_or_update(
         session,
         tenant_id=tenant.id,
         guid=task.guid,
-        run_at_in_seconds=200,
-        queued_to_run_at_in_seconds=150,
+        run_at=200,
+        queued_to_run_at=150,
     )
 
     future_task = session.get(FutureTaskModel, task.guid)
     assert future_task is not None
-    assert future_task.run_at_in_seconds == 200
-    assert future_task.queued_to_run_at_in_seconds == 150
+    assert future_task.run_at.timestamp() == 200
+    assert future_task.queued_to_run_at.timestamp() == 150
     assert future_task.completed is False
 
     claimed_task = claim_task(
@@ -174,13 +174,13 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
         tenant_id=tenant.id,
         human_task_id=human_task.id,
         user_id=user.id,
-        completed_at_in_seconds=1_234,
+        completed_at=1_234,
     )
     assert completed_task.completed is True
     assert completed_task.completed_by_user_id == user.id
     assert completed_task.task_status == "COMPLETED"
     assert completed_task.task_model.state == "COMPLETED"
-    assert completed_task.task_model.end_in_seconds == 1_234
+    assert completed_task.task_model.ended_at.timestamp() == 1_234
 
     future_task = session.get(FutureTaskModel, task.guid)
     assert future_task is not None

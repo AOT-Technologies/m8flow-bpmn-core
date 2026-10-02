@@ -144,7 +144,7 @@ def test_authorization_specs_resolve_command_keys_and_actor_fields() -> None:
         process_initiator_id=456,
         summary="Start",
         process_version=1,
-        started_at_in_seconds=100,
+        started_at=100,
         bpmn_process_id="Process_1",
     )
     start_spec = authorization_spec_for_command(start_command)
@@ -496,8 +496,8 @@ def _seed_tenant_and_user(
         service=f"http://localhost:7002/realms/{tenant_id}",
         service_id=f"user-{tenant_id}-keycloak",
         display_name=f"User {tenant_id}",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, user])
     session.flush()

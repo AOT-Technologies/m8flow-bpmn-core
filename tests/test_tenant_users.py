@@ -30,8 +30,8 @@ def test_user_belongs_to_tenant_accepts_shared_realm_membership_fields(
         display_name="Alice",
         tenant_specific_field_1=tenant.id,
         tenant_specific_field_2=tenant.slug,
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     foreign_user = UserModel(
         username="bob",
@@ -41,8 +41,8 @@ def test_user_belongs_to_tenant_accepts_shared_realm_membership_fields(
         display_name="Bob",
         tenant_specific_field_1=foreign_tenant.id,
         tenant_specific_field_2=foreign_tenant.slug,
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, foreign_tenant, tenant_user, foreign_user])
     session.flush()

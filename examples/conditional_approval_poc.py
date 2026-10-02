@@ -302,8 +302,8 @@ def _current_timestamp() -> int:
     return round(time.time())
 
 
-def _offset_timestamp(timestamp: int, offset_seconds: int) -> int:
-    return max(1, timestamp + offset_seconds)
+def _offset_timestamp(occurred_at: int, offset_seconds: int) -> int:
+    return max(1, occurred_at + offset_seconds)
 
 
 def _current_date_string() -> str:
@@ -1021,8 +1021,8 @@ def _align_shared_db_tenant_with_keycloak_organization(
         status=tenant.status,
         created_by=tenant.created_by,
         modified_by=tenant.modified_by,
-        created_at_in_seconds=tenant.created_at_in_seconds,
-        updated_at_in_seconds=tenant.updated_at_in_seconds,
+        created_at=tenant.created_at,
+        updated_at=tenant.updated_at,
     )
     session.add(canonical_tenant)
     session.flush()
@@ -1251,7 +1251,7 @@ def _seed_demo_context(
         process_display_name="Observer Noise Example",
         task_title="Observer Noise Task",
         lane_name="Noise Lane",
-        created_at_in_seconds=seed_anchor,
+        created_at=seed_anchor,
         warnings=warnings,
     )
     foreign_noise_process_instance, foreign_noise_task = _seed_noise_work_item(
@@ -1262,7 +1262,7 @@ def _seed_demo_context(
         process_display_name="Foreign Noise Example",
         task_title="Foreign Noise Task",
         lane_name="Noise Lane",
-        created_at_in_seconds=_offset_timestamp(seed_anchor, 10),
+        created_at=_offset_timestamp(seed_anchor, 10),
         warnings=warnings,
     )
     _realign_existing_example_process_model_identifiers(
@@ -1554,8 +1554,8 @@ def _get_or_create_user(
             user = sorted(
                 matching_users,
                 key=lambda candidate: (
-                    int(candidate.updated_at_in_seconds or 0),
-                    int(candidate.created_at_in_seconds or 0),
+            candidate.updated_at.timestamp() if candidate.updated_at else 0,
+            candidate.created_at.timestamp() if candidate.created_at else 0,
                     int(candidate.id or 0),
                 ),
                 reverse=True,
@@ -1588,8 +1588,8 @@ def _get_or_create_user(
                 if len(tenant_membership_identifiers) > 2
                 else None
             ),
-            created_at_in_seconds=current_timestamp,
-            updated_at_in_seconds=current_timestamp,
+            created_at=current_timestamp,
+            updated_at=current_timestamp,
         )
         session.add(user)
         session.flush()
@@ -1620,7 +1620,7 @@ def _get_or_create_user(
         if len(tenant_membership_identifiers) > 2
         else None
     )
-    user.updated_at_in_seconds = current_timestamp
+    user.updated_at = current_timestamp
     session.flush()
     _ensure_principal_row_for_user(session, user=user, warnings=warnings)
     return user
@@ -1671,7 +1671,7 @@ def _seed_noise_work_item(
     process_display_name: str,
     task_title: str,
     lane_name: str,
-    created_at_in_seconds: int,
+    created_at: int,
     warnings: list[str],
 ) -> tuple[ProcessInstanceModel, HumanTaskModel]:
     task_guid = f"{label}-task"
@@ -1743,8 +1743,8 @@ def _seed_noise_work_item(
         properties_json={"version": 1, "noise": True, "label": label},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=created_at_in_seconds - 10,
-        updated_at_in_seconds=created_at_in_seconds - 10,
+        created_at=created_at - 10,
+        updated_at=created_at - 10,
     )
     definition.source_bpmn_xml = source_bpmn_xml
     session.add(definition)
@@ -1769,8 +1769,8 @@ def _seed_noise_work_item(
         bpmn_name=task_title,
         typename="UserTask",
         properties_json={"allowGuest": False, "noise": True},
-        created_at_in_seconds=created_at_in_seconds - 5,
-        updated_at_in_seconds=created_at_in_seconds - 5,
+        created_at=created_at - 5,
+        updated_at=created_at - 5,
     )
     session.add(task_definition)
     session.flush()
@@ -1783,8 +1783,8 @@ def _seed_noise_work_item(
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at_in_seconds=created_at_in_seconds,
-        updated_at_in_seconds=created_at_in_seconds,
+        created_at=created_at,
+        updated_at=created_at,
     )
     session.add(process_instance)
     session.flush()
@@ -1852,13 +1852,13 @@ def _reset_noise_work_item(
     task_identifier = f"{label.replace('-', '_')}_task"
     task.state = TaskState.READY
     task.properties_json = {"task_spec": task_title, "noise": True}
-    task.start_in_seconds = None
-    task.end_in_seconds = None
+    task.started_at = None
+    task.ended_at = None
 
     process_instance.status = "running"
     process_instance.process_model_identifier = f"{label}-process"
     process_instance.process_model_display_name = process_display_name
-    process_instance.end_in_seconds = None
+    process_instance.ended_at = None
 
     human_task.completed = False
     human_task.completed_by_user_id = None
@@ -1934,8 +1934,8 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             },
             bpmn_version_control_type="git",
             bpmn_version_control_identifier="main",
-            created_at_in_seconds=definition_created_at,
-            updated_at_in_seconds=definition_created_at,
+            created_at=definition_created_at,
+            updated_at=definition_created_at,
         ),
     )
     _print_note(
@@ -1963,7 +1963,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             process_initiator_id=context.user_ids["requester"],
             summary=f"Scenario: {context.scenario_name}",
             process_version=1,
-            started_at_in_seconds=process_started_at,
+            started_at=process_started_at,
             bpmn_process_id=CONDITIONAL_APPROVAL_PROCESS_ID,
         ),
     )
@@ -2020,7 +2020,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             tenant_id=context.tenant_id,
             human_task_id=submit_task.id,
             user_id=context.user_ids["requester"],
-            completed_at_in_seconds=submit_completed_at,
+            completed_at=submit_completed_at,
             task_payload=submission_payload,
         ),
     )
@@ -2130,7 +2130,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             tenant_id=context.tenant_id,
             human_task_id=manager_task.id,
             user_id=context.user_ids["manager"],
-            completed_at_in_seconds=manager_completed_at,
+            completed_at=manager_completed_at,
             task_payload={"decision": MANAGER_DECISION},
         ),
     )
@@ -2220,7 +2220,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
                 tenant_id=context.tenant_id,
                 human_task_id=finance_task.id,
                 user_id=context.user_ids["finance"],
-                completed_at_in_seconds=finance_completed_at,
+                completed_at=finance_completed_at,
                 task_payload={"finance_decision": FINANCE_DECISION},
             ),
         )
@@ -2356,7 +2356,7 @@ def _run_rbac_checks(
             process_initiator_id=context.user_ids["observer"],
             summary="Unauthorized start attempt",
             process_version=1,
-            started_at_in_seconds=unauthorized_process_start_at,
+            started_at=unauthorized_process_start_at,
             bpmn_process_id=CONDITIONAL_APPROVAL_PROCESS_ID,
         ),
         prefix="RBAC",
@@ -2396,7 +2396,7 @@ def _run_rbac_checks(
             tenant_id=context.tenant_id,
             human_task_id=context.noise_task_ids["observer"],
             user_id=context.user_ids["observer"],
-            completed_at_in_seconds=unauthorized_task_complete_at,
+            completed_at=unauthorized_task_complete_at,
         ),
         prefix="RBAC",
         expected_failure=api.AuthorizationError,
@@ -2637,8 +2637,8 @@ def _summarize(result: Any) -> Any:
             "summary": result.summary,
             "process_initiator_id": result.process_initiator_id,
             "definition_id": result.bpmn_process_definition_id,
-            "start_in_seconds": result.start_in_seconds,
-            "end_in_seconds": result.end_in_seconds,
+            "start_in_seconds": result.started_at,
+            "end_in_seconds": result.ended_at,
             "workflow_state_json_present": bool(result.spiff_serializer_version),
             "workflow_state_json_length": "(stored in json_data)",
         }
@@ -2660,15 +2660,15 @@ def _summarize(result: Any) -> Any:
             "id": result.id,
             "key": result.key,
             "value": result.value,
-            "updated_at_in_seconds": result.updated_at_in_seconds,
-            "created_at_in_seconds": result.created_at_in_seconds,
+            "updated_at_in_seconds": result.updated_at,
+            "created_at_in_seconds": result.created_at,
         }
     if isinstance(result, ProcessInstanceEventModel):
         return {
             "id": result.id,
             "event_type": result.event_type,
             "task_guid": result.task_guid,
-            "timestamp": str(result.timestamp),
+            "timestamp": str(result.occurred_at),
             "user_id": result.user_id,
         }
     if isinstance(result, UserModel):
@@ -2679,8 +2679,8 @@ def _summarize(result: Any) -> Any:
             "service": result.service,
             "service_id": result.service_id,
             "display_name": result.display_name,
-            "created_at_in_seconds": result.created_at_in_seconds,
-            "updated_at_in_seconds": result.updated_at_in_seconds,
+            "created_at_in_seconds": result.created_at,
+            "updated_at_in_seconds": result.updated_at,
         }
     if isinstance(result, M8flowTenantModel):
         return {

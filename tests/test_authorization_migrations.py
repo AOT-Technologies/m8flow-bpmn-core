@@ -32,7 +32,23 @@ def test_full_migration_chain_reaches_head_on_sqlite(
             with engine.connect() as connection:
                 assert connection.scalar(
                     sa.text("SELECT version_num FROM alembic_version")
-                ) == "e1f2a3b4c5d6"
+                ) == "f7a8b9c0d1e2"
+                legacy_columns = {
+                    "created_at_in_seconds",
+                    "updated_at_in_seconds",
+                    "start_in_seconds",
+                    "end_in_seconds",
+                    "task_updated_at_in_seconds",
+                    "run_at_in_seconds",
+                    "queued_to_run_at_in_seconds",
+                    "timestamp",
+                }
+                for table_name in inspect(connection).get_table_names():
+                    columns = {
+                        column["name"]
+                        for column in inspect(connection).get_columns(table_name)
+                    }
+                    assert columns.isdisjoint(legacy_columns), table_name
         finally:
             engine.dispose()
     finally:

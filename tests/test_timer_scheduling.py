@@ -99,8 +99,8 @@ def test_initialize_workflow_schedules_waiting_intermediate_timer(
         service="http://localhost:7002/realms/tenant-timer-scheduling",
         service_id="timer-admin-keycloak",
         display_name="Timer Admin",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, user])
     session.flush()
@@ -119,8 +119,8 @@ def test_initialize_workflow_schedules_waiting_intermediate_timer(
             user_id=user.id,
             bpmn_name="Timer Waiting Process",
             source_bpmn_xml=INTERMEDIATE_TIMER_BPMN,
-            created_at_in_seconds=10,
-            updated_at_in_seconds=10,
+            created_at=10,
+            updated_at=10,
         ),
     )
     process_instance = api.execute_command(
@@ -129,7 +129,7 @@ def test_initialize_workflow_schedules_waiting_intermediate_timer(
             tenant_id=tenant.id,
             bpmn_process_definition_id=definition.id,
             process_initiator_id=user.id,
-            started_at_in_seconds=20,
+            started_at=20,
         ),
     )
 
@@ -169,9 +169,9 @@ def test_initialize_workflow_schedules_waiting_intermediate_timer(
     assert scheduler_job.job_type == "intermediate_timer"
     assert scheduler_job.process_instance_id == process_instance.id
     assert scheduler_job.bpmn_process_definition_id == definition.id
-    assert scheduler_job.run_at_in_seconds == expected_run_at
+    assert scheduler_job.run_at.timestamp() == expected_run_at
     assert scheduler_job.locked_by is None
-    assert scheduler_job.locked_at_in_seconds is None
+    assert scheduler_job.locked_at is None
     assert scheduler_job.payload_json["scheduled_from"] == "workflow_runtime"
     assert scheduler_job.payload_json["timer_tasks"] == [
         {
@@ -199,8 +199,8 @@ def test_initialize_workflow_schedules_waiting_boundary_timer(
         service="http://localhost:7002/realms/tenant-boundary-timer-scheduling",
         service_id="boundary-timer-admin-keycloak",
         display_name="Boundary Timer Admin",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, user])
     session.flush()
@@ -224,8 +224,8 @@ def test_initialize_workflow_schedules_waiting_boundary_timer(
                     "Operations": [user.username],
                 }
             },
-            created_at_in_seconds=10,
-            updated_at_in_seconds=10,
+            created_at=10,
+            updated_at=10,
         ),
     )
     process_instance = api.execute_command(
@@ -234,7 +234,7 @@ def test_initialize_workflow_schedules_waiting_boundary_timer(
             tenant_id=tenant.id,
             bpmn_process_definition_id=definition.id,
             process_initiator_id=user.id,
-            started_at_in_seconds=20,
+            started_at=20,
         ),
     )
 
@@ -275,7 +275,7 @@ def test_initialize_workflow_schedules_waiting_boundary_timer(
     assert scheduler_job.job_type == "intermediate_timer"
     assert scheduler_job.process_instance_id == process_instance.id
     assert scheduler_job.bpmn_process_definition_id == definition.id
-    assert scheduler_job.run_at_in_seconds == expected_run_at
+    assert scheduler_job.run_at.timestamp() == expected_run_at
     assert scheduler_job.payload_json["scheduled_from"] == "workflow_runtime"
     assert scheduler_job.payload_json["timer_tasks"] == [
         {

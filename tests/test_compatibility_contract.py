@@ -43,7 +43,7 @@ EXPECTED_COMMAND_FIELDS = {
         "tenant_id",
         "human_task_id",
         "user_id",
-        "completed_at_in_seconds",
+        "completed_at",
         "task_payload",
     ],
     CreateProcessInstanceCommand: [
@@ -55,8 +55,8 @@ EXPECTED_COMMAND_FIELDS = {
         "bpmn_process_id",
         "summary",
         "process_version",
-        "created_at_in_seconds",
-        "updated_at_in_seconds",
+        "created_at",
+        "updated_at",
     ],
     ImportBpmnProcessDefinitionCommand: [
         "tenant_id",
@@ -70,8 +70,8 @@ EXPECTED_COMMAND_FIELDS = {
         "bpmn_version_control_identifier",
         "single_process_hash",
         "full_process_model_hash",
-        "created_at_in_seconds",
-        "updated_at_in_seconds",
+        "created_at",
+        "updated_at",
     ],
     InitializeProcessInstanceFromDefinitionCommand: [
         "tenant_id",
@@ -80,7 +80,7 @@ EXPECTED_COMMAND_FIELDS = {
         "submission_metadata",
         "summary",
         "process_version",
-        "started_at_in_seconds",
+        "started_at",
         "bpmn_process_id",
     ],
     InitializeProcessInstanceWorkflowCommand: [
@@ -88,7 +88,7 @@ EXPECTED_COMMAND_FIELDS = {
         "process_instance_id",
         "bpmn_xml",
         "bpmn_process_id",
-        "started_at_in_seconds",
+        "started_at",
         "dmn_xml",
     ],
     RecordProcessInstanceEventCommand: [
@@ -97,15 +97,15 @@ EXPECTED_COMMAND_FIELDS = {
         "event_type",
         "task_guid",
         "user_id",
-        "timestamp",
+        "occurred_at",
     ],
     UpsertProcessInstanceMetadataCommand: [
         "tenant_id",
         "process_instance_id",
         "key",
         "value",
-        "updated_at_in_seconds",
-        "created_at_in_seconds",
+        "updated_at",
+        "created_at",
     ],
 }
 
@@ -133,10 +133,10 @@ def test_public_result_models_retain_response_attributes() -> None:
         "id",
         "process_model_identifier",
         "status",
-        "start_in_seconds",
-        "end_in_seconds",
-        "updated_at_in_seconds",
-        "created_at_in_seconds",
+        "started_at",
+        "ended_at",
+        "updated_at",
+        "created_at",
         "spiff_serializer_version",
     }.issubset(ProcessInstanceModel.__mapper__.attrs.keys())
     assert {
@@ -147,18 +147,18 @@ def test_public_result_models_retain_response_attributes() -> None:
         "completed",
         "actual_owner_id",
         "lane_assignment_id",
-        "created_at_in_seconds",
-        "updated_at_in_seconds",
+        "created_at",
+        "updated_at",
     }.issubset(HumanTaskModel.__mapper__.attrs.keys())
     assert {
         "id",
         "process_instance_id",
         "event_type",
-        "timestamp",
+        "occurred_at",
     }.issubset(ProcessInstanceEventModel.__mapper__.attrs.keys())
 
 
-def test_native_timestamp_attributes_are_additive() -> None:
+def test_native_occurred_at_attributes_are_additive() -> None:
     assert {
         "started_at",
         "ended_at",
@@ -234,12 +234,12 @@ def test_event_enums_are_split_without_changing_persisted_values() -> None:
     process_event = ProcessInstanceEventModel(
         event_type=ProcessLifecycleEventType.process_instance_created,
         process_instance_id=1,
-        timestamp=1,
+        occurred_at=1,
     )
     task_event = ProcessInstanceEventModel(
         event_type=TaskEventType.task_completed,
         process_instance_id=1,
-        timestamp=1,
+        occurred_at=1,
     )
     assert process_event.category == ProcessInstanceEventCategory.process.value
     assert task_event.category == ProcessInstanceEventCategory.task.value

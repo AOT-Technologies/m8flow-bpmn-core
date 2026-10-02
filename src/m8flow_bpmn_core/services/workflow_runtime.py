@@ -6,7 +6,6 @@ import json
 import logging
 import math
 import re
-import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -246,7 +245,7 @@ def initialize_process_instance_workflow(
     bpmn_xml: str | bytes,
     dmn_xml: str | bytes | None = None,
     bpmn_process_id: str | None = None,
-    started_at_in_seconds: int | None = None,
+    started_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     process_instance = _load_process_instance(
         session,
@@ -258,7 +257,7 @@ def initialize_process_instance_workflow(
     if process_instance.workflow_state_json is not None:
         raise InvalidStateError("Process instance workflow already initialized")
 
-    occurred_at = _resolve_timestamp(started_at_in_seconds)
+    occurred_at = _resolve_timestamp(started_at)
     workflow = _build_workflow(
         bpmn_xml=bpmn_xml,
         dmn_xml=dmn_xml,
@@ -311,7 +310,7 @@ def initialize_process_instance_from_definition(
     submission_metadata: Mapping[str, Any] | None = None,
     summary: str | None = None,
     process_version: int = 1,
-    started_at_in_seconds: int | None = None,
+    started_at: datetime | None = None,
     bpmn_process_id: str | None = None,
 ) -> ProcessInstanceModel:
     ensure_user_belongs_to_tenant(
@@ -348,7 +347,7 @@ def initialize_process_instance_from_definition(
         submission_metadata=submission_metadata,
         summary=summary,
         process_version=process_version,
-        started_at_in_seconds=started_at_in_seconds,
+        started_at=started_at,
         bpmn_process_id=bpmn_process_id,
     )
 
@@ -359,7 +358,7 @@ def initialize_process_instance_from_definition(
         bpmn_xml=process_definition.source_bpmn_xml,
         dmn_xml=process_definition.source_dmn_xml,
         bpmn_process_id=selected_process_id,
-        started_at_in_seconds=started_at_in_seconds,
+        started_at=started_at,
     )
 
 
@@ -370,7 +369,7 @@ def _initialize_process_instance_from_timer_start_definition(
     process_definition_id: int,
     process_initiator_id: int,
     timer_start_task_spec_name: str,
-    started_at_in_seconds: int | None = None,
+    started_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     ensure_user_belongs_to_tenant(
         session,
@@ -394,11 +393,11 @@ def _initialize_process_instance_from_timer_start_definition(
         submission_metadata=None,
         summary=None,
         process_version=1,
-        started_at_in_seconds=started_at_in_seconds,
+        started_at=started_at,
         bpmn_process_id=None,
     )
 
-    occurred_at = _resolve_timestamp(started_at_in_seconds)
+    occurred_at = _resolve_timestamp(started_at)
     workflow = _build_workflow(
         bpmn_xml=process_definition.source_bpmn_xml,
         dmn_xml=process_definition.source_dmn_xml,
@@ -463,7 +462,7 @@ def advance_process_instance_workflow(
     tenant_id: str,
     process_instance_id: int,
     completed_task_guid: str,
-    completed_at_in_seconds: int | None = None,
+    completed_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     process_instance = _load_process_instance(
         session,
@@ -475,7 +474,7 @@ def advance_process_instance_workflow(
     if process_instance.has_terminal_status():
         return process_instance
 
-    occurred_at = _resolve_timestamp(completed_at_in_seconds)
+    occurred_at = _resolve_timestamp(completed_at)
     workflow = _restore_workflow(
         process_instance.workflow_state_json,
         service_task_context=_service_task_execution_context(
@@ -541,7 +540,7 @@ def _prepare_process_instance_from_definition(
     submission_metadata: Mapping[str, Any] | None,
     summary: str | None,
     process_version: int,
-    started_at_in_seconds: int | None,
+    started_at: datetime | None,
     bpmn_process_id: str | None,
 ) -> tuple[ProcessInstanceModel, str]:
     autonomous_baseline = _prepare_process_instance_baseline_in_independent_session(
@@ -553,7 +552,7 @@ def _prepare_process_instance_from_definition(
         submission_metadata=submission_metadata,
         summary=summary,
         process_version=process_version,
-        started_at_in_seconds=started_at_in_seconds,
+        started_at=started_at,
         bpmn_process_id=bpmn_process_id,
     )
     if autonomous_baseline is not None:
@@ -574,7 +573,7 @@ def _prepare_process_instance_from_definition(
         submission_metadata=submission_metadata,
         summary=summary,
         process_version=process_version,
-        started_at_in_seconds=started_at_in_seconds,
+        started_at=started_at,
         bpmn_process_id=bpmn_process_id,
     )
 
@@ -589,7 +588,7 @@ def _prepare_process_instance_baseline_in_independent_session(
     submission_metadata: Mapping[str, Any] | None,
     summary: str | None,
     process_version: int,
-    started_at_in_seconds: int | None,
+    started_at: datetime | None,
     bpmn_process_id: str | None,
 ) -> tuple[int, str] | None:
     engine = _session_engine(session)
@@ -627,7 +626,7 @@ def _prepare_process_instance_baseline_in_independent_session(
                 submission_metadata=submission_metadata,
                 summary=summary,
                 process_version=process_version,
-                started_at_in_seconds=started_at_in_seconds,
+                started_at=started_at,
                 bpmn_process_id=bpmn_process_id,
             )
         )
@@ -647,7 +646,7 @@ def _prepare_process_instance_from_definition_in_session(
     submission_metadata: Mapping[str, Any] | None,
     summary: str | None,
     process_version: int,
-    started_at_in_seconds: int | None,
+    started_at: datetime | None,
     bpmn_process_id: str | None,
 ) -> tuple[ProcessInstanceModel, str]:
     if process_definition.source_bpmn_xml is None:
@@ -677,8 +676,8 @@ def _prepare_process_instance_from_definition_in_session(
         bpmn_process_id=bpmn_process.id,
         summary=summary,
         process_version=process_version,
-        created_at_in_seconds=started_at_in_seconds,
-        updated_at_in_seconds=started_at_in_seconds,
+        created_at=started_at,
+        updated_at=started_at,
     )
     process_instance.bpmn_version_control_type = (
         process_definition.bpmn_version_control_type
@@ -690,7 +689,7 @@ def _prepare_process_instance_from_definition_in_session(
         process_definition.bpmn_name or process_definition.bpmn_identifier
     )
 
-    metadata_timestamp = _resolve_timestamp(started_at_in_seconds)
+    metadata_timestamp = _resolve_timestamp(started_at)
     process_instance.bpmn_version_id = _ensure_bpmn_version_snapshot(
         session,
         tenant_id=tenant_id,
@@ -705,8 +704,8 @@ def _prepare_process_instance_from_definition_in_session(
             process_instance_id=process_instance.id,
             key=key,
             value=str(value),
-            updated_at_in_seconds=metadata_timestamp,
-            created_at_in_seconds=metadata_timestamp,
+            updated_at=metadata_timestamp,
+            created_at=metadata_timestamp,
         )
 
     return process_instance, selected_process_id
@@ -738,7 +737,7 @@ def _finalize_initialized_process_instance_workflow(
         workflow=workflow,
         occurred_at=occurred_at,
     )
-    process_instance.start_in_seconds = occurred_at
+    process_instance.started_at = occurred_at
     _update_process_instance_status_from_workflow(
         process_instance,
         workflow,
@@ -753,7 +752,7 @@ def _finalize_initialized_process_instance_workflow(
         tenant_id=tenant_id,
         process_instance_id=process_instance.id,
         event_type=ProcessLifecycleEventType.process_instance_created,
-        timestamp=float(occurred_at),
+        occurred_at=occurred_at,
         task_guid=ready_tasks[0].task_guid if ready_tasks else None,
         user_id=process_instance.process_initiator_id,
     )
@@ -788,7 +787,7 @@ def retry_errored_service_task_workflow_if_needed(
     *,
     tenant_id: str,
     process_instance_id: int,
-    occurred_at: int | None = None,
+    occurred_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     process_instance = _load_process_instance(
         session,
@@ -1088,17 +1087,17 @@ def _transition_process_instance_to_error_for_service_task_failure(
             tenant_id=tenant_id,
             process_instance_id=process_instance.id,
             event_type=TaskEventType.task_failed,
-            timestamp=float(occurred_at),
+            occurred_at=occurred_at,
             task_guid=failed_task_guid,
             user_id=None,
         )
 
-    if process_instance.start_in_seconds is None:
-        process_instance.start_in_seconds = occurred_at
+    if process_instance.started_at is None:
+        process_instance.started_at = occurred_at
     if process_instance.bpmn_process is not None:
-        if process_instance.bpmn_process.start_in_seconds is None:
-            process_instance.bpmn_process.start_in_seconds = float(occurred_at)
-        process_instance.bpmn_process.end_in_seconds = float(occurred_at)
+        if process_instance.bpmn_process.started_at is None:
+            process_instance.bpmn_process.started_at = occurred_at
+        process_instance.bpmn_process.ended_at = occurred_at
     if process_instance.status == ProcessInstanceStatus.error.value:
         process_instance.status = ProcessInstanceStatus.running.value
 
@@ -1107,7 +1106,7 @@ def _transition_process_instance_to_error_for_service_task_failure(
         tenant_id=tenant_id,
         process_instance_id=process_instance.id,
         user_id=None,
-        errored_at_in_seconds=occurred_at,
+            errored_at=occurred_at,
     )
     session.flush()
 
@@ -1164,8 +1163,8 @@ def _resolve_or_create_bpmn_process(
                 "process_identifier": process_identifier,
             },
         ),
-        start_in_seconds=None,
-        end_in_seconds=None,
+        started_at=None,
+        ended_at=None,
     )
     session.add(bpmn_process)
     session.flush()
@@ -1205,7 +1204,7 @@ def _ensure_bpmn_version_snapshot(
             process_model_identifier=process_model_identifier,
             bpmn_xml_hash=bpmn_xml_hash,
             bpmn_xml_file_contents=normalized_bpmn_xml,
-            created_at_in_seconds=occurred_at,
+            created_at=occurred_at,
         )
         session.add(snapshot)
         session.flush()
@@ -1381,7 +1380,7 @@ def _sync_process_definition_from_workflow(
         if key.startswith("__m8f_") or key not in merged_properties:
             merged_properties[key] = value
     process_definition.properties_json = merged_properties
-    process_definition.updated_at_in_seconds = occurred_at
+    process_definition.updated_at = occurred_at
 
     if not isinstance(task_specs, Mapping):
         raise ValidationError("Serialized workflow spec is missing task specs")
@@ -1542,15 +1541,15 @@ def _upsert_task_definition_from_payload(
             bpmn_name=task_name if isinstance(task_name, str) else None,
             typename=task_typename,
             properties_json=serialized_payload,
-            created_at_in_seconds=occurred_at,
-            updated_at_in_seconds=occurred_at,
+            created_at=occurred_at,
+            updated_at=occurred_at,
         )
         session.add(task_definition)
     else:
         task_definition.bpmn_name = task_name if isinstance(task_name, str) else None
         task_definition.typename = task_typename
         task_definition.properties_json = serialized_payload
-        task_definition.updated_at_in_seconds = occurred_at
+        task_definition.updated_at = occurred_at
 
     session.flush()
     return task_definition
@@ -1686,7 +1685,7 @@ def _close_inactive_human_task(
     task_model = human_task.task_model
     if task_model is not None and task_model.future_task is not None:
         task_model.future_task.completed = True
-        task_model.future_task.updated_at_in_seconds = occurred_at
+        task_model.future_task.updated_at = occurred_at
 
     event_type = _inactive_human_task_event_type(task_state_name)
     if event_type is not None:
@@ -1697,7 +1696,7 @@ def _close_inactive_human_task(
             event_type=event_type,
             task_guid=human_task.task_guid,
             user_id=None,
-            timestamp=float(occurred_at),
+            occurred_at=occurred_at,
         )
 
     session.flush()
@@ -1792,19 +1791,19 @@ def _upsert_future_task(
         future_task = FutureTaskModel(
             m8f_tenant_id=tenant_id,
             guid=guid,
-            run_at_in_seconds=occurred_at,
-            queued_to_run_at_in_seconds=occurred_at,
+            run_at=occurred_at,
+            queued_to_run_at=occurred_at,
             completed=False,
             archived_for_process_instance_status=False,
-            updated_at_in_seconds=occurred_at,
+            updated_at=occurred_at,
         )
         session.add(future_task)
     else:
-        future_task.run_at_in_seconds = occurred_at
-        future_task.queued_to_run_at_in_seconds = occurred_at
+        future_task.run_at = occurred_at
+        future_task.queued_to_run_at = occurred_at
         future_task.completed = False
         future_task.archived_for_process_instance_status = False
-        future_task.updated_at_in_seconds = occurred_at
+        future_task.updated_at = occurred_at
 
     session.flush()
     return future_task
@@ -1883,8 +1882,8 @@ def _upsert_task_model_from_payload(
             json_data_hash=json_data_hash,
             python_env_data_hash=python_env_data_hash,
             runtime_info=runtime_info,
-            start_in_seconds=float(occurred_at),
-            end_in_seconds=float(occurred_at) if task_is_terminal else None,
+            started_at=occurred_at,
+            ended_at=occurred_at if task_is_terminal else None,
         )
         session.add(task_model)
     else:
@@ -1900,13 +1899,13 @@ def _upsert_task_model_from_payload(
         task_model.json_data_hash = json_data_hash
         task_model.python_env_data_hash = python_env_data_hash
         task_model.runtime_info = runtime_info
-        task_model.start_in_seconds = (
-            float(occurred_at)
-            if task_model.start_in_seconds is None
-            else task_model.start_in_seconds
+        task_model.started_at = (
+            occurred_at
+            if task_model.started_at is None
+            else task_model.started_at
         )
-        task_model.end_in_seconds = (
-            float(occurred_at) if task_is_terminal else None
+        task_model.ended_at = (
+            occurred_at if task_is_terminal else None
         )
 
     session.flush()
@@ -1955,8 +1954,8 @@ def _upsert_human_task(
             actual_owner_id=None,
             form_file_name=None,
             ui_form_file_name=None,
-            updated_at_in_seconds=occurred_at,
-            created_at_in_seconds=occurred_at,
+            updated_at=occurred_at,
+            created_at=occurred_at,
             task_name=task.task_spec.name,
             task_title=getattr(task.task_spec, "bpmn_name", None),
             task_type=task_definition.typename,
@@ -1972,7 +1971,7 @@ def _upsert_human_task(
         human_task.task_id = task_model.guid
         human_task.task_guid = task_model.guid
         human_task.lane_assignment_id = lane_group_id
-        human_task.updated_at_in_seconds = occurred_at
+        human_task.updated_at = occurred_at
         human_task.task_name = task.task_spec.name
         human_task.task_title = getattr(task.task_spec, "bpmn_name", None)
         human_task.task_type = task_definition.typename
@@ -1987,7 +1986,7 @@ def _upsert_human_task(
         human_task.lane_name = lane_name
         human_task.json_metadata = human_task_payload
 
-    process_instance.task_updated_at_in_seconds = occurred_at
+    process_instance.task_updated_at = occurred_at
     session.flush()
     ensure_work_item(session, human_task)
     return human_task
@@ -2380,10 +2379,10 @@ def _update_process_instance_status_from_workflow(
 ) -> None:
     if workflow.completed:
         process_instance.status = ProcessInstanceStatus.complete.value
-        process_instance.end_in_seconds = occurred_at
-        process_instance.updated_at_in_seconds = occurred_at
+        process_instance.ended_at = occurred_at
+        process_instance.updated_at = occurred_at
         if process_instance.bpmn_process is not None:
-            process_instance.bpmn_process.end_in_seconds = float(occurred_at)
+            process_instance.bpmn_process.ended_at = occurred_at
         _archive_completed_workflow_runtime_state(
             process_instance, occurred_at=occurred_at
         )
@@ -2395,15 +2394,15 @@ def _update_process_instance_status_from_workflow(
         process_instance.status = ProcessInstanceStatus.waiting.value
     else:
         process_instance.status = ProcessInstanceStatus.running.value
-    process_instance.end_in_seconds = None
-    process_instance.updated_at_in_seconds = occurred_at
-    process_instance.task_updated_at_in_seconds = occurred_at
+    process_instance.ended_at = None
+    process_instance.updated_at = occurred_at
+    process_instance.task_updated_at = occurred_at
     if process_instance.bpmn_process is not None:
-        if process_instance.bpmn_process.start_in_seconds is None:
-            process_instance.bpmn_process.start_in_seconds = float(
-                process_instance.start_in_seconds or occurred_at
+        if process_instance.bpmn_process.started_at is None:
+            process_instance.bpmn_process.started_at = (
+                process_instance.started_at or occurred_at
             )
-        process_instance.bpmn_process.end_in_seconds = None
+        process_instance.bpmn_process.ended_at = None
 
 
 def _archive_completed_workflow_runtime_state(
@@ -2416,7 +2415,7 @@ def _archive_completed_workflow_runtime_state(
             continue
         task.future_task.completed = True
         task.future_task.archived_for_process_instance_status = True
-        task.future_task.updated_at_in_seconds = occurred_at
+        task.future_task.updated_at = occurred_at
 
 
 def _sync_timer_start_scheduler_jobs_for_definition(
@@ -2449,13 +2448,13 @@ def _sync_timer_start_scheduler_jobs_for_definition(
             job_key=job_key,
             job_type=SchedulerJobType.timer_start,
             bpmn_process_definition_id=process_definition.id,
-            run_at_in_seconds=payload["run_at_in_seconds"],
+            run_at=datetime.fromtimestamp(float(payload["run_at_in_seconds"]), UTC),
             payload_json={
                 "scheduled_from": "process_definition_import",
                 "timer_task": payload,
             },
-            updated_at_in_seconds=occurred_at,
-            created_at_in_seconds=occurred_at,
+            updated_at=occurred_at,
+            created_at=occurred_at,
         )
 
     for scheduler_job in session.scalars(
@@ -2505,13 +2504,13 @@ def _sync_intermediate_timer_scheduler_job(
         job_type=SchedulerJobType.intermediate_timer,
         process_instance_id=process_instance.id,
         bpmn_process_definition_id=process_instance.bpmn_process_definition_id,
-        run_at_in_seconds=next_run_at_in_seconds,
+        run_at=datetime.fromtimestamp(float(next_run_at_in_seconds), UTC),
         payload_json={
             "scheduled_from": "workflow_runtime",
             "timer_tasks": waiting_timer_payloads,
         },
-        updated_at_in_seconds=occurred_at,
-        created_at_in_seconds=occurred_at,
+        updated_at=occurred_at,
+        created_at=occurred_at,
     )
 
 
@@ -2847,10 +2846,12 @@ def _load_process_instance(
     return process_instance
 
 
-def _resolve_timestamp(timestamp_in_seconds: int | None) -> int:
-    return (
-        timestamp_in_seconds if timestamp_in_seconds is not None else round(time.time())
-    )
+def _resolve_timestamp(timestamp: datetime | int | float | None) -> datetime:
+    if isinstance(timestamp, datetime):
+        return timestamp
+    if timestamp is not None:
+        return datetime.fromtimestamp(float(timestamp), UTC)
+    return datetime.now(UTC)
 
 
 def _raise_value_error(message: str) -> None:

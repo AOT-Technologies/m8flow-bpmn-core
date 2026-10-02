@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import BIGINT, DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import (
     Mapped,
     mapped_column,
@@ -33,14 +33,6 @@ class ProcessInstanceStatus(StrEnum):
 
 class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "process_instance"
-    __timestamp_compatibility_pairs__ = (
-        ("start_in_seconds", "started_at"),
-        ("end_in_seconds", "ended_at"),
-        ("task_updated_at_in_seconds", "task_updated_at"),
-        ("updated_at_in_seconds", "updated_at"),
-        ("created_at_in_seconds", "created_at"),
-    )
-
     id: Mapped[int] = mapped_column(primary_key=True)
     process_model_identifier: Mapped[str] = mapped_column(
         String(255), index=True, nullable=False
@@ -64,11 +56,6 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
     status: Mapped[str] = mapped_column(
         String(50), index=True, nullable=False, default="running"
     )
-    start_in_seconds: Mapped[int | None] = mapped_column(BIGINT, index=True)
-    end_in_seconds: Mapped[int | None] = mapped_column(BIGINT, index=True)
-    task_updated_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
-    updated_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
-    created_at_in_seconds: Mapped[int | None] = mapped_column(BIGINT)
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
