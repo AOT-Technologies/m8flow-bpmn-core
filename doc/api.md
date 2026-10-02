@@ -52,6 +52,13 @@ under the dataclass entry rather than repeated twice.
   `process_instance_error`, `process_instance_retried`,
   `process_instance_suspended`, `process_instance_terminated`,
   `task_completed`, `task_failed`, and `task_cancelled`.
+- `ProcessLifecycleEventType`
+  Process-only event vocabulary with the same persisted string values.
+- `TaskEventType`
+  Task-only event vocabulary with the same persisted string values.
+- `ProcessInstanceEventCategory`
+  Persisted event categories: `process` and `task`. Legacy rows may have a
+  null category while remaining queryable.
 
 ---
 
@@ -138,7 +145,7 @@ from m8flow_bpmn_core import api
 api.run_due_scheduler_jobs(
     session_or_connection,
     *,
-    now_in_seconds=None,
+    now=None,
     limit=100,
     worker_id="inline",
     tenant_id=None,
@@ -153,7 +160,7 @@ end user.
 - Inputs: accepts either a `Session` or `Connection`, with the same
   caller-owned transaction semantics as `execute_command(...)` and
   `execute_query(...)`.
-- `now_in_seconds`: optional due-time override for tests or externally
+- `now`: optional timezone-aware due-time override for tests or externally
   controlled scheduling loops.
 - `limit`: maximum number of due jobs to process in one call. Must be
   greater than zero.
@@ -232,12 +239,16 @@ Fields follow this order:
 2. Primary entity identifier, when applicable.
 3. Required business inputs.
 4. Optional inputs, usually defaulting to `None`.
-5. Trailing `*_at_in_seconds` timestamps.
+5. Trailing timezone-aware datetime fields.
 
 Return values are SQLAlchemy ORM models from `m8flow_bpmn_core.models.*`.
 Only the columns and semantics documented in this file are part of the
 stable contract. Internal relationships and implementation-only columns
 may change without a major-version bump.
+
+All persisted occurred_ats and occurred_at command inputs use timezone-aware UTC
+`datetime` values. Legacy epoch columns and epoch command parameters are not
+part of this release's runtime contract.
 
 ---
 
@@ -254,9 +265,16 @@ The library includes a minimal V1 RBAC layer for workflow commands.
 - User-scoped operations first validate tenant membership, then
   evaluate command permission, then apply runtime checks such as task
   assignment or claimed-task ownership.
-- A `permission_target` row is matched by URI plus optional command. A
-  row with `command = NULL` behaves like a URI-only target; a row with a
-  command is specific to that command key.
+- A `permission_target` row with both `resource_type` and `resource_id` is
+  matched by that exact resource pair plus the optional command. New explicit
+  targets must provide both resource fields together; partial pairs are
+  rejected. Legacy rows without either resource field remain readable through
+  their normalized URI target, so existing m8flow permission data continues to
+  work during the migration period.
+- The authorization migrations preserve existing target, principal, group, and
+  assignment IDs. They rename legacy constraints into the `m8f_*` namespace.
+  If an existing database contains a partial resource pair, migration stops
+  and reports the affected `permission_target` IDs for manual remediation.
 - Custom policies can extend or replace the built-in
   database-backed policy through `authorization_policy_scope(...)` or
   `set_default_authorization_policy_factory(...)`.
@@ -284,8 +302,8 @@ Persist BPMN XML, and optional DMN XML, as a process definition.
 | `bpmn_version_control_identifier` | `str \| None` | no | Example: branch or commit. |
 | `single_process_hash` | `str \| None` | no | Auto-computed if omitted. |
 | `full_process_model_hash` | `str \| None` | no | Auto-computed if omitted; used for idempotent upsert. |
-| `created_at_in_seconds` | `int \| None` | no | |
-| `updated_at_in_seconds` | `int \| None` | no | |
+| `created_at` | `int \| None` | no | |
+| `updated_at` | `int \| None` | no | |
 
 Returns: `BpmnProcessDefinitionModel`.
 
@@ -316,7 +334,7 @@ workflow.
 | `submission_metadata` | `dict[str, str] \| None` | no | Seed metadata persisted at start time. |
 | `summary` | `str \| None` | no | |
 | `process_version` | `int` | no | Default `1`. |
-| `started_at_in_seconds` | `int \| None` | no | |
+| `started_at` | `int \| None` | no | |
 | `bpmn_process_id` | `str \| None` | no | Required only when the definition contains multiple executable BPMN processes. |
 
 Returns: `ProcessInstanceModel`, already advanced to its first wait
@@ -342,7 +360,7 @@ Start the workflow runtime for an already-created process instance.
 | `process_instance_id` | `int` | yes |
 | `bpmn_xml` | `str \| bytes` | yes |
 | `bpmn_process_id` | `str \| None` | no |
-| `started_at_in_seconds` | `int \| None` | no |
+| `started_at` | `int \| None` | no |
 | `dmn_xml` | `str \| bytes \| None` | no |
 
 Returns: `ProcessInstanceModel`.
@@ -369,8 +387,8 @@ Create a process instance row without starting the workflow.
 | `bpmn_process_id` | `int` | yes |
 | `summary` | `str \| None` | no |
 | `process_version` | `int` | no (default `1`) |
-| `created_at_in_seconds` | `int \| None` | no |
-| `updated_at_in_seconds` | `int \| None` | no |
+| `created_at` | `int \| None` | no |
+| `updated_at` | `int \| None` | no |
 
 Returns: `ProcessInstanceModel`.
 
@@ -409,7 +427,7 @@ Complete a claimed task and advance the workflow.
 | `tenant_id` | `str` | yes |
 | `human_task_id` | `int` | yes |
 | `user_id` | `int` | yes |
-| `completed_at_in_seconds` | `int \| None` | no |
+| `completed_at` | `int \| None` | no |
 | `task_payload` | `dict[str, str] \| None` | no - persisted as process metadata |
 
 Returns: `HumanTaskModel`.
@@ -440,8 +458,8 @@ Create or update one metadata key/value for a process instance.
 | `process_instance_id` | `int` | yes |
 | `key` | `str` | yes |
 | `value` | `str` | yes |
-| `updated_at_in_seconds` | `int` | yes |
-| `created_at_in_seconds` | `int \| None` | no |
+| `updated_at` | `int` | yes |
+| `created_at` | `int \| None` | no |
 
 Returns: `ProcessInstanceMetadataModel`.
 
@@ -457,10 +475,10 @@ Append an event to the process-instance event history.
 | --- | --- | --- | --- |
 | `tenant_id` | `str` | yes | |
 | `process_instance_id` | `int` | yes | |
-| `event_type` | `ProcessInstanceEventType \| str` | yes | |
+| `event_type` | `ProcessInstanceEventType \| ProcessLifecycleEventType \| TaskEventType \| str` | yes | |
 | `task_guid` | `str \| None` | no | |
 | `user_id` | `int \| None` | no | When provided, tenant membership is enforced. |
-| `timestamp` | `float \| None` | no | Defaults to current time with microsecond precision. |
+| `occurred_at` | `float \| None` | no | Defaults to current time with microsecond precision. |
 
 Returns: `ProcessInstanceEventModel`.
 
@@ -523,7 +541,7 @@ Mark a process instance as `error`.
 | `tenant_id` | `str` | yes | |
 | `process_instance_id` | `int` | yes | |
 | `user_id` | `int \| None` | no | Tenant membership is enforced when supplied. |
-| `errored_at_in_seconds` | `int \| None` | no | |
+| `errored_at` | `int \| None` | no | |
 
 Returns: `ProcessInstanceModel`.
 
@@ -547,8 +565,8 @@ Persist a delayed retry job for an errored process instance.
 | `tenant_id` | `str` | yes |
 | `process_instance_id` | `int` | yes |
 | `user_id` | `int` | yes |
-| `retry_at_in_seconds` | `int` | yes |
-| `scheduled_at_in_seconds` | `int \| None` | no |
+| `retry_at` | `int` | yes |
+| `scheduled_at` | `int \| None` | no |
 
 Returns: `SchedulerJobModel`.
 
@@ -566,7 +584,7 @@ rather than creating a duplicate job.
 When the due row is later picked up by `api.run_due_scheduler_jobs(...)`,
 the library retries that same process instance through the normal
 `process.retry` lifecycle. That means the instance returns from `error`
-to `running`, `end_in_seconds` is cleared, terminated runtime tasks are
+to `running`, `ended_at` is cleared, terminated runtime tasks are
 reopened, terminated human tasks are reset back to `READY`, and the
 consumed scheduler row is deleted. If the errored instance failed on a
 synchronous service task, the retry path also restores the persisted
@@ -616,7 +634,7 @@ Raises:
 | `tenant_id` | `str` |
 | `process_instance_id` | `int` |
 
-Returns: `list[ProcessInstanceEventModel]`, ordered by timestamp and id.
+Returns: `list[ProcessInstanceEventModel]`, ordered by occurred_at and id.
 
 Raises:
 

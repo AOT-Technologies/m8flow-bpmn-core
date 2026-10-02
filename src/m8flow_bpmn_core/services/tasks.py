@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import time
 from collections.abc import Mapping
+from datetime import UTC, datetime
 
 from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import Select, exists, select
@@ -19,7 +19,10 @@ from m8flow_bpmn_core.models.process_instance import (
     ProcessInstanceModel,
     ProcessInstanceStatus,
 )
-from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.process_instance_event import (
+    ProcessLifecycleEventType,
+    TaskEventType,
+)
 from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
 from m8flow_bpmn_core.services.authorization import (
     TASK_CLAIM_COMMAND,
@@ -166,7 +169,7 @@ def claim_task(
     ):
         raise AuthorizationError("Task is already claimed by another user")
 
-    claimed_at = round(time.time())
+    claimed_at = datetime.now(UTC)
     claim_work_item(
         human_task,
         user_id=user_id,
@@ -174,7 +177,7 @@ def claim_task(
     )
     process_instance = session.get(ProcessInstanceModel, human_task.process_instance_id)
     if process_instance is not None:
-        process_instance.task_updated_at_in_seconds = claimed_at
+        process_instance.task_updated_at = claimed_at
     session.flush()
     return human_task
 
@@ -185,7 +188,7 @@ def complete_task(
     tenant_id: str,
     human_task_id: int,
     user_id: int,
-    completed_at_in_seconds: int | None = None,
+    completed_at: datetime | None = None,
     task_payload: Mapping[str, object] | None = None,
 ) -> HumanTaskModel:
     ensure_user_belongs_to_tenant(
@@ -220,17 +223,13 @@ def complete_task(
     if human_task.actual_owner_id != user_id:
         raise AuthorizationError("User does not own this task")
 
-    completed_at = (
-        completed_at_in_seconds
-        if completed_at_in_seconds is not None
-        else round(time.time())
-    )
+    completed_at = completed_at or datetime.now(UTC)
     _persist_task_payload(
         session,
         tenant_id=tenant_id,
         process_instance_id=human_task.process_instance_id,
         task_payload=task_payload,
-        completed_at_in_seconds=completed_at,
+        completed_at=completed_at,
     )
 
     complete_work_item(
@@ -241,7 +240,7 @@ def complete_task(
 
     if human_task.task_model is not None:
         human_task.task_model.state = TaskState.get_name(TaskState.COMPLETED)
-        human_task.task_model.end_in_seconds = float(completed_at)
+        human_task.task_model.ended_at = completed_at
 
     if human_task.task_guid is not None:
         future_task = session.get(FutureTaskModel, human_task.task_guid)
@@ -250,7 +249,7 @@ def complete_task(
 
     process_instance = session.get(ProcessInstanceModel, human_task.process_instance_id)
     if process_instance is not None:
-        process_instance.task_updated_at_in_seconds = completed_at
+        process_instance.task_updated_at = completed_at
     if (
         process_instance is not None
         and process_instance.workflow_state_json is not None
@@ -260,26 +259,26 @@ def complete_task(
             tenant_id=tenant_id,
             process_instance_id=human_task.process_instance_id,
             completed_task_guid=human_task.task_guid or human_task.task_model.guid,
-            completed_at_in_seconds=completed_at,
+            completed_at=completed_at,
         )
         record_process_instance_event(
             session,
             tenant_id=tenant_id,
             process_instance_id=human_task.process_instance_id,
-            event_type=ProcessInstanceEventType.task_completed,
+            event_type=TaskEventType.task_completed,
             task_guid=human_task.task_guid,
             user_id=user_id,
-            timestamp=float(completed_at),
+            occurred_at=completed_at,
         )
         if process_instance.status == ProcessInstanceStatus.complete.value:
             record_process_instance_event(
                 session,
                 tenant_id=tenant_id,
                 process_instance_id=human_task.process_instance_id,
-                event_type=ProcessInstanceEventType.process_instance_completed,
+                event_type=ProcessLifecycleEventType.process_instance_completed,
                 task_guid=human_task.task_guid,
                 user_id=user_id,
-                timestamp=float(completed_at),
+                occurred_at=completed_at,
             )
 
     session.flush()
@@ -321,7 +320,7 @@ def _persist_task_payload(
     tenant_id: str,
     process_instance_id: int,
     task_payload: Mapping[str, object] | None,
-    completed_at_in_seconds: int,
+    completed_at: datetime,
 ) -> None:
     if not task_payload:
         return
@@ -333,8 +332,8 @@ def _persist_task_payload(
             process_instance_id=process_instance_id,
             key=str(key),
             value=str(value),
-            updated_at_in_seconds=completed_at_in_seconds,
-            created_at_in_seconds=completed_at_in_seconds,
+            updated_at=completed_at,
+            created_at=completed_at,
         )
 
 

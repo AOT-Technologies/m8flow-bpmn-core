@@ -108,8 +108,8 @@ def _seed_ownership_context(session: Session) -> OwnershipContext:
         service=service_url,
         service_id="primary-user-keycloak",
         display_name="Primary User",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     secondary_user = UserModel(
         username="secondary-user",
@@ -117,8 +117,8 @@ def _seed_ownership_context(session: Session) -> OwnershipContext:
         service=service_url,
         service_id="secondary-user-keycloak",
         display_name="Secondary User",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     observer_user = UserModel(
         username="observer-user",
@@ -126,8 +126,8 @@ def _seed_ownership_context(session: Session) -> OwnershipContext:
         service=service_url,
         service_id="observer-user-keycloak",
         display_name="Observer User",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, primary_user, secondary_user, observer_user])
     session.flush()
@@ -151,8 +151,8 @@ def _seed_ownership_context(session: Session) -> OwnershipContext:
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=900,
-        updated_at_in_seconds=900,
+        created_at=900,
+        updated_at=900,
     )
     session.add(definition)
     session.flush()
@@ -176,8 +176,8 @@ def _seed_ownership_context(session: Session) -> OwnershipContext:
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at_in_seconds=950,
-        updated_at_in_seconds=950,
+        created_at=950,
+        updated_at=950,
     )
     session.add(task_definition)
     session.flush()
@@ -190,8 +190,8 @@ def _seed_ownership_context(session: Session) -> OwnershipContext:
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at_in_seconds=1_000,
-        updated_at_in_seconds=1_000,
+        created_at=1_000,
+        updated_at=1_000,
     )
     session.add(process_instance)
     session.flush()

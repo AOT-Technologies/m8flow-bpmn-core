@@ -32,8 +32,8 @@ def _make_tenant(session: Session) -> tuple[M8flowTenantModel, UserModel]:
         service=f"http://localhost:7002/realms/{TENANT_SLUG}",
         service_id="bpmn-admin-keycloak",
         display_name="BPMN Admin",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, user])
     session.flush()

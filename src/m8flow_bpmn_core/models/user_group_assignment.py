@@ -30,9 +30,11 @@ class UserGroupAssignmentModel(Base):
 
     user = relationship(
         "UserModel",
-        overlaps="groups,user_group_assignments,users",
+        back_populates="user_group_assignments",
+        overlaps="groups,users",
     )
     group = relationship(
         "GroupModel",
-        overlaps="groups,user_group_assignments,users",
+        back_populates="user_group_assignments",
+        overlaps="groups,users",
     )

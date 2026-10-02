@@ -153,7 +153,7 @@ def register_process_instance_routes(app: Flask) -> None:
   <td>{escape(process_instance.process_model_display_name)}</td>
   <td>{escape(process_instance.status)}</td>
   <td>{escape(process_instance.process_initiator.username)}</td>
-  <td>{format_timestamp(process_instance.start_in_seconds)}</td>
+  <td>{format_timestamp(process_instance.started_at)}</td>
   <td><a href="{escape(url_for("process_instance_detail", process_instance_id=process_instance.id))}">Open</a></td>
 </tr>
 """
@@ -223,7 +223,7 @@ def register_process_instance_routes(app: Flask) -> None:
   <td>{escape(event.event_type)}</td>
   <td>{escape(event.task_guid or '')}</td>
   <td>{escape((event.user.display_name or event.user.username) if event.user else '')}</td>
-  <td>{format_timestamp(event.timestamp)}</td>
+  <td>{format_timestamp(event.occurred_at)}</td>
 </tr>
 """
                 for event in detail.events
@@ -291,8 +291,8 @@ def register_process_instance_routes(app: Flask) -> None:
 <p><strong>Summary:</strong> {escape(detail.process_instance.summary or '')}</p>
 <p><strong>Process model identifier:</strong> {escape(detail.process_instance.process_model_identifier)}</p>
 <p><strong>Started by:</strong> {escape(detail.process_instance.process_initiator.username)}</p>
-<p><strong>Started:</strong> {format_timestamp(detail.process_instance.start_in_seconds)}</p>
-<p><strong>Ended:</strong> {format_timestamp(detail.process_instance.end_in_seconds)}</p>
+<p><strong>Started:</strong> {format_timestamp(detail.process_instance.started_at)}</p>
+<p><strong>Ended:</strong> {format_timestamp(detail.process_instance.ended_at)}</p>
 <h2>Human tasks</h2>
 {human_tasks_html}
 <h2>Metadata</h2>

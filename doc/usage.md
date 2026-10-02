@@ -234,9 +234,11 @@ covered V1 actions. It also carries contextual metadata for the currently
 enriched enforcement points (`process.start`, `task.claim`, `task.complete`).
 
 The built-in database policy resolves those command checks through
-`permission_target` rows. In practice, callers register URI targets together
-with the relevant `permission_target.command` values so the same permission
-catalog can distinguish generic URI access from specific workflow commands.
+`permission_target` rows. New callers should register an exact
+`resource_type`/`resource_id` pair together with the relevant command. Existing
+URI-only targets remain supported for compatibility, and can continue to
+distinguish generic URI access from specific workflow commands while callers
+migrate to explicit resource targets.
 
 ## Practical Notes
 

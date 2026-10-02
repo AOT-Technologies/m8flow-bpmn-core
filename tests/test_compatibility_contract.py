@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import fields
 
+import pytest
+from SpiffWorkflow.util.task import TaskState
+
 from m8flow_bpmn_core.application.commands import (
     ClaimTaskCommand,
     CompleteTaskCommand,
@@ -23,8 +26,15 @@ from m8flow_bpmn_core.models.base import Base
 from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.process_instance_event import (
+    ProcessInstanceEventCategory,
     ProcessInstanceEventModel,
     ProcessInstanceEventType,
+    ProcessLifecycleEventType,
+    TaskEventType,
+)
+from m8flow_bpmn_core.models.task import (
+    M8F_TERMINATED_TASK_STATE,
+    TaskModel,
 )
 
 EXPECTED_COMMAND_FIELDS = {
@@ -33,7 +43,7 @@ EXPECTED_COMMAND_FIELDS = {
         "tenant_id",
         "human_task_id",
         "user_id",
-        "completed_at_in_seconds",
+        "completed_at",
         "task_payload",
     ],
     CreateProcessInstanceCommand: [
@@ -45,8 +55,8 @@ EXPECTED_COMMAND_FIELDS = {
         "bpmn_process_id",
         "summary",
         "process_version",
-        "created_at_in_seconds",
-        "updated_at_in_seconds",
+        "created_at",
+        "updated_at",
     ],
     ImportBpmnProcessDefinitionCommand: [
         "tenant_id",
@@ -60,8 +70,8 @@ EXPECTED_COMMAND_FIELDS = {
         "bpmn_version_control_identifier",
         "single_process_hash",
         "full_process_model_hash",
-        "created_at_in_seconds",
-        "updated_at_in_seconds",
+        "created_at",
+        "updated_at",
     ],
     InitializeProcessInstanceFromDefinitionCommand: [
         "tenant_id",
@@ -70,7 +80,7 @@ EXPECTED_COMMAND_FIELDS = {
         "submission_metadata",
         "summary",
         "process_version",
-        "started_at_in_seconds",
+        "started_at",
         "bpmn_process_id",
     ],
     InitializeProcessInstanceWorkflowCommand: [
@@ -78,7 +88,7 @@ EXPECTED_COMMAND_FIELDS = {
         "process_instance_id",
         "bpmn_xml",
         "bpmn_process_id",
-        "started_at_in_seconds",
+        "started_at",
         "dmn_xml",
     ],
     RecordProcessInstanceEventCommand: [
@@ -87,15 +97,15 @@ EXPECTED_COMMAND_FIELDS = {
         "event_type",
         "task_guid",
         "user_id",
-        "timestamp",
+        "occurred_at",
     ],
     UpsertProcessInstanceMetadataCommand: [
         "tenant_id",
         "process_instance_id",
         "key",
         "value",
-        "updated_at_in_seconds",
-        "created_at_in_seconds",
+        "updated_at",
+        "created_at",
     ],
 }
 
@@ -123,10 +133,10 @@ def test_public_result_models_retain_response_attributes() -> None:
         "id",
         "process_model_identifier",
         "status",
-        "start_in_seconds",
-        "end_in_seconds",
-        "updated_at_in_seconds",
-        "created_at_in_seconds",
+        "started_at",
+        "ended_at",
+        "updated_at",
+        "created_at",
         "spiff_serializer_version",
     }.issubset(ProcessInstanceModel.__mapper__.attrs.keys())
     assert {
@@ -137,15 +147,29 @@ def test_public_result_models_retain_response_attributes() -> None:
         "completed",
         "actual_owner_id",
         "lane_assignment_id",
-        "created_at_in_seconds",
-        "updated_at_in_seconds",
+        "created_at",
+        "updated_at",
     }.issubset(HumanTaskModel.__mapper__.attrs.keys())
     assert {
         "id",
         "process_instance_id",
         "event_type",
-        "timestamp",
+        "occurred_at",
     }.issubset(ProcessInstanceEventModel.__mapper__.attrs.keys())
+
+
+def test_native_occurred_at_attributes_are_additive() -> None:
+    assert {
+        "started_at",
+        "ended_at",
+        "task_updated_at",
+        "created_at",
+        "updated_at",
+    }.issubset(ProcessInstanceModel.__mapper__.attrs.keys())
+    assert {"created_at", "updated_at"}.issubset(
+        HumanTaskModel.__mapper__.attrs.keys()
+    )
+    assert "occurred_at" in ProcessInstanceEventModel.__mapper__.attrs
 
 
 def test_schema_table_names_are_compatible_baseline() -> None:
@@ -193,3 +217,42 @@ def test_public_enum_values_are_compatible() -> None:
         "task_failed",
         "task_skipped",
     ]
+
+
+def test_event_enums_are_split_without_changing_persisted_values() -> None:
+    assert [event.value for event in ProcessLifecycleEventType] == [
+        event.value
+        for event in ProcessInstanceEventType
+        if event.value.startswith("process_")
+    ]
+    assert [event.value for event in TaskEventType] == [
+        event.value
+        for event in ProcessInstanceEventType
+        if event.value.startswith("task_")
+    ]
+
+    process_event = ProcessInstanceEventModel(
+        event_type=ProcessLifecycleEventType.process_instance_created,
+        process_instance_id=1,
+        occurred_at=1,
+    )
+    task_event = ProcessInstanceEventModel(
+        event_type=TaskEventType.task_completed,
+        process_instance_id=1,
+        occurred_at=1,
+    )
+    assert process_event.category == ProcessInstanceEventCategory.process.value
+    assert task_event.category == ProcessInstanceEventCategory.task.value
+
+
+def test_task_state_validation_uses_spiff_names_and_preserves_termination() -> None:
+    assert TaskModel(state=TaskState.READY).state == "READY"
+    assert TaskModel(state="COMPLETED").state == TaskState.get_name(
+        TaskState.COMPLETED
+    )
+    assert TaskModel(state=M8F_TERMINATED_TASK_STATE).state == (
+        M8F_TERMINATED_TASK_STATE
+    )
+
+    with pytest.raises(ValueError):
+        TaskModel(state="not-a-task-state")

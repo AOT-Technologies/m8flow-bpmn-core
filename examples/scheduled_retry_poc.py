@@ -395,8 +395,8 @@ def _run_retry_poc(
             },
             bpmn_version_control_type="git",
             bpmn_version_control_identifier="retry-poc",
-            created_at_in_seconds=import_timestamp,
-            updated_at_in_seconds=import_timestamp,
+            created_at=import_timestamp,
+            updated_at=import_timestamp,
         ),
     )
     if definition is None:
@@ -411,7 +411,7 @@ def _run_retry_poc(
     if deployment is not None:
         _print_backend_deployment_summary(deployment)
 
-    started_at_in_seconds = round(time.time())
+    started_at = round(time.time())
     process_instance = _run_command_step(
         engine,
         step_number=2,
@@ -426,7 +426,7 @@ def _run_retry_poc(
             bpmn_process_definition_id=definition.id,
             process_initiator_id=context.admin_user_id,
             summary="Scheduled retry demonstration instance",
-            started_at_in_seconds=started_at_in_seconds,
+            started_at=started_at,
         ),
     )
     if process_instance is None:
@@ -453,7 +453,7 @@ def _run_retry_poc(
         process_instance_id=process_instance.id,
     )
 
-    errored_at_in_seconds = round(time.time())
+    errored_at = round(time.time())
     errored_process_instance = _run_command_step(
         engine,
         step_number=4,
@@ -467,7 +467,7 @@ def _run_retry_poc(
             tenant_id=context.tenant_id,
             process_instance_id=process_instance.id,
             user_id=context.admin_user_id,
-            errored_at_in_seconds=errored_at_in_seconds,
+            errored_at=errored_at,
         ),
     )
     if errored_process_instance is None:
@@ -514,8 +514,8 @@ def _run_retry_poc(
         tenant_id=context.tenant_id,
         process_instance_id=process_instance.id,
         user_id=context.admin_user_id,
-        retry_at_in_seconds=retry_due_at_in_seconds,
-        scheduled_at_in_seconds=retry_scheduled_at_in_seconds,
+        retry_at=retry_due_at_in_seconds,
+        scheduled_at=retry_scheduled_at_in_seconds,
     )
     print("Command:")
     print(pformat(schedule_retry_command, sort_dicts=False, width=100))
@@ -575,7 +575,7 @@ def _run_retry_poc(
         title="Read back the retried process instance",
         context_text=(
             "The same process instance should now be running again. Retry "
-            "clears the previous end timestamp and reopens the runtime state "
+            "clears the previous end occurred_at and reopens the runtime state "
             "instead of creating a new instance."
         ),
         command=api.GetProcessInstanceQuery(
@@ -677,7 +677,7 @@ def _run_retry_poc(
             tenant_id=context.tenant_id,
             human_task_id=reopened_task.id,
             user_id=context.operator_user_id,
-            completed_at_in_seconds=round(time.time()),
+            completed_at=round(time.time()),
             task_payload={
                 "completed_after_retry": "true",
                 "completed_by": context.operator_username,
@@ -900,7 +900,7 @@ def _summarize_scheduler_job(scheduler_job: SchedulerJobModel) -> dict[str, Any]
         "tenant_id": scheduler_job.m8f_tenant_id,
         "process_instance_id": scheduler_job.process_instance_id,
         "definition_id": scheduler_job.bpmn_process_definition_id,
-        "run_at_in_seconds": scheduler_job.run_at_in_seconds,
+        "run_at_in_seconds": scheduler_job.run_at,
         "locked_by": scheduler_job.locked_by,
         "payload_json": scheduler_job.payload_json,
     }

@@ -129,7 +129,7 @@ class RecordedServiceTaskInvocation:
     process_definition_id: int | None
     task_name: str | None
     task_type: str | None
-    timestamp: str
+    occurred_at: str
 
 
 @dataclass(slots=True)
@@ -156,7 +156,7 @@ class RecordingDemoServiceTaskConnector:
         self._attempt_counter += 1
         parameters = dict(request.parameters or {})
         context = request.context
-        timestamp = datetime.now(UTC).replace(microsecond=0).isoformat()
+        occurred_at = datetime.now(UTC).replace(microsecond=0).isoformat()
 
         self.recorded_invocations.append(
             RecordedServiceTaskInvocation(
@@ -172,7 +172,7 @@ class RecordingDemoServiceTaskConnector:
                 ),
                 task_name=context.task_name if context else None,
                 task_type=context.task_type if context else None,
-                timestamp=timestamp,
+                occurred_at=occurred_at,
             )
         )
         return api.ServiceTaskResult(
@@ -481,8 +481,8 @@ def _run_failure_retry_poc(
             },
             bpmn_version_control_type="git",
             bpmn_version_control_identifier="service-task-failure-retry-poc",
-            created_at_in_seconds=round(time.time()),
-            updated_at_in_seconds=round(time.time()),
+            created_at=round(time.time()),
+            updated_at=round(time.time()),
         ),
         registry=working_registry,
     )
@@ -512,7 +512,7 @@ def _run_failure_retry_poc(
             submission_metadata={"submission_message": SUBMISSION_MESSAGE},
             summary=run_summary,
             process_version=1,
-            created_at_in_seconds=shell_created_at_in_seconds,
+            created_at=shell_created_at_in_seconds,
         )
     )
 
@@ -540,7 +540,7 @@ def _run_failure_retry_poc(
     )
     _pause("Press Enter to continue to workflow initialization.")
 
-    started_at_in_seconds = round(time.time())
+    started_at = round(time.time())
     _run_registry_step(
         engine,
         step_number=3,
@@ -557,7 +557,7 @@ def _run_failure_retry_poc(
             process_instance_id=process_instance_shell_id,
             bpmn_xml=definition.source_bpmn_xml,
             bpmn_process_id=selected_process_id,
-            started_at_in_seconds=started_at_in_seconds,
+            started_at=started_at,
         ),
         registry=failing_registry,
         use_session_scope=True,
@@ -641,7 +641,7 @@ def _run_failure_retry_poc(
             tenant_id=context.tenant_id,
             process_instance_id=failed_process_instance.id,
             user_id=context.admin_user_id,
-            retried_at_in_seconds=round(time.time()),
+            retried_at=round(time.time()),
         ),
         registry=working_registry,
         use_session_scope=True,
@@ -706,7 +706,7 @@ def _run_failure_retry_poc(
             tenant_id=context.tenant_id,
             human_task_id=operator_task.id,
             user_id=context.operator_user_id,
-            completed_at_in_seconds=round(time.time()),
+            completed_at=round(time.time()),
             task_payload={
                 "decision": "approved",
                 "completed_by": context.operator_username,
@@ -857,7 +857,7 @@ def _print_connector_invocations(
                     "error_message": invocation.error_message,
                     "process_instance_id": invocation.process_instance_id,
                     "task_name": invocation.task_name,
-                    "timestamp": invocation.timestamp,
+                    "timestamp": invocation.occurred_at,
                 }
                 for invocation in connector.recorded_invocations
             ],
@@ -969,7 +969,7 @@ def _prepare_committed_process_instance_shell(
     submission_metadata: dict[str, str] | None,
     summary: str | None,
     process_version: int,
-    created_at_in_seconds: int | None,
+    created_at: int | None,
 ) -> tuple[int, str]:
     with engine.begin() as connection:
         session = Session(
@@ -997,7 +997,7 @@ def _prepare_committed_process_instance_shell(
                     submission_metadata=submission_metadata,
                     summary=summary,
                     process_version=process_version,
-                    started_at_in_seconds=created_at_in_seconds,
+                    started_at=created_at,
                     bpmn_process_id=None,
                 )
             )

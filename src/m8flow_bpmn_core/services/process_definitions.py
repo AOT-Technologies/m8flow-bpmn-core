@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-import time
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any
 
 from SpiffWorkflow.spiff.parser.process import SpiffBpmnParser
@@ -41,8 +41,8 @@ def import_bpmn_process_definition(
     bpmn_version_control_identifier: str | None = None,
     single_process_hash: str | None = None,
     full_process_model_hash: str | None = None,
-    created_at_in_seconds: int | None = None,
-    updated_at_in_seconds: int | None = None,
+    created_at: datetime | None = None,
+    updated_at: datetime | None = None,
 ) -> BpmnProcessDefinitionModel:
     ensure_user_belongs_to_tenant(
         session,
@@ -97,11 +97,11 @@ def import_bpmn_process_definition(
             properties_json=resolved_properties_json,
             bpmn_version_control_type=bpmn_version_control_type,
             bpmn_version_control_identifier=bpmn_version_control_identifier,
-            created_at_in_seconds=created_at_in_seconds,
-            updated_at_in_seconds=(
-                updated_at_in_seconds
-                if updated_at_in_seconds is not None
-                else created_at_in_seconds
+            created_at=created_at,
+            updated_at=(
+                updated_at
+                if updated_at is not None
+                else created_at
             ),
         )
         session.add(definition)
@@ -122,12 +122,12 @@ def import_bpmn_process_definition(
             definition.bpmn_version_control_identifier = (
                 bpmn_version_control_identifier
             )
-        if created_at_in_seconds is not None:
-            definition.created_at_in_seconds = created_at_in_seconds
-        if updated_at_in_seconds is not None:
-            definition.updated_at_in_seconds = updated_at_in_seconds
-        elif created_at_in_seconds is not None:
-            definition.updated_at_in_seconds = created_at_in_seconds
+        if created_at is not None:
+            definition.created_at = created_at
+        if updated_at is not None:
+            definition.updated_at = updated_at
+        elif created_at is not None:
+            definition.updated_at = created_at
     definition.process_model_identifier = bpmn_identifier
     definition.source_bpmn_xml = source_bpmn_xml_text
     if source_dmn_xml is not None:
@@ -135,11 +135,11 @@ def import_bpmn_process_definition(
 
     session.flush()
     snapshot_timestamp = (
-        updated_at_in_seconds
-        if updated_at_in_seconds is not None
-        else created_at_in_seconds
-        if created_at_in_seconds is not None
-        else round(time.time())
+        updated_at
+        if updated_at is not None
+        else created_at
+        if created_at is not None
+        else datetime.now(UTC)
     )
     _ensure_bpmn_version_snapshot(
         session,
@@ -177,7 +177,7 @@ def _ensure_bpmn_version_snapshot(
     tenant_id: str,
     process_model_identifier: str,
     bpmn_xml_text: str,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     bpmn_xml_hash = _hash_text(bpmn_xml_text)
     snapshot = session.scalar(
@@ -195,7 +195,7 @@ def _ensure_bpmn_version_snapshot(
                 process_model_identifier=process_model_identifier,
                 bpmn_xml_hash=bpmn_xml_hash,
                 bpmn_xml_file_contents=bpmn_xml_text,
-                created_at_in_seconds=occurred_at,
+                created_at=occurred_at,
             )
         )
         session.flush()

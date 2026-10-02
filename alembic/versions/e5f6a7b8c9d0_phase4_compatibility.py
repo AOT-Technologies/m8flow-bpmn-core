@@ -129,62 +129,107 @@ def _tenant_scope_json_data() -> None:
     references = list(
         bind.execute(
             sa.text(
-                "SELECT DISTINCT m8f_tenant_id, json_data_hash "
+                "SELECT m8f_tenant_id, json_data_hash AS payload_hash "
                 "FROM bpmn_process "
-                "UNION "
-                "SELECT DISTINCT m8f_tenant_id, json_data_hash "
+                "UNION ALL "
+                "SELECT m8f_tenant_id, json_data_hash AS payload_hash "
                 "FROM task "
-                "UNION "
-                "SELECT DISTINCT m8f_tenant_id, python_env_data_hash "
+                "UNION ALL "
+                "SELECT m8f_tenant_id, python_env_data_hash AS payload_hash "
                 "FROM task"
             )
         )
     )
-    assigned: set[str] = set()
+
+    reference_tenants: dict[str, set[str]] = {}
+    invalid_references: list[str] = []
     for tenant_id, payload_hash in references:
-        if payload_hash not in json_rows:
-            continue
-        if payload_hash not in assigned:
-            bind.execute(
-                sa.text(
-                    "UPDATE json_data SET m8f_tenant_id = :tenant_id "
-                    "WHERE hash = :payload_hash"
-                ),
-                {"tenant_id": tenant_id, "payload_hash": payload_hash},
+        if tenant_id is None or payload_hash is None:
+            invalid_references.append(
+                f"tenant={tenant_id!r}, hash={payload_hash!r}"
             )
-            assigned.add(payload_hash)
             continue
-        bind.execute(
-            sa.text(
-                "INSERT INTO json_data (m8f_tenant_id, hash, data) "
-                "VALUES (:tenant_id, :payload_hash, :data)"
-            ).bindparams(sa.bindparam("data", type_=sa.JSON)),
-            {
-                "tenant_id": tenant_id,
-                "payload_hash": payload_hash,
-                "data": json_rows[payload_hash],
-            },
+        reference_tenants.setdefault(payload_hash, set()).add(tenant_id)
+
+    missing_payloads = sorted(set(reference_tenants) - set(json_rows))
+    unreferenced_payloads = sorted(set(json_rows) - set(reference_tenants))
+    referenced_tenants = {
+        tenant_id
+        for tenant_ids in reference_tenants.values()
+        for tenant_id in tenant_ids
+    }
+    known_tenants = {
+        row.id
+        for row in bind.execute(sa.text("SELECT id FROM m8flow_tenant"))
+    }
+    missing_tenants = sorted(referenced_tenants - known_tenants)
+
+    validation_errors: list[str] = []
+    if invalid_references:
+        validation_errors.append(
+            "null tenant or payload reference: "
+            + ", ".join(invalid_references[:5])
+        )
+    if missing_payloads:
+        validation_errors.append(
+            "referenced payload hashes are missing from json_data: "
+            + ", ".join(missing_payloads[:5])
+        )
+    if unreferenced_payloads:
+        validation_errors.append(
+            "json_data rows have no tenant-qualified reference: "
+            + ", ".join(unreferenced_payloads[:5])
+        )
+    if missing_tenants:
+        validation_errors.append(
+            "referenced tenants are missing from m8flow_tenant: "
+            + ", ".join(missing_tenants[:5])
+        )
+    if validation_errors:
+        raise RuntimeError(
+            "Cannot safely tenant-scope json_data; no payload rows were "
+            "re-keyed. "
+            + " | ".join(validation_errors)
         )
 
-    # Only content unreferenced by both process and task rows is removed. Task
-    # rows have two independent JSON references, so both were included above.
-    bind.execute(
-        sa.text(
-            "DELETE FROM json_data WHERE m8f_tenant_id IS NULL"
-        )
-    )
-    with op.batch_alter_table("json_data", recreate="always") as batch_op:
-        batch_op.drop_constraint("pk_json_data", type_="primary")
-        batch_op.create_foreign_key(
-            "m8f_json_data_tenant_fk",
-            "m8flow_tenant",
+    # A shared legacy hash is valid: it represents identical content referenced
+    # by multiple tenants. Build the complete target shape separately because
+    # inserting a second copy into the legacy hash-only table would violate its
+    # primary key before the schema replacement occurs.
+    stage_table = "m8f_json_data_tenant_scope_stage"
+    op.create_table(
+        stage_table,
+        sa.Column("m8f_tenant_id", sa.String(length=255), nullable=False),
+        sa.Column("hash", sa.String(length=255), nullable=False),
+        sa.Column("data", sa.JSON(), nullable=False),
+        sa.ForeignKeyConstraint(
             ["m8f_tenant_id"],
-            ["id"],
-        )
-        batch_op.create_primary_key(
-            "m8f_json_data_tenant_hash_pk", ["m8f_tenant_id", "hash"]
-        )
-        batch_op.alter_column("m8f_tenant_id", nullable=False)
+            ["m8flow_tenant.id"],
+            name="m8f_json_data_tenant_fk",
+        ),
+        sa.PrimaryKeyConstraint(
+            "m8f_tenant_id",
+            "hash",
+            name="m8f_json_data_tenant_hash_pk",
+        ),
+    )
+    for payload_hash, tenant_ids in reference_tenants.items():
+        for tenant_id in sorted(tenant_ids):
+            bind.execute(
+                sa.text(
+                    f"INSERT INTO {stage_table} "
+                    "(m8f_tenant_id, hash, data) "
+                    "VALUES (:tenant_id, :payload_hash, :data)"
+                ).bindparams(sa.bindparam("data", type_=sa.JSON)),
+                {
+                    "tenant_id": tenant_id,
+                    "payload_hash": payload_hash,
+                    "data": json_rows[payload_hash],
+                },
+            )
+
+    op.drop_table("json_data")
+    op.rename_table(stage_table, "json_data")
 
 
 def upgrade() -> None:
@@ -209,8 +254,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Downgrade intentionally restores the old shape; data duplicated for a
-    # second tenant is retained only in the first tenant's row.
+    # Downgrade intentionally restores the old shape. A legacy hash-only key
+    # cannot retain one row per tenant, so identical hashes are collapsed to
+    # the lexicographically first tenant before the old primary key returns.
+    op.execute(
+        sa.text(
+            "DELETE FROM json_data WHERE (m8f_tenant_id, hash) NOT IN ("
+            "SELECT MIN(m8f_tenant_id), hash FROM json_data GROUP BY hash"
+            ")"
+        )
+    )
     with op.batch_alter_table("json_data", recreate="always") as batch_op:
         batch_op.drop_constraint("m8f_json_data_tenant_fk", type_="foreignkey")
         batch_op.drop_constraint("m8f_json_data_tenant_hash_pk", type_="primary")

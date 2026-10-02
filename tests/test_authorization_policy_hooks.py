@@ -103,7 +103,7 @@ def test_public_default_policy_factory_overrides_process_start_authorization(
                     process_initiator_id=context.user.id,
                     summary="Blocked by policy hook",
                     process_version=1,
-                    started_at_in_seconds=100,
+                    started_at=100,
                     bpmn_process_id="invoice_approval_poc",
                 ),
             )
@@ -141,8 +141,8 @@ def _seed_authorization_hook_context(
         service=f"http://localhost:7002/realms/{tenant.slug}",
         service_id="policy-user-keycloak",
         display_name="Policy User",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, user])
     session.flush()
@@ -157,8 +157,8 @@ def _seed_authorization_hook_context(
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=90,
-        updated_at_in_seconds=90,
+        created_at=90,
+        updated_at=90,
     )
     definition.source_bpmn_xml = bpmn_xml
     session.add(definition)
@@ -183,8 +183,8 @@ def _seed_authorization_hook_context(
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at_in_seconds=95,
-        updated_at_in_seconds=95,
+        created_at=95,
+        updated_at=95,
     )
     session.add(task_definition)
     session.flush()
@@ -197,8 +197,8 @@ def _seed_authorization_hook_context(
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at_in_seconds=100,
-        updated_at_in_seconds=100,
+        created_at=100,
+        updated_at=100,
     )
     session.add(process_instance)
     session.flush()

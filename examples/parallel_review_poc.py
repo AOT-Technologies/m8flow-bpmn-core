@@ -107,8 +107,8 @@ def main() -> None:
                     "flow": "parallel_review",
                     "lane_owners": LANE_OWNERS,
                 },
-                created_at_in_seconds=90,
-                updated_at_in_seconds=90,
+                created_at=90,
+                updated_at=90,
             ),
         )
         process_instance = api.execute_command(
@@ -119,7 +119,7 @@ def main() -> None:
                 process_initiator_id=users["requester"].id,
                 summary="Purchase order — parallel review walkthrough",
                 process_version=1,
-                started_at_in_seconds=100,
+                started_at=100,
                 bpmn_process_id=PROCESS_ID,
             ),
         )
@@ -147,7 +147,7 @@ def main() -> None:
                 tenant_id=TENANT_ID,
                 human_task_id=submit_task.id,
                 user_id=users["requester"].id,
-                completed_at_in_seconds=110,
+                completed_at=110,
                 task_payload={
                     "order_amount": ORDER_AMOUNT,
                     "vendor": ORDER_VENDOR,
@@ -180,7 +180,7 @@ def main() -> None:
                 tenant_id=TENANT_ID,
                 human_task_id=finance_task.id,
                 user_id=users["finance_user"].id,
-                completed_at_in_seconds=120,
+                completed_at=120,
                 task_payload={"finance_decision": SCENARIO.finance_decision},
             ),
         )
@@ -209,7 +209,7 @@ def main() -> None:
                 tenant_id=TENANT_ID,
                 human_task_id=compliance_task.id,
                 user_id=users["compliance_user"].id,
-                completed_at_in_seconds=130,
+                completed_at=130,
                 task_payload={
                     "compliance_decision": SCENARIO.compliance_decision,
                 },
@@ -239,7 +239,7 @@ def main() -> None:
                 tenant_id=TENANT_ID,
                 human_task_id=notify_task.id,
                 user_id=users["requester"].id,
-                completed_at_in_seconds=140,
+                completed_at=140,
             ),
         )
         _show_instance("Final", session, process_instance.id)
@@ -325,8 +325,8 @@ def _seed(session: Session) -> dict[str, UserModel]:
             service=SERVICE_URL,
             service_id="requester-keycloak",
             display_name="Requester",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
         "finance_user": UserModel(
             username="finance_user",
@@ -334,8 +334,8 @@ def _seed(session: Session) -> dict[str, UserModel]:
             service=SERVICE_URL,
             service_id="finance-keycloak",
             display_name="Finance User",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
         "admin": UserModel(
             username="admin",
@@ -343,8 +343,8 @@ def _seed(session: Session) -> dict[str, UserModel]:
             service=SERVICE_URL,
             service_id="admin-keycloak",
             display_name="Admin",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
         "compliance_user": UserModel(
             username="compliance_user",
@@ -352,8 +352,8 @@ def _seed(session: Session) -> dict[str, UserModel]:
             service=SERVICE_URL,
             service_id="compliance-keycloak",
             display_name="Compliance User",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
     }
     session.add(tenant)

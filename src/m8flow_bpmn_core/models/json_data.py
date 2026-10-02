@@ -21,6 +21,18 @@ class JsonDataModel(Base):
     data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
     @classmethod
+    def get_for_tenant(
+        cls, session: Session, tenant_id: str, payload_hash: str
+    ) -> JsonDataModel | None:
+        """Return a payload only when both tenant and hash match.
+
+        JSON hashes are content identifiers, not globally unique ownership
+        identifiers. Keeping the composite lookup here makes it harder for a
+        caller to accidentally reintroduce a hash-only read.
+        """
+        return session.get(cls, (tenant_id, payload_hash))
+
+    @classmethod
     def normalized_payload(
         cls, data: Mapping[str, Any] | dict[str, Any] | None
     ) -> dict[str, Any]:
@@ -52,7 +64,7 @@ class JsonDataModel(Base):
         data: Mapping[str, Any] | dict[str, Any] | None,
     ) -> str:
         payload_hash, normalized_payload = cls.hash_payload(data)
-        record = session.get(cls, (tenant_id, payload_hash))
+        record = cls.get_for_tenant(session, tenant_id, payload_hash)
         if record is None:
             for pending_record in session.new:
                 if (

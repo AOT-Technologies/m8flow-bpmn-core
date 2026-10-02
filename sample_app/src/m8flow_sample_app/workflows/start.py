@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import time
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,6 @@ def start_process_instance(
                 bpmn_process_definition_id=definition_id,
                 process_initiator_id=user_id,
                 summary=summary,
-                started_at_in_seconds=round(time.time()),
+                started_at=datetime.now(UTC),
             ),
         )

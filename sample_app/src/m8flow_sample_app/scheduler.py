@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from sqlalchemy import Engine
 
@@ -80,7 +81,11 @@ def run_scheduler_cycle(
             ):
                 return api.run_due_scheduler_jobs(
                     db_session,
-                    now_in_seconds=now_in_seconds,
+                    now=(
+                        datetime.fromtimestamp(now_in_seconds, UTC)
+                        if now_in_seconds is not None
+                        else None
+                    ),
                     limit=limit,
                     worker_id=worker_id,
                 )

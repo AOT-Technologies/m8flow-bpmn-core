@@ -47,7 +47,7 @@ def register_process_definition_routes(app: Flask) -> None:
   <td>{escape(definition.process_model_identifier)}</td>
   <td>{escape(definition.bpmn_identifier)}</td>
   <td>{escape(definition.bpmn_name or '')}</td>
-  <td>{format_timestamp(definition.updated_at_in_seconds)}</td>
+  <td>{format_timestamp(definition.updated_at)}</td>
   <td>{
       (
           f'<a href="{escape(url_for("start_workflow", definition_id=definition.id))}">Start from this definition</a>'

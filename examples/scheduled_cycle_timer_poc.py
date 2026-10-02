@@ -369,7 +369,7 @@ def _run_cycle_timer_poc(
         f"expression {cycle_expression!r}."
     )
     print(
-        "The BPMN engine calculates the first due timestamp at import time, "
+        "The BPMN engine calculates the first due occurred_at at import time, "
         "and this POC waits through every scheduled occurrence so one run "
         "creates all three process instances."
     )
@@ -415,8 +415,8 @@ def _run_cycle_timer_poc(
         },
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="timer-cycle-poc",
-        created_at_in_seconds=import_timestamp,
-        updated_at_in_seconds=import_timestamp,
+        created_at=import_timestamp,
+        updated_at=import_timestamp,
     )
     print("Command:")
     print(pformat(import_command, sort_dicts=False, width=100))
@@ -516,8 +516,8 @@ def _run_cycle_timer_poc(
         for process_instance in process_instances
         if (
             process_instance.bpmn_process_definition_id == definition.id
-            and process_instance.start_in_seconds is not None
-            and process_instance.start_in_seconds >= import_timestamp
+            and process_instance.started_at is not None
+            and process_instance.started_at >= import_timestamp
         )
     ]
     if len(matching_instances) != CYCLE_REPEAT_COUNT:
@@ -529,7 +529,7 @@ def _run_cycle_timer_poc(
         )
     matching_instances.sort(
         key=lambda process_instance: (
-            process_instance.start_in_seconds or 0,
+            process_instance.started_at or 0,
             process_instance.id,
         )
     )
@@ -884,7 +884,7 @@ def _summarize_scheduler_job(scheduler_job: SchedulerJobModel) -> dict[str, Any]
         "job_type": scheduler_job.job_type,
         "tenant_id": scheduler_job.m8f_tenant_id,
         "definition_id": scheduler_job.bpmn_process_definition_id,
-        "run_at_in_seconds": scheduler_job.run_at_in_seconds,
+        "run_at_in_seconds": scheduler_job.run_at,
         "locked_by": scheduler_job.locked_by,
         "payload_json": scheduler_job.payload_json,
     }
@@ -1063,11 +1063,11 @@ def _current_timer_start_runtime_state(
             )
             if minimum_start_in_seconds is not None:
                 stmt = stmt.where(
-                    ProcessInstanceModel.start_in_seconds
+                    ProcessInstanceModel.started_at
                     >= minimum_start_in_seconds
                 )
             stmt = stmt.order_by(
-                ProcessInstanceModel.start_in_seconds,
+                ProcessInstanceModel.started_at,
                 ProcessInstanceModel.id,
             )
             process_instances = list(session.scalars(stmt).all())

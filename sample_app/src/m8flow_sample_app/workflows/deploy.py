@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Sequence
 
@@ -166,7 +166,7 @@ def deploy_definition_from_uploaded_bpmn(
     source_bpmn_xml: str,
     source_file_name: str | None,
 ) -> DemoDefinitionDeploymentResult:
-    now = round(time.time())
+    now = datetime.now(UTC)
     primary_file_name = _normalized_primary_bpmn_file_name(
         source_file_name=source_file_name,
         process_model_identifier=process_model_identifier,
@@ -186,8 +186,8 @@ def deploy_definition_from_uploaded_bpmn(
         source_bpmn_xml=source_bpmn_xml,
         bpmn_version_control_type="sample-app-upload",
         bpmn_version_control_identifier=primary_file_name,
-        created_at_in_seconds=now,
-        updated_at_in_seconds=now,
+        created_at=now,
+        updated_at=now,
     )
     backend_catalog = publish_process_model_to_m8flow_backend(
         audit_context=audit_context,
@@ -237,7 +237,7 @@ def deploy_built_in_definition(
     process_model_identifier: str,
     bpmn_name: str,
 ) -> DemoDefinitionDeploymentResult:
-    now = round(time.time())
+    now = datetime.now(UTC)
     workflow = BUILT_IN_WORKFLOW_DEFINITIONS.get(workflow_key)
     if workflow is None:
         raise ValueError(f"Unknown built-in workflow key: {workflow_key!r}")
@@ -263,8 +263,8 @@ def deploy_built_in_definition(
         bpmn_version_control_type="sample-app",
         bpmn_version_control_identifier=workflow.version_control_identifier,
         flow_name=workflow.flow_name,
-        created_at_in_seconds=now,
-        updated_at_in_seconds=now,
+        created_at=now,
+        updated_at=now,
     )
     definition = definition_result.definition
     backend_catalog = publish_process_model_to_m8flow_backend(
@@ -305,8 +305,8 @@ def _import_definition(
     bpmn_version_control_type: str | None,
     bpmn_version_control_identifier: str | None,
     flow_name: str | None = None,
-    created_at_in_seconds: int | None = None,
-    updated_at_in_seconds: int | None = None,
+    created_at: datetime | None = None,
+    updated_at: datetime | None = None,
 ) -> DemoDefinitionDeploymentResult:
     definition = api.execute_command(
         session,
@@ -327,8 +327,8 @@ def _import_definition(
             },
             bpmn_version_control_type=bpmn_version_control_type,
             bpmn_version_control_identifier=bpmn_version_control_identifier,
-            created_at_in_seconds=created_at_in_seconds,
-            updated_at_in_seconds=updated_at_in_seconds,
+            created_at=created_at,
+            updated_at=updated_at,
         ),
     )
     return DemoDefinitionDeploymentResult(

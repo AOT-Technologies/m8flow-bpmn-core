@@ -97,6 +97,12 @@ Both examples:
 - exercise the built-in V1 RBAC checks for `process_definition.import`,
   `process.start`, `task.claim`, and `task.complete`
 
+The returned `HumanTaskModel` remains the compatibility-facing task object.
+Its `work_item` companion contains normalized claim state, including owner,
+completion, and status fields. Event history also exposes the additive
+`category` value (`process` or `task`) while retaining the existing event type
+strings.
+
 The rejection variant changes the manager decision to `Rejected`, so the flow
 ends before the Finance lane is activated.
 

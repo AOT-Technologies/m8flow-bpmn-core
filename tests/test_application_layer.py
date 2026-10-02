@@ -77,11 +77,11 @@ def test_application_layer_handles_tasks_events_and_metadata(
             event_type=ProcessInstanceEventType.process_instance_created,
             task_guid=task.guid,
             user_id=user.id,
-            timestamp=100.25,
+            occurred_at=100.25,
         ),
     )
     assert event.event_type == ProcessInstanceEventType.process_instance_created.value
-    assert float(event.timestamp) == 100.25
+    assert event.occurred_at.timestamp() == 100.25
 
     metadata = execute_command(
         session,
@@ -90,12 +90,12 @@ def test_application_layer_handles_tasks_events_and_metadata(
             process_instance_id=process_instance.id,
             key="approval_state",
             value="pending",
-            updated_at_in_seconds=101,
-            created_at_in_seconds=100,
+            updated_at=101,
+            created_at=100,
         ),
     )
     assert metadata.value == "pending"
-    assert metadata.created_at_in_seconds == 100
+    assert metadata.created_at.timestamp() == 100
 
     metadata = execute_command(
         session,
@@ -104,11 +104,11 @@ def test_application_layer_handles_tasks_events_and_metadata(
             process_instance_id=process_instance.id,
             key="approval_state",
             value="approved",
-            updated_at_in_seconds=120,
+            updated_at=120,
         ),
     )
     assert metadata.value == "approved"
-    assert metadata.updated_at_in_seconds == 120
+    assert metadata.updated_at.timestamp() == 120
 
     events = execute_query(
         session,
@@ -135,7 +135,7 @@ def test_application_layer_handles_tasks_events_and_metadata(
             tenant_id=tenant.id,
             human_task_id=human_task.id,
             user_id=user.id,
-            completed_at_in_seconds=130,
+            completed_at=130,
             task_payload={"routing_hint": "manual"},
         ),
     )
@@ -244,11 +244,11 @@ def test_process_lifecycle_commands_and_queries(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            suspended_at_in_seconds=200,
+            suspended_at=200,
         ),
     )
     assert suspended_process_instance.status == "suspended"
-    assert suspended_process_instance.updated_at_in_seconds == 200
+    assert suspended_process_instance.updated_at.timestamp() == 200
     assert (
         execute_query(
             session,
@@ -282,11 +282,11 @@ def test_process_lifecycle_commands_and_queries(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            resumed_at_in_seconds=250,
+            resumed_at=250,
         ),
     )
     assert resumed_process_instance.status == "running"
-    assert resumed_process_instance.updated_at_in_seconds == 250
+    assert resumed_process_instance.updated_at.timestamp() == 250
 
     terminated_process_instance = execute_command(
         session,
@@ -294,12 +294,12 @@ def test_process_lifecycle_commands_and_queries(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            terminated_at_in_seconds=300,
+            terminated_at=300,
         ),
     )
     assert terminated_process_instance.status == "terminated"
-    assert terminated_process_instance.end_in_seconds == 300
-    assert terminated_process_instance.updated_at_in_seconds == 300
+    assert terminated_process_instance.ended_at.timestamp() == 300
+    assert terminated_process_instance.updated_at.timestamp() == 300
     assert terminated_process_instance.tasks[0].state == "TERMINATED"
     assert terminated_process_instance.tasks[0].future_task is not None
     assert terminated_process_instance.tasks[0].future_task.completed is True
@@ -346,12 +346,12 @@ def test_error_and_retry_lifecycle_commands(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            errored_at_in_seconds=275,
+            errored_at=275,
         ),
     )
     assert errored_process_instance.status == "error"
-    assert errored_process_instance.end_in_seconds == 275
-    assert errored_process_instance.updated_at_in_seconds == 275
+    assert errored_process_instance.ended_at.timestamp() == 275
+    assert errored_process_instance.updated_at.timestamp() == 275
     assert errored_process_instance.tasks[0].state == "TERMINATED"
     assert errored_process_instance.tasks[0].future_task is not None
     assert errored_process_instance.tasks[0].future_task.completed is True
@@ -385,14 +385,14 @@ def test_error_and_retry_lifecycle_commands(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            retried_at_in_seconds=290,
+            retried_at=290,
         ),
     )
     assert retried_process_instance.status == "running"
-    assert retried_process_instance.end_in_seconds is None
-    assert retried_process_instance.updated_at_in_seconds == 290
+    assert retried_process_instance.ended_at is None
+    assert retried_process_instance.updated_at.timestamp() == 290
     assert retried_process_instance.tasks[0].state == "READY"
-    assert retried_process_instance.tasks[0].end_in_seconds is None
+    assert retried_process_instance.tasks[0].ended_at is None
     assert retried_process_instance.tasks[0].future_task is not None
     assert retried_process_instance.tasks[0].future_task.completed is False
     assert (
@@ -434,7 +434,7 @@ def test_schedule_retry_command_persists_scheduler_job(session: Session) -> None
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            errored_at_in_seconds=275,
+            errored_at=275,
         ),
     )
 
@@ -444,13 +444,13 @@ def test_schedule_retry_command_persists_scheduler_job(session: Session) -> None
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            retry_at_in_seconds=325,
-            scheduled_at_in_seconds=300,
+            retry_at=325,
+            scheduled_at=300,
         ),
     )
     assert scheduler_job.job_type == "process_retry"
     assert scheduler_job.process_instance_id == process_instance.id
-    assert scheduler_job.run_at_in_seconds == 325
+    assert scheduler_job.run_at.timestamp() == 325
     assert scheduler_job.payload_json == {
         "requested_by_user_id": user.id,
         "scheduled_at_in_seconds": 300,
@@ -462,7 +462,7 @@ def test_schedule_retry_command_persists_scheduler_job(session: Session) -> None
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            retried_at_in_seconds=310,
+            retried_at=310,
         ),
     )
 
@@ -486,8 +486,8 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
         service="http://localhost:7002/realms/tenant-definition",
         service_id="definition-admin-keycloak",
         display_name="Definition Admin",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, user])
     session.flush()
@@ -521,8 +521,8 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
             properties_json={"source": "application-layer-test", "version": 1},
             bpmn_version_control_type="git",
             bpmn_version_control_identifier="main",
-            created_at_in_seconds=10,
-            updated_at_in_seconds=20,
+            created_at=10,
+            updated_at=20,
         ),
     )
     assert definition.id is not None
@@ -559,8 +559,8 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
             properties_json={"source": "application-layer-test", "version": 1},
             bpmn_version_control_type="git",
             bpmn_version_control_identifier="main",
-            created_at_in_seconds=10,
-            updated_at_in_seconds=20,
+            created_at=10,
+            updated_at=20,
         ),
     )
     assert imported_definition.id == definition.id
@@ -583,8 +583,8 @@ def _seed_process_instance(
         service=service_url,
         service_id="alice-keycloak",
         display_name="Alice",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, user])
     session.flush()
@@ -604,8 +604,8 @@ def _seed_process_instance(
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=900,
-        updated_at_in_seconds=900,
+        created_at=900,
+        updated_at=900,
     )
     session.add(definition)
     session.flush()
@@ -629,8 +629,8 @@ def _seed_process_instance(
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at_in_seconds=950,
-        updated_at_in_seconds=950,
+        created_at=950,
+        updated_at=950,
     )
     session.add(task_definition)
     session.flush()
@@ -643,8 +643,8 @@ def _seed_process_instance(
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at_in_seconds=1_000,
-        updated_at_in_seconds=1_000,
+        created_at=1_000,
+        updated_at=1_000,
     )
     session.add(process_instance)
     session.flush()
@@ -666,9 +666,9 @@ def _seed_process_instance(
     future_task = FutureTaskModel(
         m8f_tenant_id=tenant.id,
         guid=task.guid,
-        run_at_in_seconds=1_050,
-        queued_to_run_at_in_seconds=1_025,
-        updated_at_in_seconds=1_050,
+        run_at=1_050,
+        queued_to_run_at=1_025,
+        updated_at=1_050,
     )
     session.add(future_task)
     session.flush()
