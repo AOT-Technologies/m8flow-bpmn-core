@@ -15,6 +15,8 @@ The snippet below is illustrative. Replace the placeholder XML, tenant id,
 and user ids with real values from your own workflow.
 
 ```python
+from datetime import UTC, datetime
+
 from sqlalchemy import create_engine
 from m8flow_bpmn_core import api
 
@@ -42,7 +44,7 @@ with engine.begin() as connection:
             process_initiator_id=requester_user_id,
             summary="Expense claim submission",
             process_version=1,
-            started_at_in_seconds=100,
+            started_at=datetime.fromtimestamp(100, UTC),
             bpmn_process_id="Process_conditional_approval_8qpy9gh",
         ),
     )
@@ -72,7 +74,7 @@ with engine.begin() as connection:
             tenant_id="tenant-conditional-approval",
             human_task_id=submit_task.id,
             user_id=requester_user_id,
-            completed_at_in_seconds=110,
+            completed_at=datetime.fromtimestamp(110, UTC),
             task_payload={
                 "expense_date": "2026-04-01",
                 "expense_type": "Travel",
@@ -107,7 +109,7 @@ api.execute_command(
         tenant_id="tenant-conditional-approval",
         process_instance_id=errored_process_instance.id,
         user_id=workflow_admin_user_id,
-        retry_at_in_seconds=1_717_000_000,
+        retry_at=datetime.fromtimestamp(1_717_000_000, UTC),
     ),
 )
 ```
@@ -151,7 +153,7 @@ For delayed retry specifically, the normal host-application sequence is:
 4. When the row becomes due, the library reloads the same process instance and
    executes the normal retry lifecycle for it.
 5. If the instance is still in `error`, the library changes it back to
-   `running`, clears `end_in_seconds`, reopens terminated runtime tasks and
+   `running`, clears `ended_at`, reopens terminated runtime tasks and
    human tasks to `READY`, records a `process_instance_retried` event, and
    deletes the consumed scheduler row.
 6. If that errored instance was caused by a synchronous service task failure,

@@ -478,7 +478,7 @@ Append an event to the process-instance event history.
 | `event_type` | `ProcessInstanceEventType \| ProcessLifecycleEventType \| TaskEventType \| str` | yes | |
 | `task_guid` | `str \| None` | no | |
 | `user_id` | `int \| None` | no | When provided, tenant membership is enforced. |
-| `occurred_at` | `float \| None` | no | Defaults to current time with microsecond precision. |
+| `occurred_at` | `datetime \| None` | no | Timezone-aware UTC datetime; defaults to the current time with microsecond precision. |
 
 Returns: `ProcessInstanceEventModel`.
 
@@ -500,7 +500,7 @@ share the same input shape:
 | `tenant_id` | `str` | yes |
 | `process_instance_id` | `int` | yes |
 | `user_id` | `int` | yes |
-| `<verb>_at_in_seconds` | `int \| None` | no |
+| `<verb>_at` | `datetime \| None` | no; timezone-aware UTC datetime |
 
 Each returns `ProcessInstanceModel`, requires tenant membership, and
 enforces the matching tenant-scoped command permission before checking

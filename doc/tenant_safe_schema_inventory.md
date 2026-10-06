@@ -47,7 +47,7 @@ backfill deterministic and validates all data before re-keying.
 
 The ORM currently keeps legacy epoch columns and nullable timezone-aware
 compatibility columns side by side. The following models still expose legacy
-`*_in_seconds` storage:
+legacy `*_in_seconds` storage migrated to timezone-aware datetime fields:
 
 | Model/table | Legacy fields | Current compatibility fields |
 | --- | --- | --- |

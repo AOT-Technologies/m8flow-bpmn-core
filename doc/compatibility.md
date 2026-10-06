@@ -1,7 +1,8 @@
 # Compatibility Baseline
 
 This document records the Phase 0 compatibility surface for consumers such as
-`m8flow`. The `f7a8b9c0d1e2` migration is an explicit breaking transition
+`m8flow`. Version `0.2.0` and the `f7a8b9c0d1e2` migration are an explicit
+breaking transition
 away from the legacy epoch persistence columns; downstream reconciliation is
 required before applying that revision.
 
