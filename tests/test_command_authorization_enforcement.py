@@ -60,8 +60,8 @@ def test_process_definition_import_requires_command_permission(
         service=f"http://localhost:7002/realms/{tenant.slug}",
         service_id="importer-keycloak",
         display_name="Importer",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, actor])
     session.flush()
@@ -111,7 +111,7 @@ def test_process_start_requires_command_permission(session: Session) -> None:
                 process_initiator_id=context.actor.id,
                 summary="Unauthorized start",
                 process_version=1,
-                started_at_in_seconds=100,
+                started_at=100,
                 bpmn_process_id="invoice_approval_poc",
             ),
         )
@@ -130,7 +130,7 @@ def test_process_start_requires_command_permission(session: Session) -> None:
             process_initiator_id=context.actor.id,
             summary="Authorized start",
             process_version=1,
-            started_at_in_seconds=110,
+            started_at=110,
             bpmn_process_id="invoice_approval_poc",
         ),
     )
@@ -181,7 +181,7 @@ def test_task_completion_requires_command_permission(session: Session) -> None:
                 tenant_id=context.tenant.id,
                 human_task_id=context.human_task.id,
                 user_id=context.actor.id,
-                completed_at_in_seconds=120,
+                completed_at=120,
             ),
         )
 
@@ -205,7 +205,7 @@ def test_task_completion_requires_command_permission(session: Session) -> None:
             tenant_id=context.tenant.id,
             human_task_id=context.human_task.id,
             user_id=context.actor.id,
-            completed_at_in_seconds=130,
+            completed_at=130,
         ),
     )
 
@@ -223,7 +223,7 @@ def test_process_suspend_requires_command_permission(session: Session) -> None:
                 tenant_id=context.tenant.id,
                 process_instance_id=context.process_instance.id,
                 user_id=context.actor.id,
-                suspended_at_in_seconds=140,
+                suspended_at=140,
             ),
         )
 
@@ -239,7 +239,7 @@ def test_process_suspend_requires_command_permission(session: Session) -> None:
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
             user_id=context.actor.id,
-            suspended_at_in_seconds=150,
+            suspended_at=150,
         ),
     )
 
@@ -258,7 +258,7 @@ def test_process_resume_requires_command_permission(session: Session) -> None:
                 tenant_id=context.tenant.id,
                 process_instance_id=context.process_instance.id,
                 user_id=context.actor.id,
-                resumed_at_in_seconds=160,
+                resumed_at=160,
             ),
         )
 
@@ -274,7 +274,7 @@ def test_process_resume_requires_command_permission(session: Session) -> None:
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
             user_id=context.actor.id,
-            resumed_at_in_seconds=170,
+            resumed_at=170,
         ),
     )
 
@@ -284,7 +284,7 @@ def test_process_resume_requires_command_permission(session: Session) -> None:
 def test_process_retry_requires_command_permission(session: Session) -> None:
     context = _seed_task_context(session)
     context.process_instance.status = "error"
-    context.process_instance.end_in_seconds = 180
+    context.process_instance.ended_at = 180
     session.flush()
 
     with pytest.raises(api.AuthorizationError, match="process.retry"):
@@ -294,7 +294,7 @@ def test_process_retry_requires_command_permission(session: Session) -> None:
                 tenant_id=context.tenant.id,
                 process_instance_id=context.process_instance.id,
                 user_id=context.actor.id,
-                retried_at_in_seconds=190,
+                retried_at=190,
             ),
         )
 
@@ -310,7 +310,7 @@ def test_process_retry_requires_command_permission(session: Session) -> None:
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
             user_id=context.actor.id,
-            retried_at_in_seconds=200,
+            retried_at=200,
         ),
     )
 
@@ -320,7 +320,7 @@ def test_process_retry_requires_command_permission(session: Session) -> None:
 def test_process_retry_schedule_requires_command_permission(session: Session) -> None:
     context = _seed_task_context(session)
     context.process_instance.status = "error"
-    context.process_instance.end_in_seconds = 180
+    context.process_instance.ended_at = 180
     session.flush()
 
     with pytest.raises(api.AuthorizationError, match="process.retry"):
@@ -330,8 +330,8 @@ def test_process_retry_schedule_requires_command_permission(session: Session) ->
                 tenant_id=context.tenant.id,
                 process_instance_id=context.process_instance.id,
                 user_id=context.actor.id,
-                retry_at_in_seconds=220,
-                scheduled_at_in_seconds=190,
+                retry_at=220,
+                scheduled_at=190,
             ),
         )
 
@@ -347,8 +347,8 @@ def test_process_retry_schedule_requires_command_permission(session: Session) ->
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
             user_id=context.actor.id,
-            retry_at_in_seconds=220,
-            scheduled_at_in_seconds=200,
+            retry_at=220,
+            scheduled_at=200,
         ),
     )
 
@@ -367,7 +367,7 @@ def test_process_terminate_requires_command_permission(session: Session) -> None
                 tenant_id=context.tenant.id,
                 process_instance_id=context.process_instance.id,
                 user_id=context.actor.id,
-                terminated_at_in_seconds=210,
+                terminated_at=210,
             ),
         )
 
@@ -383,7 +383,7 @@ def test_process_terminate_requires_command_permission(session: Session) -> None
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
             user_id=context.actor.id,
-            terminated_at_in_seconds=220,
+            terminated_at=220,
         ),
     )
 
@@ -402,8 +402,8 @@ def _seed_definition_context(session: Session) -> DefinitionContext:
         service=f"http://localhost:7002/realms/{tenant.slug}",
         service_id="starter-keycloak",
         display_name="Starter",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, actor])
     session.flush()
@@ -418,8 +418,8 @@ def _seed_definition_context(session: Session) -> DefinitionContext:
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=90,
-        updated_at_in_seconds=90,
+        created_at=90,
+        updated_at=90,
     )
     definition.source_bpmn_xml = bpmn_xml
     session.add(definition)
@@ -444,8 +444,8 @@ def _seed_task_context(session: Session) -> TaskContext:
         service=f"http://localhost:7002/realms/{tenant.slug}",
         service_id="task-user-keycloak",
         display_name="Task User",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, actor])
     session.flush()
@@ -459,8 +459,8 @@ def _seed_task_context(session: Session) -> TaskContext:
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=900,
-        updated_at_in_seconds=900,
+        created_at=900,
+        updated_at=900,
     )
     session.add(definition)
     session.flush()
@@ -484,8 +484,8 @@ def _seed_task_context(session: Session) -> TaskContext:
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at_in_seconds=950,
-        updated_at_in_seconds=950,
+        created_at=950,
+        updated_at=950,
     )
     session.add(task_definition)
     session.flush()
@@ -498,8 +498,8 @@ def _seed_task_context(session: Session) -> TaskContext:
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at_in_seconds=1_000,
-        updated_at_in_seconds=1_000,
+        created_at=1_000,
+        updated_at=1_000,
     )
     session.add(process_instance)
     session.flush()

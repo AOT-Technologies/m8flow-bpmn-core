@@ -57,6 +57,38 @@ def test_permission_target_rejects_duplicate_uri_command_pairs(
     session.rollback()
 
 
+def test_permission_target_rejects_partial_resource_pairs(
+    session: Session,
+) -> None:
+    session.add(
+        PermissionTargetModel(
+            uri="/tasks/123",
+            command="task.claim",
+            resource_type="task",
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        session.flush()
+
+    session.rollback()
+
+
+def test_permission_target_keeps_legacy_uri_only_rows_compatible(
+    session: Session,
+) -> None:
+    target = PermissionTargetModel(
+        uri="/tasks/*",
+        command="task.claim",
+    )
+    session.add(target)
+    session.flush()
+
+    assert target.uri == "/tasks/%"
+    assert target.resource_type is None
+    assert target.resource_id is None
+
+
 def test_user_group_principal_and_permission_assignment_link_up(
     session: Session,
 ) -> None:
@@ -66,8 +98,8 @@ def test_user_group_principal_and_permission_assignment_link_up(
         service="http://localhost:7002/realms/tenant-a",
         service_id="alice-keycloak",
         display_name="Alice",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     group = GroupModel(
         name="Tenant A Manager",

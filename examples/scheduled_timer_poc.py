@@ -373,7 +373,7 @@ def _run_timer_poc(
             f"{SCHEDULE_DELAY_SECONDS} seconds in the future."
         )
         print(
-            "The due timestamp is generated immediately before the import "
+            "The due occurred_at is generated immediately before the import "
             "command runs so interactive pauses do not make the timer stale."
         )
         print(
@@ -387,7 +387,7 @@ def _run_timer_poc(
             f"{SCHEDULE_DELAY_SECONDS} seconds in the future."
         )
         print(
-            "The due timestamp is generated immediately before the import "
+            "The due occurred_at is generated immediately before the import "
             "command runs so interactive pauses do not make the timer stale."
         )
         print(
@@ -432,8 +432,8 @@ def _run_timer_poc(
         },
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="timer-poc",
-        created_at_in_seconds=import_timestamp,
-        updated_at_in_seconds=import_timestamp,
+        created_at=import_timestamp,
+        updated_at=import_timestamp,
     )
     print("Command:")
     print(pformat(import_command, sort_dicts=False, width=100))
@@ -537,8 +537,8 @@ def _run_timer_poc(
         for process_instance in process_instances
         if (
             process_instance.bpmn_process_definition_id == definition.id
-            and process_instance.start_in_seconds is not None
-            and process_instance.start_in_seconds >= import_timestamp
+            and process_instance.started_at is not None
+            and process_instance.started_at >= import_timestamp
         )
     ]
     if len(matching_instances) != 1:
@@ -627,7 +627,7 @@ def _run_timer_poc(
             tenant_id=context.tenant_id,
             human_task_id=operator_task.id,
             user_id=context.operator_user_id,
-            completed_at_in_seconds=round(time.time()),
+            completed_at=round(time.time()),
             task_payload={
                 "acknowledged_by": context.operator_username,
                 "acknowledged_at": datetime.now(UTC).replace(
@@ -740,7 +740,7 @@ def _deploy_timer_definition_to_m8flow_backend(
     if bpmn_path.exists():
         warnings.append(
             "Refreshed the existing scheduled-timer POC deployment so the UI "
-            "matches this run's due timestamp."
+            "matches this run's due occurred_at."
         )
 
     _write_json_file(group_json_path, _backend_process_group_payload())
@@ -831,7 +831,7 @@ def _summarize_scheduler_job(scheduler_job: SchedulerJobModel) -> dict[str, Any]
         "job_type": scheduler_job.job_type,
         "tenant_id": scheduler_job.m8f_tenant_id,
         "definition_id": scheduler_job.bpmn_process_definition_id,
-        "run_at_in_seconds": scheduler_job.run_at_in_seconds,
+        "run_at_in_seconds": scheduler_job.run_at,
         "locked_by": scheduler_job.locked_by,
         "payload_json": scheduler_job.payload_json,
     }
@@ -1015,7 +1015,7 @@ def _current_timer_start_runtime_state(
             )
             if minimum_start_in_seconds is not None:
                 stmt = stmt.where(
-                    ProcessInstanceModel.start_in_seconds
+                    ProcessInstanceModel.started_at
                     >= minimum_start_in_seconds
                 )
             process_instances = list(session.scalars(stmt).all())

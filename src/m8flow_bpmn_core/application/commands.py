@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
-from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.process_instance_event import (
+    ProcessInstanceEventType,
+    ProcessLifecycleEventType,
+    TaskEventType,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,7 +24,7 @@ class CompleteTaskCommand:
     tenant_id: str
     human_task_id: int
     user_id: int
-    completed_at_in_seconds: int | None = None
+    completed_at: datetime | None = None
     task_payload: dict[str, str] | None = None
 
 
@@ -27,10 +32,12 @@ class CompleteTaskCommand:
 class RecordProcessInstanceEventCommand:
     tenant_id: str
     process_instance_id: int
-    event_type: ProcessInstanceEventType | str
+    event_type: (
+        ProcessInstanceEventType | ProcessLifecycleEventType | TaskEventType | str
+    )
     task_guid: str | None = None
     user_id: int | None = None
-    timestamp: float | None = None
+    occurred_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,8 +50,8 @@ class CreateProcessInstanceCommand:
     bpmn_process_id: int
     summary: str | None = None
     process_version: int = 1
-    created_at_in_seconds: int | None = None
-    updated_at_in_seconds: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,8 +67,8 @@ class ImportBpmnProcessDefinitionCommand:
     bpmn_version_control_identifier: str | None = None
     single_process_hash: str | None = None
     full_process_model_hash: str | None = None
-    created_at_in_seconds: int | None = None
-    updated_at_in_seconds: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,7 +79,7 @@ class InitializeProcessInstanceFromDefinitionCommand:
     submission_metadata: dict[str, str] | None = None
     summary: str | None = None
     process_version: int = 1
-    started_at_in_seconds: int | None = None
+    started_at: datetime | None = None
     bpmn_process_id: str | None = None
 
 
@@ -82,7 +89,7 @@ class InitializeProcessInstanceWorkflowCommand:
     process_instance_id: int
     bpmn_xml: str | bytes
     bpmn_process_id: str | None = None
-    started_at_in_seconds: int | None = None
+    started_at: datetime | None = None
     dmn_xml: str | bytes | None = None
 
 
@@ -92,8 +99,8 @@ class UpsertProcessInstanceMetadataCommand:
     process_instance_id: int
     key: str
     value: str
-    updated_at_in_seconds: int
-    created_at_in_seconds: int | None = None
+    updated_at: datetime
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,7 +108,7 @@ class SuspendProcessInstanceCommand:
     tenant_id: str
     process_instance_id: int
     user_id: int
-    suspended_at_in_seconds: int | None = None
+    suspended_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +116,7 @@ class ResumeProcessInstanceCommand:
     tenant_id: str
     process_instance_id: int
     user_id: int
-    resumed_at_in_seconds: int | None = None
+    resumed_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,7 +124,7 @@ class ErrorProcessInstanceCommand:
     tenant_id: str
     process_instance_id: int
     user_id: int | None = None
-    errored_at_in_seconds: int | None = None
+    errored_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,7 +132,7 @@ class RetryProcessInstanceCommand:
     tenant_id: str
     process_instance_id: int
     user_id: int
-    retried_at_in_seconds: int | None = None
+    retried_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,8 +140,8 @@ class ScheduleProcessInstanceRetryCommand:
     tenant_id: str
     process_instance_id: int
     user_id: int
-    retry_at_in_seconds: int
-    scheduled_at_in_seconds: int | None = None
+    retry_at: datetime
+    scheduled_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,4 +149,4 @@ class TerminateProcessInstanceCommand:
     tenant_id: str
     process_instance_id: int
     user_id: int
-    terminated_at_in_seconds: int | None = None
+    terminated_at: datetime | None = None

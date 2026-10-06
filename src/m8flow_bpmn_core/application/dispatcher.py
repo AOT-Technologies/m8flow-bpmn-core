@@ -102,7 +102,7 @@ def execute_command(
                 tenant_id=command.tenant_id,
                 human_task_id=command.human_task_id,
                 user_id=command.user_id,
-                completed_at_in_seconds=command.completed_at_in_seconds,
+                completed_at=command.completed_at,
                 task_payload=command.task_payload,
             )
         if isinstance(command, RecordProcessInstanceEventCommand):
@@ -113,7 +113,7 @@ def execute_command(
                 event_type=command.event_type,
                 task_guid=command.task_guid,
                 user_id=command.user_id,
-                timestamp=command.timestamp,
+                occurred_at=command.occurred_at,
             )
         if isinstance(command, CreateProcessInstanceCommand):
             return create_process_instance(
@@ -126,8 +126,8 @@ def execute_command(
                 bpmn_process_id=command.bpmn_process_id,
                 summary=command.summary,
                 process_version=command.process_version,
-                created_at_in_seconds=command.created_at_in_seconds,
-                updated_at_in_seconds=command.updated_at_in_seconds,
+                created_at=command.created_at,
+                updated_at=command.updated_at,
             )
         if isinstance(command, ImportBpmnProcessDefinitionCommand):
             return import_bpmn_process_definition(
@@ -145,8 +145,8 @@ def execute_command(
                 single_process_hash=command.single_process_hash,
                 full_process_model_hash=command.full_process_model_hash,
                 user_id=command.user_id,
-                created_at_in_seconds=command.created_at_in_seconds,
-                updated_at_in_seconds=command.updated_at_in_seconds,
+                created_at=command.created_at,
+                updated_at=command.updated_at,
             )
         if isinstance(command, InitializeProcessInstanceFromDefinitionCommand):
             return initialize_process_instance_from_definition(
@@ -157,7 +157,7 @@ def execute_command(
                 submission_metadata=command.submission_metadata,
                 summary=command.summary,
                 process_version=command.process_version,
-                started_at_in_seconds=command.started_at_in_seconds,
+                started_at=command.started_at,
                 bpmn_process_id=command.bpmn_process_id,
             )
         if isinstance(command, InitializeProcessInstanceWorkflowCommand):
@@ -168,7 +168,7 @@ def execute_command(
                 bpmn_xml=command.bpmn_xml,
                 dmn_xml=command.dmn_xml,
                 bpmn_process_id=command.bpmn_process_id,
-                started_at_in_seconds=command.started_at_in_seconds,
+                started_at=command.started_at,
             )
         if isinstance(command, UpsertProcessInstanceMetadataCommand):
             return upsert_process_instance_metadata(
@@ -177,8 +177,8 @@ def execute_command(
                 process_instance_id=command.process_instance_id,
                 key=command.key,
                 value=command.value,
-                updated_at_in_seconds=command.updated_at_in_seconds,
-                created_at_in_seconds=command.created_at_in_seconds,
+                updated_at=command.updated_at,
+                created_at=command.created_at,
             )
         if isinstance(command, SuspendProcessInstanceCommand):
             return suspend_process_instance(
@@ -186,7 +186,7 @@ def execute_command(
                 tenant_id=command.tenant_id,
                 process_instance_id=command.process_instance_id,
                 user_id=command.user_id,
-                suspended_at_in_seconds=command.suspended_at_in_seconds,
+                suspended_at=command.suspended_at,
             )
         if isinstance(command, ErrorProcessInstanceCommand):
             return error_process_instance(
@@ -194,7 +194,7 @@ def execute_command(
                 tenant_id=command.tenant_id,
                 process_instance_id=command.process_instance_id,
                 user_id=command.user_id,
-                errored_at_in_seconds=command.errored_at_in_seconds,
+                errored_at=command.errored_at,
             )
         if isinstance(command, ResumeProcessInstanceCommand):
             return resume_process_instance(
@@ -202,7 +202,7 @@ def execute_command(
                 tenant_id=command.tenant_id,
                 process_instance_id=command.process_instance_id,
                 user_id=command.user_id,
-                resumed_at_in_seconds=command.resumed_at_in_seconds,
+                resumed_at=command.resumed_at,
             )
         if isinstance(command, RetryProcessInstanceCommand):
             return retry_process_instance(
@@ -210,7 +210,7 @@ def execute_command(
                 tenant_id=command.tenant_id,
                 process_instance_id=command.process_instance_id,
                 user_id=command.user_id,
-                retried_at_in_seconds=command.retried_at_in_seconds,
+                retried_at=command.retried_at,
             )
         if isinstance(command, ScheduleProcessInstanceRetryCommand):
             return schedule_process_instance_retry(
@@ -218,8 +218,8 @@ def execute_command(
                 tenant_id=command.tenant_id,
                 process_instance_id=command.process_instance_id,
                 user_id=command.user_id,
-                retry_at_in_seconds=command.retry_at_in_seconds,
-                scheduled_at_in_seconds=command.scheduled_at_in_seconds,
+                retry_at=command.retry_at,
+                scheduled_at=command.scheduled_at,
             )
         if isinstance(command, TerminateProcessInstanceCommand):
             return terminate_process_instance(
@@ -227,7 +227,7 @@ def execute_command(
                 tenant_id=command.tenant_id,
                 process_instance_id=command.process_instance_id,
                 user_id=command.user_id,
-                terminated_at_in_seconds=command.terminated_at_in_seconds,
+                terminated_at=command.terminated_at,
             )
         raise TypeError(f"Unsupported command type: {type(command)!r}")
 

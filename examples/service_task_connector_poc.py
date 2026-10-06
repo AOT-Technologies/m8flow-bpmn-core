@@ -127,7 +127,7 @@ class DemoConnectorRequest:
     path: str
     query: dict[str, Any]
     headers: dict[str, str]
-    timestamp: str
+    occurred_at: str
 
 
 class _DemoConnectorHttpServer(ThreadingHTTPServer):
@@ -166,7 +166,7 @@ class _DemoConnectorRequestHandler(BaseHTTPRequestHandler):
                 headers={
                     key: value for key, value in self.headers.items()
                 },
-                timestamp=datetime.now(UTC).replace(microsecond=0).isoformat(),
+                occurred_at=datetime.now(UTC).replace(microsecond=0).isoformat(),
             )
         )
 
@@ -555,8 +555,8 @@ def _run_service_task_connector_poc(
                 },
                 bpmn_version_control_type="git",
                 bpmn_version_control_identifier="service-task-poc",
-                created_at_in_seconds=round(time.time()),
-                updated_at_in_seconds=round(time.time()),
+                created_at=round(time.time()),
+                updated_at=round(time.time()),
             ),
             registry=registry,
         )
@@ -586,7 +586,7 @@ def _run_service_task_connector_poc(
                 submission_metadata={
                     "submission_message": PROCESS_START_MESSAGE,
                 },
-                started_at_in_seconds=round(time.time()),
+                started_at=round(time.time()),
             ),
             registry=registry,
         )
@@ -657,7 +657,7 @@ def _run_service_task_connector_poc(
                 tenant_id=context.tenant_id,
                 human_task_id=operator_task.id,
                 user_id=context.operator_user_id,
-                completed_at_in_seconds=round(time.time()),
+                completed_at=round(time.time()),
                 task_payload={
                     "decision": TASK_COMPLETION_DECISION,
                     "completed_by": context.operator_username,
@@ -875,7 +875,7 @@ def _print_demo_connector_requests(
                     "method": request.method,
                     "path": request.path,
                     "query": request.query,
-                    "timestamp": request.timestamp,
+                    "timestamp": request.occurred_at,
                 }
                 for request in requests
             ],

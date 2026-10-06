@@ -134,7 +134,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         ),
     )
     assert process_instance.status == api.ProcessInstanceStatus.user_input_required
-    assert process_instance.start_in_seconds == 100
+    assert process_instance.started_at.timestamp() == 100
     assert (
         process_instance.process_model_identifier
         == CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER
@@ -188,7 +188,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
             tenant_id=context.tenant.id,
             human_task_id=submit_task.id,
             user_id=context.users["requester"].id,
-            completed_at_in_seconds=110,
+            completed_at=110,
             task_payload={
                 "expense_date": "2026-04-01",
                 "expense_type": "Travel",
@@ -210,11 +210,11 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         ),
     )
     assert process_instance.status == api.ProcessInstanceStatus.user_input_required
-    assert process_instance.end_in_seconds is None
+    assert process_instance.ended_at is None
 
     # Step 2: manager-lane users should now see the review task to claim.
     assert process_instance.status == api.ProcessInstanceStatus.user_input_required
-    assert process_instance.end_in_seconds is None
+    assert process_instance.ended_at is None
 
     # Step 3: the manager claims and completes the review task.
     manager_pending_tasks = api.execute_query(
@@ -273,13 +273,13 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
             tenant_id=context.tenant.id,
             human_task_id=manager_task.id,
             user_id=context.users["manager"].id,
-            completed_at_in_seconds=120,
+            completed_at=120,
             task_payload={"decision": scenario.manager_decision},
         ),
     )
     assert manager_completed_task.task_model.future_task is not None
     assert manager_completed_task.task_model.future_task.completed is True
-    assert manager_completed_task.task_model.end_in_seconds == 120
+    assert manager_completed_task.task_model.ended_at.timestamp() == 120
 
     session.expire_all()
     process_instance = api.execute_query(
@@ -292,10 +292,10 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     # Step 4: rejected claims end immediately, and auto-approved claims stop here too.
     if scenario.manager_decision == "Approved" and scenario.amount > 500:
         assert process_instance.status == api.ProcessInstanceStatus.user_input_required
-        assert process_instance.end_in_seconds is None
+        assert process_instance.ended_at is None
     else:
         assert process_instance.status == api.ProcessInstanceStatus.complete
-        assert process_instance.end_in_seconds == 120
+        assert process_instance.ended_at.timestamp() == 120
 
     finance_task: HumanTaskModel | None = None
     if scenario.manager_decision == "Approved" and scenario.amount > 500:
@@ -354,7 +354,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
                 tenant_id=context.tenant.id,
                 human_task_id=finance_task.id,
                 user_id=context.users["finance"].id,
-                completed_at_in_seconds=130,
+                completed_at=130,
                 task_payload={
                     "finance_decision": scenario.finance_decision or "Approved"
                 },
@@ -362,7 +362,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         )
         assert finance_completed_task.task_model.future_task is not None
         assert finance_completed_task.task_model.future_task.completed is True
-        assert finance_completed_task.task_model.end_in_seconds == 130
+        assert finance_completed_task.task_model.ended_at.timestamp() == 130
         session.expire_all()
         process_instance = api.execute_query(
             session,
@@ -385,7 +385,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
 
     # End: once the taken branch completes, the workflow should be complete.
     assert process_instance.status == api.ProcessInstanceStatus.complete
-    assert process_instance.end_in_seconds == (130 if finance_task else 120)
+    assert process_instance.ended_at.timestamp() == (130 if finance_task else 120)
 
     metadata_rows = api.execute_query(
         session,
@@ -439,7 +439,7 @@ def test_conditional_approval_definition_can_start_multiple_instances(
             process_initiator_id=context.users["requester"].id,
             summary="Scenario: second-start",
             process_version=1,
-            started_at_in_seconds=200,
+            started_at=200,
             bpmn_process_id=CONDITIONAL_APPROVAL_PROCESS_ID,
         ),
     )
@@ -513,8 +513,8 @@ def _seed_conditional_approval_workflow(
             service=service_url,
             service_id="manager-keycloak",
             display_name="Manager",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
         "reviewer": UserModel(
             username="reviewer",
@@ -522,8 +522,8 @@ def _seed_conditional_approval_workflow(
             service=service_url,
             service_id="reviewer-keycloak",
             display_name="Reviewer",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
         "finance": UserModel(
             username="james",
@@ -531,8 +531,8 @@ def _seed_conditional_approval_workflow(
             service=service_url,
             service_id="finance-keycloak",
             display_name="Finance",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
         "admin": UserModel(
             username="admin",
@@ -540,8 +540,8 @@ def _seed_conditional_approval_workflow(
             service=service_url,
             service_id="admin-keycloak",
             display_name="Admin",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
         "requester": UserModel(
             username="requester",
@@ -549,8 +549,8 @@ def _seed_conditional_approval_workflow(
             service=service_url,
             service_id="requester-keycloak",
             display_name="Requester",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
     }
 
@@ -604,8 +604,8 @@ def _seed_conditional_approval_workflow(
             },
             bpmn_version_control_type="git",
             bpmn_version_control_identifier="main",
-            created_at_in_seconds=90,
-            updated_at_in_seconds=90,
+            created_at=90,
+            updated_at=90,
         ),
     )
     assert definition.source_bpmn_xml == bpmn_xml
@@ -625,7 +625,7 @@ def _seed_conditional_approval_workflow(
             process_initiator_id=users["requester"].id,
             summary=f"Scenario: {scenario.name}",
             process_version=1,
-            started_at_in_seconds=100,
+            started_at=100,
             bpmn_process_id=CONDITIONAL_APPROVAL_PROCESS_ID,
         ),
     )

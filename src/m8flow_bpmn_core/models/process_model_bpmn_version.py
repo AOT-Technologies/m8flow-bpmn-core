@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BIGINT, DateTime, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from m8flow_bpmn_core.models.base import Base
@@ -11,9 +11,6 @@ from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantSc
 
 class ProcessModelBpmnVersionModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "process_model_bpmn_version"
-    __timestamp_compatibility_pairs__ = (
-        ("created_at_in_seconds", "created_at"),
-    )
     __table_args__ = (
         UniqueConstraint(
             "m8f_tenant_id",
@@ -29,9 +26,6 @@ class ProcessModelBpmnVersionModel(M8fTenantScopedMixin, TenantScoped, Base):
     )
     bpmn_xml_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     bpmn_xml_file_contents: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at_in_seconds: Mapped[int] = mapped_column(
-        BIGINT, nullable=False, index=True
-    )
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
     )

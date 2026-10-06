@@ -33,7 +33,7 @@ packages = ["src/m8flow_sample_app"]
 [tool.uv.sources]
 # Refreshed by sample_app/scripts/stage_local_wheel.* to match the newest
 # staged local wheel.
-m8flow-bpmn-core = { path = "vendor/m8flow_bpmn_core-0.1.0-py3-none-any.whl" }
+m8flow-bpmn-core = { path = "vendor/m8flow_bpmn_core-0.2.0-py3-none-any.whl" }
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

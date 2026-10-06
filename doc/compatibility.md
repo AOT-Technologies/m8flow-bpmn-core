@@ -1,7 +1,10 @@
 # Compatibility Baseline
 
 This document records the Phase 0 compatibility surface for consumers such as
-`m8flow`. It is intentionally a baseline, not a redesign proposal.
+`m8flow`. Version `0.2.0` and the `f7a8b9c0d1e2` migration are an explicit
+breaking transition
+away from the legacy epoch persistence columns; downstream reconciliation is
+required before applying that revision.
 
 ## Public API
 
@@ -10,8 +13,8 @@ command/query dataclasses, error hierarchy, and public enum values are treated
 as compatibility-sensitive.
 
 Commands and queries are frozen, slotted dataclasses. `tenant_id` is the first
-field on every command and query. Existing timestamp inputs use the
-`*_in_seconds` naming convention and remain part of the compatibility surface.
+field on every command and query. Timestamp inputs use timezone-aware UTC
+`datetime` values.
 
 The public dispatchers return the underlying service results directly. In
 practice, callers can receive SQLAlchemy models such as process instances,
@@ -32,8 +35,8 @@ coordinated consumer migration:
   `human_task_user`, `future_task`
 - `json_data`, `process_instance_event`, `process_instance_metadata`,
   `scheduler_job`
-- epoch attributes such as `created_at_in_seconds`, `updated_at_in_seconds`,
-  `start_in_seconds`, `end_in_seconds`, and `timestamp`
+- timezone-aware attributes such as `created_at`, `updated_at`, `started_at`,
+  `ended_at`, and `occurred_at`
 - `ProcessInstanceEventType` and `ProcessInstanceStatus` values
 - `ProcessInstanceModel.spiff_serializer_version`
 
@@ -53,18 +56,32 @@ Until a consumer migration is complete:
 The executable baseline for these rules is in
 `tests/test_compatibility_contract.py`.
 
-## Phase 2 timestamp compatibility layer
+## Timestamp removal transition
 
-Phase 2 adds nullable UTC-aware DateTime columns alongside the existing epoch
-columns. The legacy fields remain available for existing callers and are
-dual-written by the ORM model hooks. Existing epoch values populate the native
-columns on insert/update, while callers that write a native DateTime value also
-receive the corresponding legacy epoch value.
+The additive migration first adds nullable UTC-aware DateTime columns alongside
+the existing epoch columns and backfills them.
 
 The additive migration is
 `d2e4f6a8b0c1_add_datetime_compatibility_columns.py`. It backfills the native
 columns from existing epoch values and does not remove or rename any existing
-column. Removing the legacy fields remains a future breaking migration.
+column. The follow-up migration
+`f7a8b9c0d1e2_remove_legacy_epoch_columns.py` removes the legacy persistence
+columns. This release's ORM and service layer use only the native datetime
+columns, so the removal migration can be applied without runtime queries that
+reference dropped columns. Consumers must migrate command inputs, queries,
+serializers, and fixtures before applying it; its downgrade recreates empty
+columns and cannot restore removed values.
+
+## Part 6 public API compatibility
+
+The public command and query dataclasses accept timezone-aware datetime inputs.
+Dispatch behavior, field ordering, tenant-first validation, and returned ORM
+model types remain unchanged apart from timestamp field names.
+
+Returned models now expose additive timezone-aware DateTime attributes such as
+`created_at`, `updated_at`, `started_at`, `ended_at`, `run_at`, and
+`occurred_at`. Callers must migrate reads and writes to these native UTC-aware
+attributes before the destructive schema migration is applied.
 
 ## Phase 3 work-item compatibility layer
 
@@ -72,8 +89,8 @@ Phase 3 introduces internal work-item state transitions in
 `services/work_items.py` over the existing `human_task` row. Claim,
 completion, termination, reopening, and ready-state transitions are centralized
 there while `HumanTaskModel`, the `human_task` table, task IDs, and returned
-attributes remain unchanged. A physical `work_item` table split is deferred
-until downstream consumers are migrated.
+attributes remain unchanged. The additive `work_item` table is backfilled and
+runtime transitions dual-write both rows.
 
 ## Phase 4 tenant and event compatibility layer
 
@@ -98,7 +115,8 @@ with `SpiffWorkflow.util.task.TaskState` members. Persisted state names such as
 `READY`, `COMPLETED`, `CANCELLED`, and `ERROR` remain unchanged because the
 code uses the enum member names when storing them. The internal
 `WorkItemState` enum continues to represent M8Flow-specific human-work-item
-states such as `CLAIMED` and `TERMINATED`.
+states such as `CLAIMED` and `TERMINATED`. `TaskModel.state` validates Spiff
+state names and preserves the legacy process-operation value `TERMINATED`.
 
 ## Phase 6 authorization target compatibility layer
 
@@ -107,3 +125,25 @@ When both are present, authorization uses exact pair matching; URI-based
 targets continue to use the existing compatibility matcher. Existing grants
 and URI helper signatures remain valid, so consumers can migrate target by
 target.
+
+## Workflow model and event-state redesign contract
+
+The workflow model redesign uses an additive transition for compatibility with
+existing `m8flow` consumers. The new `work_item` table has been added and
+backfilled using the legacy human-task ID, while existing `human_task` rows and
+query-facing attributes remain available. Runtime claim-state transitions now
+dual-write the legacy human-task row and its normalized work-item companion.
+The work-item table does not duplicate task,
+process, lane, form, or JSON metadata.
+
+`ProcessLifecycleEventType` and `TaskEventType` are the preferred internal
+event vocabularies. The combined `ProcessInstanceEventType` enum and existing
+event string values remain supported. The additive event `category` column is
+backfilled and legacy null categories remain readable.
+
+Runtime task-state logic uses SpiffWorkflow's `TaskState`, while persisted
+state names remain compatible strings such as `READY`, `COMPLETED`, `ERROR`,
+and `CANCELLED`.
+
+The detailed field-ownership and migration contract is documented in
+`doc/workflow_model_event_state_redesign.md`.

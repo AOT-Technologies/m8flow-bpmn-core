@@ -28,10 +28,10 @@ Each row stores:
   - `intermediate_timer`
   - `process_retry`
   - `timer_start`
-- `run_at_in_seconds`: the next due time
+- `run_at`: the next due time as a timezone-aware UTC datetime
 - `process_instance_id` or `bpmn_process_definition_id`: the target scope
 - `payload_json`: timer- or retry-specific metadata
-- `locked_by` / `locked_at_in_seconds`: worker-claim fields for future polling
+- `locked_by` / `locked_at`: worker-claim fields for future polling
   and Celery dispatch flows
 
 The `job_key` is intentionally generic so later steps can reschedule the same
@@ -54,11 +54,11 @@ It is a tenant-scoped table with one row per persisted logical scheduled job.
 | `process_instance_id` | integer | yes | Foreign key to `process_instance.id`. Used for jobs that belong to a specific running instance, such as intermediate timers and retries. |
 | `bpmn_process_definition_id` | integer | yes | Foreign key to `bpmn_process_definition.id`. Used for definition-scoped jobs, especially timer-start events. |
 | `locked_by` | string(255) | yes | Worker identifier for claimed jobs. `NULL` means the row is currently unclaimed. |
-| `locked_at_in_seconds` | bigint | yes | Timestamp for when the claim happened. V1 stores it for coordination and future recovery logic. |
-| `run_at_in_seconds` | bigint | no | Indexed due timestamp used by the poller or a future Celery dispatcher. |
+| `locked_at` | DateTime(timezone=True) | yes | Timestamp for when the claim happened. |
+| `run_at` | DateTime(timezone=True) | no | Indexed due timestamp used by the poller or a future Celery dispatcher. |
 | `payload_json` | JSON | no | Job-specific metadata. For example, timer descriptors or retry context. Defaults to an empty object. |
-| `updated_at_in_seconds` | bigint | no | Last mutation timestamp for the row. |
-| `created_at_in_seconds` | bigint | no | Initial insert timestamp for the row. |
+| `updated_at` | DateTime(timezone=True) | no | Last mutation timestamp for the row. |
+| `created_at` | DateTime(timezone=True) | no | Initial insert timestamp for the row. |
 
 The model also exposes two SQLAlchemy relationships:
 
@@ -76,14 +76,14 @@ Important constraints and validation rules:
   written. Invalid values raise `ValidationError`.
 - `process_instance_id` and `bpmn_process_definition_id` are intentionally
   nullable because different job types use different scopes.
-- `locked_by` and `locked_at_in_seconds` are persisted even in the inline
+- `locked_by` and `locked_at` are persisted even in the inline
   poller path so the same schema can support future multi-worker or
   Celery-dispatch coordination.
 
 In practice, the table behaves like a small durable queue:
 
 - the workflow runtime inserts or refreshes rows when it discovers future work
-- the scheduler runtime lists rows whose `run_at_in_seconds` is due
+- the scheduler runtime lists rows whose `run_at` is due
 - the runtime claims a row by filling `locked_by`
 - successful execution either deletes the row or rewrites it with the next due
   time, depending on the timer/retry semantics
@@ -130,7 +130,7 @@ runtime wants to persist or reschedule work.
 How it works:
 
 1. It normalizes the `job_type`.
-2. It resolves the effective timestamp for `updated_at_in_seconds`
+2. It resolves the effective timestamp for `updated_at`
    and defaults to the current time when the caller does not pass one.
 3. It looks up an existing row by the tenant-scoped unique key:
    `m8f_tenant_id + job_key`.
@@ -139,7 +139,7 @@ How it works:
 6. In both cases it flushes the session before returning the ORM object.
 
 When an existing row is updated, the helper intentionally resets
-`locked_by` and `locked_at_in_seconds` back to `NULL`. That makes a rescheduled
+`locked_by` and `locked_at` back to `NULL`. That makes a rescheduled
 job visible again to the next scheduler pass instead of leaving it stuck in a
 claimed state from a previous execution attempt.
 
@@ -148,11 +148,11 @@ The mutable fields refreshed by upsert are:
 - `job_type`
 - `process_instance_id`
 - `bpmn_process_definition_id`
-- `run_at_in_seconds`
+- `run_at`
 - `payload_json`
-- `updated_at_in_seconds`
+- `updated_at`
 
-`created_at_in_seconds` is preserved unless the caller explicitly overrides it.
+`created_at` is preserved unless the caller explicitly overrides it.
 
 #### Delete
 
@@ -172,13 +172,13 @@ runtime claim flow.
 
 How it decides what is due:
 
-- `run_at_in_seconds <= now`
+- `run_at <= now`
 - `locked_by IS NULL`
 - optional `tenant_id` filter if the caller wants only one tenant
 
 How it orders rows:
 
-- first by `run_at_in_seconds`
+- first by `run_at`
 - then by `id`
 
 That ordering keeps due-job scans deterministic when multiple rows share the
@@ -213,8 +213,10 @@ The persisted row is process-instance scoped:
 - `job_type = process_retry`
 - `process_instance_id = <current instance id>`
 - `bpmn_process_definition_id = <definition id>`
-- `run_at_in_seconds = <next retry due time>`
+- `run_at = <next retry due time>`
 - `payload_json = {"requested_by_user_id": ..., "scheduled_at_in_seconds": ...}`
+  (an internal numeric payload value; scheduler persistence itself uses the
+  timezone-aware `run_at`, `created_at`, and `updated_at` columns)
 
 At execution time, `api.run_due_scheduler_jobs(...)` claims the due row and the
 runtime does the following:
@@ -225,7 +227,7 @@ runtime does the following:
 3. If the instance is still in `error`, call the normal
    `retry_process_instance(...)` service with the stored `requested_by_user_id`.
 4. That service returns the same process instance from `error` to `running`,
-   clears `end_in_seconds`, reopens terminated runtime tasks, and resets
+   clears `ended_at`, reopens terminated runtime tasks, and resets
    terminated human tasks back to `READY`.
 5. The retry service also records `process_instance_retried` and deletes the
    consumed `process_retry` scheduler row.

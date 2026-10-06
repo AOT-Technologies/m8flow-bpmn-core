@@ -413,8 +413,8 @@ def _run_boundary_timer_poc(
             },
             bpmn_version_control_type="git",
             bpmn_version_control_identifier="boundary-timer-poc",
-            created_at_in_seconds=import_timestamp,
-            updated_at_in_seconds=import_timestamp,
+            created_at=import_timestamp,
+            updated_at=import_timestamp,
         ),
     )
     if definition is None:
@@ -429,7 +429,7 @@ def _run_boundary_timer_poc(
     if deployment is not None:
         _print_backend_deployment_summary(deployment)
 
-    started_at_in_seconds = round(time.time())
+    started_at = round(time.time())
     process_instance = _run_command_step(
         engine,
         step_number=2,
@@ -444,7 +444,7 @@ def _run_boundary_timer_poc(
             bpmn_process_definition_id=definition.id,
             process_initiator_id=context.admin_user_id,
             summary="Scheduled boundary timer demonstration instance",
-            started_at_in_seconds=started_at_in_seconds,
+            started_at=started_at,
         ),
     )
     if process_instance is None:
@@ -595,7 +595,7 @@ def _run_boundary_timer_poc(
             tenant_id=context.tenant_id,
             human_task_id=timeout_task.id,
             user_id=context.operator_user_id,
-            completed_at_in_seconds=round(time.time()),
+            completed_at=round(time.time()),
             task_payload={
                 "completed_after_boundary_timeout": "true",
                 "completed_by": context.operator_username,
@@ -807,7 +807,7 @@ def _summarize_scheduler_job(scheduler_job: SchedulerJobModel) -> dict[str, Any]
         "tenant_id": scheduler_job.m8f_tenant_id,
         "process_instance_id": scheduler_job.process_instance_id,
         "definition_id": scheduler_job.bpmn_process_definition_id,
-        "run_at_in_seconds": scheduler_job.run_at_in_seconds,
+        "run_at_in_seconds": scheduler_job.run_at,
         "locked_by": scheduler_job.locked_by,
         "payload_json": scheduler_job.payload_json,
     }

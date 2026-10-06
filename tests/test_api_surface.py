@@ -53,6 +53,8 @@ EXPECTED_PUBLIC_API = frozenset(
         "ListTerminatedProcessInstancesQuery",
         # Enums
         "ProcessInstanceEventType",
+        "ProcessInstanceEventCategory",
+        "ProcessLifecycleEventType",
         "ProcessInstanceStatus",
         "ServiceTaskCommandDefinition",
         "ServiceTaskConnector",
@@ -62,6 +64,7 @@ EXPECTED_PUBLIC_API = frozenset(
         "ServiceTaskRegistryFactory",
         "ServiceTaskRequest",
         "ServiceTaskResult",
+        "TaskEventType",
         # Dispatchers
         "authorization_policy_scope",
         "build_connector_proxy_service_task_connectors",

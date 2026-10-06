@@ -124,7 +124,7 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
             tenant_id=context.tenant.id,
             human_task_id=submit_task.id,
             user_id=context.users["requester"].id,
-            completed_at_in_seconds=110,
+            completed_at=110,
             task_payload={
                 "order_amount": "1000",
                 "vendor": "ACME Corp",
@@ -168,7 +168,7 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
             tenant_id=context.tenant.id,
             human_task_id=finance_task.id,
             user_id=context.users["finance_user"].id,
-            completed_at_in_seconds=120,
+            completed_at=120,
             task_payload={"finance_decision": scenario.finance_decision},
         ),
     )
@@ -182,7 +182,7 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
         ),
     )
     assert instance_mid.status == api.ProcessInstanceStatus.user_input_required
-    assert instance_mid.end_in_seconds is None
+    assert instance_mid.ended_at is None
 
     # Step 5: compliance reviewer completes their review — this releases the join.
     api.execute_command(
@@ -199,7 +199,7 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
             tenant_id=context.tenant.id,
             human_task_id=compliance_task.id,
             user_id=context.users["compliance_user"].id,
-            completed_at_in_seconds=130,
+            completed_at=130,
             task_payload={"compliance_decision": scenario.compliance_decision},
         ),
     )
@@ -231,7 +231,7 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
             tenant_id=context.tenant.id,
             human_task_id=notify_task.id,
             user_id=context.users["requester"].id,
-            completed_at_in_seconds=140,
+            completed_at=140,
         ),
     )
 
@@ -243,7 +243,7 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
         ),
     )
     assert final_instance.status == api.ProcessInstanceStatus.complete
-    assert final_instance.end_in_seconds == 140
+    assert final_instance.ended_at.timestamp() == 140
 
     # Metadata captures every payload + every value the script tasks computed.
     metadata = api.execute_query(
@@ -287,7 +287,7 @@ def test_parallel_review_join_does_not_advance_until_both_branches_complete(
             tenant_id=context.tenant.id,
             human_task_id=submit_task.id,
             user_id=context.users["requester"].id,
-            completed_at_in_seconds=110,
+            completed_at=110,
             task_payload={"order_amount": "1000"},
         ),
     )
@@ -314,7 +314,7 @@ def test_parallel_review_join_does_not_advance_until_both_branches_complete(
             tenant_id=context.tenant.id,
             human_task_id=finance_task.id,
             user_id=context.users["finance_user"].id,
-            completed_at_in_seconds=120,
+            completed_at=120,
             task_payload={"finance_decision": "Approved"},
         ),
     )
@@ -357,8 +357,8 @@ def _seed_parallel_review_workflow(
             service=service_url,
             service_id="requester-keycloak",
             display_name="Requester",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
         "finance_user": UserModel(
             username="finance_user",
@@ -366,8 +366,8 @@ def _seed_parallel_review_workflow(
             service=service_url,
             service_id="finance-keycloak",
             display_name="Finance User",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
         "admin": UserModel(
             username="admin",
@@ -375,8 +375,8 @@ def _seed_parallel_review_workflow(
             service=service_url,
             service_id="admin-keycloak",
             display_name="Admin",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
         "compliance_user": UserModel(
             username="compliance_user",
@@ -384,8 +384,8 @@ def _seed_parallel_review_workflow(
             service=service_url,
             service_id="compliance-keycloak",
             display_name="Compliance User",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=1,
+            updated_at=1,
         ),
     }
     session.add(tenant)
@@ -426,8 +426,8 @@ def _seed_parallel_review_workflow(
                 "scenario_name": scenario.name,
                 "lane_owners": LANE_OWNERS,
             },
-            created_at_in_seconds=90,
-            updated_at_in_seconds=90,
+            created_at=90,
+            updated_at=90,
         ),
     )
 
@@ -439,7 +439,7 @@ def _seed_parallel_review_workflow(
             process_initiator_id=users["requester"].id,
             summary=f"Parallel review — {scenario.name}",
             process_version=1,
-            started_at_in_seconds=100,
+            started_at=100,
             bpmn_process_id=PROCESS_ID,
         ),
     )

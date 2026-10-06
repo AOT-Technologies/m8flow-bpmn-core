@@ -27,6 +27,7 @@ LIBRARY_TABLE_NAMES = (
     "task",
     "future_task",
     "human_task",
+    "work_item",
     "human_task_user",
     "process_instance_event",
     "process_instance_metadata",

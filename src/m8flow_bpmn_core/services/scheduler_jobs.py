@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import time
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import delete, select
@@ -46,15 +46,15 @@ def upsert_scheduler_job(
     tenant_id: str,
     job_key: str,
     job_type: SchedulerJobType | str,
-    run_at_in_seconds: int,
+    run_at: datetime,
     process_instance_id: int | None = None,
     bpmn_process_definition_id: int | None = None,
     payload_json: Mapping[str, Any] | None = None,
-    updated_at_in_seconds: int | None = None,
-    created_at_in_seconds: int | None = None,
+    updated_at: datetime | None = None,
+    created_at: datetime | None = None,
 ) -> SchedulerJobModel:
     normalized_job_type = SchedulerJobType(job_type).value
-    occurred_at = _resolve_timestamp(updated_at_in_seconds)
+    occurred_at = _resolve_timestamp(updated_at)
     normalized_payload = dict(payload_json or {})
 
     job = session.scalar(
@@ -71,13 +71,13 @@ def upsert_scheduler_job(
             process_instance_id=process_instance_id,
             bpmn_process_definition_id=bpmn_process_definition_id,
             locked_by=None,
-            locked_at_in_seconds=None,
-            run_at_in_seconds=run_at_in_seconds,
+            locked_at=None,
+            run_at=run_at,
             payload_json=normalized_payload,
-            updated_at_in_seconds=occurred_at,
-            created_at_in_seconds=(
-                created_at_in_seconds
-                if created_at_in_seconds is not None
+            updated_at=occurred_at,
+            created_at=(
+                created_at
+                if created_at is not None
                 else occurred_at
             ),
         )
@@ -87,12 +87,12 @@ def upsert_scheduler_job(
         job.process_instance_id = process_instance_id
         job.bpmn_process_definition_id = bpmn_process_definition_id
         job.locked_by = None
-        job.locked_at_in_seconds = None
-        job.run_at_in_seconds = run_at_in_seconds
+        job.locked_at = None
+        job.run_at = run_at
         job.payload_json = normalized_payload
-        job.updated_at_in_seconds = occurred_at
-        if created_at_in_seconds is not None:
-            job.created_at_in_seconds = created_at_in_seconds
+        job.updated_at = occurred_at
+        if created_at is not None:
+            job.created_at = created_at
 
     session.flush()
     return job
@@ -101,22 +101,22 @@ def upsert_scheduler_job(
 def list_due_scheduler_jobs(
     session: Session,
     *,
-    now_in_seconds: int | None = None,
+    now: datetime | None = None,
     limit: int = 100,
     tenant_id: str | None = None,
 ) -> list[SchedulerJobModel]:
     if limit <= 0:
         raise ValidationError("Scheduler job limit must be greater than zero")
 
-    occurred_at = _resolve_timestamp(now_in_seconds)
+    occurred_at = _resolve_timestamp(now)
     stmt = select(SchedulerJobModel).where(
         SchedulerJobModel.locked_by.is_(None),
-        SchedulerJobModel.run_at_in_seconds <= occurred_at,
+        SchedulerJobModel.run_at <= occurred_at,
     )
     if tenant_id is not None:
         stmt = stmt.where(SchedulerJobModel.m8f_tenant_id == tenant_id)
     stmt = stmt.order_by(
-        SchedulerJobModel.run_at_in_seconds,
+        SchedulerJobModel.run_at,
         SchedulerJobModel.id,
     ).limit(limit)
     return list(session.scalars(stmt).all())
@@ -138,9 +138,9 @@ def delete_scheduler_job(
     return result.rowcount > 0
 
 
-def _resolve_timestamp(timestamp_in_seconds: int | None) -> int:
-    return (
-        timestamp_in_seconds
-        if timestamp_in_seconds is not None
-        else round(time.time())
-    )
+def _resolve_timestamp(timestamp: datetime | int | float | None) -> datetime:
+    if isinstance(timestamp, datetime):
+        return timestamp
+    if timestamp is not None:
+        return datetime.fromtimestamp(float(timestamp), UTC)
+    return datetime.now(UTC)

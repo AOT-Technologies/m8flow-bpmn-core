@@ -48,6 +48,7 @@ from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantScoped
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
 
 __all__ = [
     "Base",
@@ -83,4 +84,5 @@ __all__ = [
     "TenantScoped",
     "UserGroupAssignmentModel",
     "UserModel",
+    "WorkItemModel",
 ]

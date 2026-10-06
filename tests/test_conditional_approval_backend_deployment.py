@@ -137,8 +137,8 @@ def test_align_shared_db_tenant_with_keycloak_organization_updates_example_rows(
         display_name="Manager",
         tenant_specific_field_1=tenant.id,
         tenant_specific_field_2=tenant.slug,
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
@@ -147,8 +147,8 @@ def test_align_shared_db_tenant_with_keycloak_organization_updates_example_rows(
         bpmn_identifier="legacy-process",
         bpmn_name="Legacy Process",
         properties_json={"version": 1},
-        created_at_in_seconds=10,
-        updated_at_in_seconds=10,
+        created_at=10,
+        updated_at=10,
     )
     session.add(tenant)
     session.flush()
@@ -419,8 +419,8 @@ def test_get_or_create_user_backfills_principal_for_reused_shared_db_user(
         display_name="Manager",
         tenant_specific_field_1="org-demo",
         tenant_specific_field_2=example_poc.DEMO_TENANT["slug"],
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add(existing_user)
     session.flush()
@@ -468,8 +468,8 @@ def test_get_or_create_user_reuses_same_realm_username_even_without_tenant_field
         tenant_specific_field_1=None,
         tenant_specific_field_2=None,
         tenant_specific_field_3=None,
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add(existing_user)
     session.flush()
@@ -575,8 +575,8 @@ def test_realign_existing_example_process_model_identifiers_updates_rows(
         service="http://localhost:7002/realms/conditional-approval-example",
         service_id="poc-requester-keycloak",
         display_name="Requester",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=1,
+        updated_at=1,
     )
     session.add_all([tenant, user])
     session.flush()
@@ -588,8 +588,8 @@ def test_realign_existing_example_process_model_identifiers_updates_rows(
         bpmn_identifier=example_poc.M8FLOW_BACKEND_PROCESS_MODEL_ID,
         bpmn_name=example_poc.M8FLOW_BACKEND_PROCESS_MODEL_DISPLAY_NAME,
         properties_json={"version": 1},
-        created_at_in_seconds=10,
-        updated_at_in_seconds=10,
+        created_at=10,
+        updated_at=10,
     )
     session.add(definition)
     session.flush()
@@ -602,8 +602,8 @@ def test_realign_existing_example_process_model_identifiers_updates_rows(
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=None,
         status="running",
-        created_at_in_seconds=20,
-        updated_at_in_seconds=20,
+        created_at=20,
+        updated_at=20,
     )
     session.add(process_instance)
     session.flush()
@@ -629,8 +629,8 @@ def test_realign_existing_example_process_model_identifiers_updates_rows(
         bpmn_name="Legacy Task",
         typename="UserTask",
         properties_json={"legacy": True},
-        created_at_in_seconds=25,
-        updated_at_in_seconds=25,
+        created_at=25,
+        updated_at=25,
     )
     session.add(task_definition)
     session.flush()
@@ -670,7 +670,7 @@ def test_realign_existing_example_process_model_identifiers_updates_rows(
             process_model_identifier=example_poc.M8FLOW_BACKEND_PROCESS_MODEL_ID,
             bpmn_xml_hash="legacy-bpmn-hash",
             bpmn_xml_file_contents="<xml />",
-            created_at_in_seconds=30,
+            created_at=30,
         )
     )
     session.flush()
