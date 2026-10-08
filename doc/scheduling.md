@@ -37,6 +37,15 @@ Each row stores:
 The `job_key` is intentionally generic so later steps can reschedule the same
 logical job without creating duplicate rows.
 
+Timer payload timestamps
+
+Some SpiffWorkflow timer payloads retain legacy-named fields because the
+workflow engine serializes timer due times as Unix epoch values. These values
+are transient payload data only: they are converted to UTC-aware
+`datetime` objects before writing `scheduler_job.run_at`, and they are never
+database columns or public persistence fields. All scheduler queries and
+persistence use `DateTime(timezone=True)` fields.
+
 ### `scheduler_job` Schema And ORM Model
 
 The ORM model lives in
@@ -214,9 +223,10 @@ The persisted row is process-instance scoped:
 - `process_instance_id = <current instance id>`
 - `bpmn_process_definition_id = <definition id>`
 - `run_at = <next retry due time>`
-- `payload_json = {"requested_by_user_id": ..., "scheduled_at_in_seconds": ...}`
-  (an internal numeric payload value; scheduler persistence itself uses the
-  timezone-aware `run_at`, `created_at`, and `updated_at` columns)
+- `payload_json = {"requested_by_user_id": ..., "scheduled_at": ...}`
+  (an internal ISO-8601 timestamp string; it is not a persisted timestamp
+  column or public timestamp API. Scheduler persistence itself uses the
+  timezone-aware `run_at`, `created_at`, and `updated_at` columns.)
 
 At execution time, `api.run_due_scheduler_jobs(...)` claims the due row and the
 runtime does the following:

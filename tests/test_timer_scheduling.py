@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -99,8 +99,8 @@ def test_initialize_workflow_schedules_waiting_intermediate_timer(
         service="http://localhost:7002/realms/tenant-timer-scheduling",
         service_id="timer-admin-keycloak",
         display_name="Timer Admin",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()
@@ -119,8 +119,8 @@ def test_initialize_workflow_schedules_waiting_intermediate_timer(
             user_id=user.id,
             bpmn_name="Timer Waiting Process",
             source_bpmn_xml=INTERMEDIATE_TIMER_BPMN,
-            created_at=10,
-            updated_at=10,
+            created_at=datetime.fromtimestamp(10, UTC),
+            updated_at=datetime.fromtimestamp(10, UTC),
         ),
     )
     process_instance = api.execute_command(
@@ -129,13 +129,13 @@ def test_initialize_workflow_schedules_waiting_intermediate_timer(
             tenant_id=tenant.id,
             bpmn_process_definition_id=definition.id,
             process_initiator_id=user.id,
-            started_at=20,
+            started_at=datetime.fromtimestamp(20, UTC),
         ),
     )
 
     assert process_instance.status == api.ProcessInstanceStatus.waiting.value
     assert process_instance.workflow_state_json is not None
-    assert process_instance.human_tasks == []
+    assert process_instance.work_items == []
     assert (
         api.execute_query(
             session,
@@ -199,8 +199,8 @@ def test_initialize_workflow_schedules_waiting_boundary_timer(
         service="http://localhost:7002/realms/tenant-boundary-timer-scheduling",
         service_id="boundary-timer-admin-keycloak",
         display_name="Boundary Timer Admin",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()
@@ -224,8 +224,8 @@ def test_initialize_workflow_schedules_waiting_boundary_timer(
                     "Operations": [user.username],
                 }
             },
-            created_at=10,
-            updated_at=10,
+            created_at=datetime.fromtimestamp(10, UTC),
+            updated_at=datetime.fromtimestamp(10, UTC),
         ),
     )
     process_instance = api.execute_command(
@@ -234,7 +234,7 @@ def test_initialize_workflow_schedules_waiting_boundary_timer(
             tenant_id=tenant.id,
             bpmn_process_definition_id=definition.id,
             process_initiator_id=user.id,
-            started_at=20,
+            started_at=datetime.fromtimestamp(20, UTC),
         ),
     )
 

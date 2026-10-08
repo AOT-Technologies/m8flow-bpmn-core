@@ -24,12 +24,18 @@ def upgrade() -> None:
         ["authorization_key"],
         unique=False,
     )
-    with op.batch_alter_table("group", recreate="always") as batch_op:
-        batch_op.create_unique_constraint(CONSTRAINT_NAME, ["authorization_key"])
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table("group", recreate="always") as batch_op:
+            batch_op.create_unique_constraint(CONSTRAINT_NAME, ["authorization_key"])
+    else:
+        op.create_unique_constraint(CONSTRAINT_NAME, "group", ["authorization_key"])
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("group", recreate="always") as batch_op:
-        batch_op.drop_constraint(CONSTRAINT_NAME, type_="unique")
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table("group", recreate="always") as batch_op:
+            batch_op.drop_constraint(CONSTRAINT_NAME, type_="unique")
+    else:
+        op.drop_constraint(CONSTRAINT_NAME, "group", type_="unique")
     op.drop_index("ix_group_authorization_key", table_name="group")
     op.drop_column("group", "authorization_key")

@@ -108,6 +108,13 @@ The downgrade recreates empty compatibility columns only; it cannot restore
 values removed by the upgrade. Restore the pre-upgrade database backup when
 legacy timestamp values must be recovered.
 
+The downstream M8Flow migration chain applies the equivalent cleanup in
+`d4e5f6a7b8c9_remove_core_epoch_timestamp_columns.py` after its
+`c3d4e5f6a7b8` compatibility revision and after core revision
+`k2l3m4n5o6p7`. Deploy the compatible core and
+M8Flow migrations together; do not apply the destructive cleanup while an
+older M8Flow process still reads the epoch columns.
+
 Other compatibility expectations:
 
 - JSON payload access must always use both tenant id and hash.

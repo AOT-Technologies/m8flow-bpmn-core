@@ -352,8 +352,8 @@ def _ensure_user(
             select(UserModel).where(
                 UserModel.username == user_definition.username,
                 or_(
-                    UserModel.tenant_specific_field_1 == tenant.id,
-                    UserModel.tenant_specific_field_2 == tenant.slug,
+                    UserModel.realm_identifier == tenant.id,
+                    UserModel.external_org_id == tenant.slug,
                 ),
             )
         )
@@ -364,8 +364,8 @@ def _ensure_user(
             service=service,
             service_id=service_id,
             display_name=user_definition.display_name,
-            tenant_specific_field_1=tenant.id,
-            tenant_specific_field_2=tenant.slug,
+            realm_identifier=tenant.id,
+            external_org_id=tenant.slug,
             updated_at=EPOCH,
             created_at=EPOCH,
         )
@@ -378,8 +378,8 @@ def _ensure_user(
     user.service = service
     user.service_id = service_id
     user.display_name = user_definition.display_name
-    user.tenant_specific_field_1 = tenant.id
-    user.tenant_specific_field_2 = tenant.slug
+    user.realm_identifier = tenant.id
+    user.external_org_id = tenant.slug
     user.updated_at = EPOCH
     return user
 
@@ -512,8 +512,8 @@ def _realign_tenant_to_canonical_id(
 
     session.execute(
         UserModel.__table__.update()
-        .where(UserModel.__table__.c.tenant_specific_field_1 == original_tenant_id)
-        .values(tenant_specific_field_1=canonical_tenant_id)
+        .where(UserModel.__table__.c.realm_identifier == original_tenant_id)
+        .values(realm_identifier=canonical_tenant_id)
     )
     session.flush()
     session.delete(tenant)

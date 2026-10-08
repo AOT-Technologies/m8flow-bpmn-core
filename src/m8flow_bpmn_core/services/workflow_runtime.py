@@ -36,11 +36,6 @@ from m8flow_bpmn_core.models.bpmn_process_definition import (
 )
 from m8flow_bpmn_core.models.future_task import FutureTaskModel
 from m8flow_bpmn_core.models.group import GroupModel
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import (
-    HumanTaskUserAddedBy,
-    HumanTaskUserModel,
-)
 from m8flow_bpmn_core.models.json_data import JsonDataModel
 from m8flow_bpmn_core.models.process_instance import (
     WORKFLOW_STATE_JSON_DATA_KEY,
@@ -48,7 +43,6 @@ from m8flow_bpmn_core.models.process_instance import (
     ProcessInstanceStatus,
 )
 from m8flow_bpmn_core.models.process_instance_event import (
-    ProcessInstanceEventType,
     ProcessLifecycleEventType,
     TaskEventType,
 )
@@ -63,6 +57,11 @@ from m8flow_bpmn_core.models.task import M8F_TERMINATED_TASK_STATE, TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.models.work_item_user import (
+    WorkItemUserAddedBy,
+    WorkItemUserModel,
+)
 from m8flow_bpmn_core.services.authorization import (
     PROCESS_START_COMMAND,
     require_command_authorization,
@@ -92,7 +91,6 @@ from m8flow_bpmn_core.services.tenant_users import (
 from m8flow_bpmn_core.services.work_items import (
     WorkItemState,
     close_work_item,
-    ensure_work_item,
     prepare_work_item_for_ready_state,
 )
 
@@ -331,8 +329,8 @@ def initialize_process_instance_from_definition(
         tenant_id=tenant_id,
         actor_user_id=process_initiator_id,
         command_key=PROCESS_START_COMMAND,
-        target_uri=f"/process-models/{process_model_identifier}",
-        target_id=process_definition.id,
+        resource_type="process_model",
+        resource_id=process_model_identifier,
         metadata=_process_start_authorization_metadata(
             process_definition=process_definition,
             requested_bpmn_process_id=bpmn_process_id,
@@ -508,7 +506,7 @@ def advance_process_instance_workflow(
         workflow,
         occurred_at=occurred_at,
     )
-    _sync_inactive_human_tasks(
+    _sync_inactive_work_items(
         session,
         process_instance=process_instance,
         workflow=workflow,
@@ -717,7 +715,7 @@ def _finalize_initialized_process_instance_workflow(
     tenant_id: str,
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> ProcessInstanceModel:
     _persist_workflow_state(
         session,
@@ -725,7 +723,7 @@ def _finalize_initialized_process_instance_workflow(
         workflow,
         occurred_at=occurred_at,
     )
-    _sync_inactive_human_tasks(
+    _sync_inactive_work_items(
         session,
         process_instance=process_instance,
         workflow=workflow,
@@ -746,7 +744,7 @@ def _finalize_initialized_process_instance_workflow(
 
     session.flush()
 
-    ready_tasks = _get_ready_human_tasks(process_instance)
+    ready_tasks = _get_ready_work_items(process_instance)
     record_process_instance_event(
         session,
         tenant_id=tenant_id,
@@ -767,7 +765,7 @@ def _seed_runtime_definitions(
     tenant_id: str,
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     if process_instance.bpmn_process_definition_id is None:
         raise ValidationError(
@@ -839,7 +837,7 @@ def retry_errored_service_task_workflow_if_needed(
         workflow,
         occurred_at=timestamp,
     )
-    _sync_inactive_human_tasks(
+    _sync_inactive_work_items(
         session,
         process_instance=process_instance,
         workflow=workflow,
@@ -866,7 +864,7 @@ def _refresh_waiting_process_instance_workflow(
     *,
     tenant_id: str,
     process_instance_id: int,
-    occurred_at: int | None = None,
+    occurred_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     process_instance = _load_process_instance(
         session,
@@ -903,7 +901,7 @@ def _refresh_waiting_process_instance_workflow(
         workflow,
         occurred_at=timestamp,
     )
-    _sync_inactive_human_tasks(
+    _sync_inactive_work_items(
         session,
         process_instance=process_instance,
         workflow=workflow,
@@ -930,7 +928,7 @@ def repair_process_instance_runtime_representation(
     *,
     tenant_id: str,
     process_instance_id: int,
-    occurred_at: int | None = None,
+    occurred_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     process_instance = _load_process_instance(
         session,
@@ -950,7 +948,7 @@ def repair_process_instance_runtime_representation(
         ),
     )
     timestamp = _resolve_timestamp(occurred_at)
-    process_instance.spiff_serializer_version = _WORKFLOW_STATE_SERIALIZER_VERSION
+    process_instance.workflow_engine_version = _WORKFLOW_STATE_SERIALIZER_VERSION
     _persist_workflow_state(
         session,
         process_instance,
@@ -967,7 +965,7 @@ def _run_workflow_with_service_task_failure_handling(
     tenant_id: str,
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
-    occurred_at: int,
+    occurred_at: datetime,
     autonomous_failure_state_persistence: bool = False,
 ) -> None:
     try:
@@ -999,7 +997,7 @@ def _persist_service_task_failure_state_in_independent_session(
     tenant_id: str,
     process_instance_id: int,
     workflow: BpmnWorkflow,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> bool:
     engine = _session_engine(session)
     if engine is None:
@@ -1053,7 +1051,7 @@ def _transition_process_instance_to_error_for_service_task_failure(
     tenant_id: str,
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
-    occurred_at: int,
+    occurred_at: datetime,
     recovery_only: bool = False,
 ) -> None:
     errored_service_tasks = _errored_service_tasks(workflow)
@@ -1074,7 +1072,7 @@ def _transition_process_instance_to_error_for_service_task_failure(
             workflow,
             occurred_at=occurred_at,
         )
-        _sync_inactive_human_tasks(
+        _sync_inactive_work_items(
             session,
             process_instance=process_instance,
             workflow=workflow,
@@ -1177,7 +1175,7 @@ def _ensure_bpmn_version_snapshot(
     tenant_id: str,
     process_model_identifier: str,
     bpmn_xml_text: str | bytes | None,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> ProcessModelBpmnVersionModel:
     if bpmn_xml_text is None:
         raise ValidationError("Cannot create a BPMN version snapshot without BPMN XML")
@@ -1291,10 +1289,10 @@ def _persist_workflow_state(
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
     *,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     serialized_state = _WORKFLOW_SERIALIZER.serialize_json(workflow)
-    process_instance.spiff_serializer_version = _WORKFLOW_STATE_SERIALIZER_VERSION
+    process_instance.workflow_engine_version = _WORKFLOW_STATE_SERIALIZER_VERSION
     serialized_workflow = _serialize_workflow_dict(workflow)
     _sync_process_definition_from_workflow(
         session,
@@ -1328,7 +1326,7 @@ def _persist_workflow_recovery_state(
     workflow: BpmnWorkflow,
 ) -> None:
     serialized_state = _WORKFLOW_SERIALIZER.serialize_json(workflow)
-    process_instance.spiff_serializer_version = _WORKFLOW_STATE_SERIALIZER_VERSION
+    process_instance.workflow_engine_version = _WORKFLOW_STATE_SERIALIZER_VERSION
     serialized_workflow = _serialize_workflow_dict(workflow)
     _sync_bpmn_process_from_workflow(
         session,
@@ -1352,7 +1350,7 @@ def _sync_process_definition_from_workflow(
     *,
     process_instance: ProcessInstanceModel,
     serialized_workflow: Mapping[str, Any],
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     process_definition = process_instance.bpmn_process_definition
     if process_definition is None:
@@ -1442,7 +1440,7 @@ def _sync_task_models_from_workflow(
     *,
     process_instance: ProcessInstanceModel,
     serialized_workflow: Mapping[str, Any],
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     serialized_tasks = serialized_workflow.get("tasks")
     if not isinstance(serialized_tasks, Mapping):
@@ -1492,7 +1490,7 @@ def _upsert_task_definition(
     tenant_id: str,
     process_definition_id: int,
     task_spec: object,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> TaskDefinitionModel:
     task_spec_payload = _WORKFLOW_SERIALIZER.to_dict(task_spec)
     if not isinstance(task_spec_payload, Mapping):
@@ -1517,7 +1515,7 @@ def _upsert_task_definition_from_payload(
     process_definition_id: int,
     task_identifier: str,
     task_spec_payload: Mapping[str, Any],
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> TaskDefinitionModel:
     task_definition = session.scalar(
         select(TaskDefinitionModel).where(
@@ -1574,14 +1572,14 @@ def _materialize_ready_manual_tasks(
     *,
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
-    occurred_at: int,
-) -> list[HumanTaskModel]:
+    occurred_at: datetime,
+) -> list[WorkItemModel]:
     ready_tasks = _current_ready_manual_tasks(
         session,
         process_instance=process_instance,
         workflow=workflow,
     )
-    materialized: list[HumanTaskModel] = []
+    materialized: list[WorkItemModel] = []
     for task in ready_tasks:
         materialized.append(
             _materialize_single_manual_task(
@@ -1595,12 +1593,12 @@ def _materialize_ready_manual_tasks(
     return materialized
 
 
-def _sync_inactive_human_tasks(
+def _sync_inactive_work_items(
     session: Session,
     *,
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     ready_manual_task_guids = {
         str(task.id)
@@ -1610,24 +1608,24 @@ def _sync_inactive_human_tasks(
             workflow=workflow,
         )
     }
-    human_tasks = session.scalars(
-        select(HumanTaskModel).where(
-            HumanTaskModel.m8f_tenant_id == process_instance.m8f_tenant_id,
-            HumanTaskModel.process_instance_id == process_instance.id,
-            HumanTaskModel.completed.is_(False),
+    work_items = session.scalars(
+        select(WorkItemModel).where(
+            WorkItemModel.m8f_tenant_id == process_instance.m8f_tenant_id,
+            WorkItemModel.process_instance_id == process_instance.id,
+            WorkItemModel.completed.is_(False),
         )
     ).all()
-    for human_task in human_tasks:
+    for work_item in work_items:
         task_model = (
-            session.get(TaskModel, human_task.task_guid)
-            if human_task.task_guid is not None
+            session.get(TaskModel, work_item.task_guid)
+            if work_item.task_guid is not None
             else None
         )
-        if human_task.task_guid not in ready_manual_task_guids:
-            _close_inactive_human_task(
+        if work_item.task_guid not in ready_manual_task_guids:
+            _close_inactive_work_item(
                 session,
                 process_instance=process_instance,
-                human_task=human_task,
+                work_item=work_item,
                 task_state_name=task_model.state if task_model is not None else None,
                 occurred_at=occurred_at,
             )
@@ -1637,10 +1635,10 @@ def _sync_inactive_human_tasks(
         if task_model.state == TaskState.get_name(TaskState.READY):
             continue
 
-        _close_inactive_human_task(
+        _close_inactive_work_item(
             session,
             process_instance=process_instance,
-            human_task=human_task,
+            work_item=work_item,
             task_state_name=task_model.state,
             occurred_at=occurred_at,
         )
@@ -1665,36 +1663,36 @@ def _current_ready_manual_tasks(
     return ready_tasks
 
 
-def _close_inactive_human_task(
+def _close_inactive_work_item(
     session: Session,
     *,
     process_instance: ProcessInstanceModel,
-    human_task: HumanTaskModel,
+    work_item: WorkItemModel,
     task_state_name: str | None,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
-    if human_task.completed:
+    if work_item.completed:
         return
 
     close_work_item(
-        human_task,
-        state=WorkItemState(_inactive_human_task_status(task_state_name)),
+        work_item,
+        state=WorkItemState(_inactive_work_item_status(task_state_name)),
         occurred_at=occurred_at,
     )
 
-    task_model = human_task.task_model
+    task_model = work_item.task_model
     if task_model is not None and task_model.future_task is not None:
         task_model.future_task.completed = True
         task_model.future_task.updated_at = occurred_at
 
-    event_type = _inactive_human_task_event_type(task_state_name)
+    event_type = _inactive_work_item_event_type(task_state_name)
     if event_type is not None:
         record_process_instance_event(
             session,
             tenant_id=process_instance.m8f_tenant_id,
             process_instance_id=process_instance.id,
             event_type=event_type,
-            task_guid=human_task.task_guid,
+            task_guid=work_item.task_guid,
             user_id=None,
             occurred_at=occurred_at,
         )
@@ -1702,7 +1700,7 @@ def _close_inactive_human_task(
     session.flush()
 
 
-def _inactive_human_task_status(task_state_name: str | None) -> str:
+def _inactive_work_item_status(task_state_name: str | None) -> str:
     if task_state_name in {
         TaskState.get_name(TaskState.CANCELLED),
         TaskState.get_name(TaskState.COMPLETED),
@@ -1710,12 +1708,12 @@ def _inactive_human_task_status(task_state_name: str | None) -> str:
         M8F_TERMINATED_TASK_STATE,
     }:
         return task_state_name
-    return "TERMINATED"
+    return WorkItemState.TERMINATED.value
 
 
-def _inactive_human_task_event_type(
+def _inactive_work_item_event_type(
     task_state_name: str | None,
-) -> ProcessInstanceEventType | None:
+) -> ProcessLifecycleEventType | TaskEventType | None:
     if task_state_name == TaskState.get_name(TaskState.CANCELLED):
         return TaskEventType.task_cancelled
     if task_state_name == TaskState.get_name(TaskState.ERROR):
@@ -1729,8 +1727,8 @@ def _materialize_single_manual_task(
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
     task: object,
-    occurred_at: int,
-) -> HumanTaskModel:
+    occurred_at: datetime,
+) -> WorkItemModel:
     task_id = str(task.id)
     if process_instance.bpmn_process is None:
         raise ValidationError("Process instance is missing a BPMN process")
@@ -1755,7 +1753,7 @@ def _materialize_single_manual_task(
         task=task,
         occurred_at=occurred_at,
     )
-    human_task = _upsert_human_task(
+    work_item = _upsert_work_item(
         session,
         process_instance=process_instance,
         task_model=task_model,
@@ -1763,10 +1761,10 @@ def _materialize_single_manual_task(
         task_definition=task_definition,
         occurred_at=occurred_at,
     )
-    _sync_human_task_assignments(
+    _sync_work_item_assignments(
         session,
         process_instance=process_instance,
-        human_task=human_task,
+        work_item=work_item,
         task=task,
     )
     task_model.future_task = _upsert_future_task(
@@ -1776,7 +1774,7 @@ def _materialize_single_manual_task(
         occurred_at=occurred_at,
     )
     session.flush()
-    return human_task
+    return work_item
 
 
 def _upsert_future_task(
@@ -1784,7 +1782,7 @@ def _upsert_future_task(
     *,
     tenant_id: str,
     guid: str,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> FutureTaskModel:
     future_task = session.get(FutureTaskModel, guid)
     if future_task is None:
@@ -1815,7 +1813,7 @@ def _upsert_task_model(
     process_instance: ProcessInstanceModel,
     task_definition: TaskDefinitionModel,
     task: object,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> TaskModel:
     serialized_task = _WORKFLOW_SERIALIZER.to_dict(task)
     if not isinstance(serialized_task, Mapping):
@@ -1835,7 +1833,7 @@ def _upsert_task_model_from_payload(
     process_instance: ProcessInstanceModel,
     task_definition: TaskDefinitionModel,
     task_payload: Mapping[str, Any],
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> TaskModel:
     task_guid = task_payload.get("id")
     if not isinstance(task_guid, str) or not task_guid:
@@ -1912,20 +1910,20 @@ def _upsert_task_model_from_payload(
     return task_model
 
 
-def _upsert_human_task(
+def _upsert_work_item(
     session: Session,
     *,
     process_instance: ProcessInstanceModel,
     task_model: TaskModel,
     task: object,
     task_definition: TaskDefinitionModel,
-    occurred_at: int,
-) -> HumanTaskModel:
-    human_task = session.scalar(
-        select(HumanTaskModel).where(
-            HumanTaskModel.m8f_tenant_id == process_instance.m8f_tenant_id,
-            HumanTaskModel.process_instance_id == process_instance.id,
-            HumanTaskModel.task_guid == task_model.guid,
+    occurred_at: datetime,
+) -> WorkItemModel:
+    work_item = session.scalar(
+        select(WorkItemModel).where(
+            WorkItemModel.m8f_tenant_id == process_instance.m8f_tenant_id,
+            WorkItemModel.process_instance_id == process_instance.id,
+            WorkItemModel.task_guid == task_model.guid,
         )
     )
     lane_name = getattr(task.task_spec, "lane", None)
@@ -1934,62 +1932,31 @@ def _upsert_human_task(
         lane_name,
         tenant_id=process_instance.m8f_tenant_id,
     )
-    lane_owners = _task_lane_owners(
-        session,
-        process_instance=process_instance,
-        task=task,
-    )
-    human_task_payload = _human_task_payload(
-        task_definition,
-        lane_owners=lane_owners,
-    )
-    if human_task is None:
-        human_task = HumanTaskModel(
+    if work_item is None:
+        work_item = WorkItemModel(
             m8f_tenant_id=process_instance.m8f_tenant_id,
             process_instance_id=process_instance.id,
-            task_id=task_model.guid,
             task_guid=task_model.guid,
             lane_assignment_id=lane_group_id,
             completed_by_user_id=None,
             actual_owner_id=None,
-            form_file_name=None,
-            ui_form_file_name=None,
+            task_status=WorkItemState.READY.value,
             updated_at=occurred_at,
             created_at=occurred_at,
-            task_name=task.task_spec.name,
-            task_title=getattr(task.task_spec, "bpmn_name", None),
-            task_type=task_definition.typename,
-            task_status=WorkItemState.READY.value,
-            process_model_display_name=process_instance.process_model_display_name,
-            bpmn_process_identifier=process_instance.process_model_identifier,
-            lane_name=lane_name,
-            json_metadata=human_task_payload,
             completed=False,
         )
-        session.add(human_task)
+        session.add(work_item)
     else:
-        human_task.task_id = task_model.guid
-        human_task.task_guid = task_model.guid
-        human_task.lane_assignment_id = lane_group_id
-        human_task.updated_at = occurred_at
-        human_task.task_name = task.task_spec.name
-        human_task.task_title = getattr(task.task_spec, "bpmn_name", None)
-        human_task.task_type = task_definition.typename
+        work_item.task_guid = task_model.guid
+        work_item.lane_assignment_id = lane_group_id
         prepare_work_item_for_ready_state(
-            human_task,
+            work_item,
             occurred_at=occurred_at,
         )
-        human_task.process_model_display_name = (
-            process_instance.process_model_display_name
-        )
-        human_task.bpmn_process_identifier = process_instance.process_model_identifier
-        human_task.lane_name = lane_name
-        human_task.json_metadata = human_task_payload
 
     process_instance.task_updated_at = occurred_at
     session.flush()
-    ensure_work_item(session, human_task)
-    return human_task
+    return work_item
 
 
 def _lane_group_id(
@@ -2077,7 +2044,6 @@ def _lane_group(
             id=lane_group_id,
             name=lane_group_identifier,
             identifier=lane_group_identifier,
-            source_is_open_id=False,
         )
         session.add(lane_group)
         session.flush()
@@ -2091,17 +2057,17 @@ def _lane_group_identifier(lane_name: str, tenant_id: str | None) -> str:
     return f"{tenant_id.strip().lower()}:{normalized_lane}"
 
 
-def _sync_human_task_assignments(
+def _sync_work_item_assignments(
     session: Session,
     *,
     process_instance: ProcessInstanceModel,
-    human_task: HumanTaskModel,
+    work_item: WorkItemModel,
     task: object,
 ) -> None:
     existing_assignments = {
-        assignment.user_id for assignment in human_task.human_task_users
+        assignment.user_id for assignment in work_item.work_item_users
     }
-    for user, added_by in _resolve_human_task_assignments(
+    for user, added_by in _resolve_work_item_assignments(
         session,
         process_instance=process_instance,
         task=task,
@@ -2109,9 +2075,9 @@ def _sync_human_task_assignments(
         if user.id in existing_assignments:
             continue
         session.add(
-            HumanTaskUserModel(
+            WorkItemUserModel(
                 m8f_tenant_id=process_instance.m8f_tenant_id,
-                human_task_id=human_task.id,
+                work_item_id=work_item.id,
                 user_id=user.id,
                 added_by=added_by.value,
             )
@@ -2119,12 +2085,12 @@ def _sync_human_task_assignments(
     session.flush()
 
 
-def _resolve_human_task_assignments(
+def _resolve_work_item_assignments(
     session: Session,
     *,
     process_instance: ProcessInstanceModel,
     task: object,
-) -> list[tuple[UserModel, HumanTaskUserAddedBy]]:
+) -> list[tuple[UserModel, WorkItemUserAddedBy]]:
     lane_name = getattr(task.task_spec, "lane", None)
     if not lane_name or re.match(r"(process.?)initiator", lane_name, re.IGNORECASE):
         initiator = session.get(UserModel, process_instance.process_initiator_id)
@@ -2133,7 +2099,7 @@ def _resolve_human_task_assignments(
                 "Process initiator was not found for process instance "
                 f"{process_instance.id}"
         )
-        return [(initiator, HumanTaskUserAddedBy.process_initiator)]
+        return [(initiator, WorkItemUserAddedBy.process_initiator)]
 
     lane_owners = _task_lane_owners(
         session,
@@ -2207,7 +2173,7 @@ def _resolve_lane_group_users(
     tenant_id: str,
     lane_name: str,
     preferred_identifiers: tuple[Any, ...] = (),
-) -> list[tuple[UserModel, HumanTaskUserAddedBy]]:
+) -> list[tuple[UserModel, WorkItemUserAddedBy]]:
     lane_group = _lane_group(session, lane_name, tenant_id=tenant_id)
     if lane_group is None:
         return []
@@ -2219,7 +2185,7 @@ def _resolve_lane_group_users(
     )
     users_by_id = {user.id: user for user in lane_group_users}
 
-    resolved_users: list[tuple[UserModel, HumanTaskUserAddedBy]] = []
+    resolved_users: list[tuple[UserModel, WorkItemUserAddedBy]] = []
     seen_user_ids: set[int] = set()
     for user in _resolved_lane_owner_users(
         session,
@@ -2229,13 +2195,13 @@ def _resolve_lane_group_users(
         if user.id not in users_by_id or user.id in seen_user_ids:
             continue
         seen_user_ids.add(user.id)
-        resolved_users.append((user, HumanTaskUserAddedBy.lane_owner))
+        resolved_users.append((user, WorkItemUserAddedBy.lane_owner))
 
     for user in sorted(lane_group_users, key=lambda item: (item.username, item.id)):
         if user.id in seen_user_ids:
             continue
         seen_user_ids.add(user.id)
-        resolved_users.append((user, HumanTaskUserAddedBy.lane_assignment))
+        resolved_users.append((user, WorkItemUserAddedBy.lane_assignment))
 
     return resolved_users
 
@@ -2324,7 +2290,7 @@ def _find_users_by_identifier(
     return candidates
 
 
-def _human_task_payload(
+def _work_item_payload(
     task_definition: TaskDefinitionModel,
     *,
     lane_owners: Mapping[str, Any] | None,
@@ -2375,7 +2341,7 @@ def _update_process_instance_status_from_workflow(
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
     *,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     if workflow.completed:
         process_instance.status = ProcessInstanceStatus.complete.value
@@ -2408,7 +2374,7 @@ def _update_process_instance_status_from_workflow(
 def _archive_completed_workflow_runtime_state(
     process_instance: ProcessInstanceModel,
     *,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     for task in process_instance.tasks:
         if task.future_task is None:
@@ -2422,7 +2388,7 @@ def _sync_timer_start_scheduler_jobs_for_definition(
     session: Session,
     *,
     process_definition: BpmnProcessDefinitionModel,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     if process_definition.id is None:
         raise ValidationError("Process definition must be persisted before scheduling")
@@ -2476,7 +2442,7 @@ def _sync_intermediate_timer_scheduler_job(
     *,
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
-    occurred_at: int,
+    occurred_at: datetime,
 ) -> None:
     if process_instance.id is None:
         raise ValidationError("Process instance must be persisted before scheduling")
@@ -2680,15 +2646,15 @@ def _timer_event_run_at_in_seconds(event_value: str | Mapping[str, Any]) -> int:
     return math.ceil(due_at.timestamp())
 
 
-def _get_ready_human_tasks(
+def _get_ready_work_items(
     process_instance: ProcessInstanceModel,
-) -> list[HumanTaskModel]:
+) -> list[WorkItemModel]:
     return [
-        human_task
-        for human_task in process_instance.human_tasks
+        work_item
+        for work_item in process_instance.work_items
         if (
-            not human_task.completed
-            and human_task.task_status == WorkItemState.READY.value
+            not work_item.completed
+            and work_item.task_status == WorkItemState.READY.value
         )
     ]
 
@@ -2846,12 +2812,8 @@ def _load_process_instance(
     return process_instance
 
 
-def _resolve_timestamp(timestamp: datetime | int | float | None) -> datetime:
-    if isinstance(timestamp, datetime):
-        return timestamp
-    if timestamp is not None:
-        return datetime.fromtimestamp(float(timestamp), UTC)
-    return datetime.now(UTC)
+def _resolve_timestamp(timestamp: datetime | None) -> datetime:
+    return timestamp or datetime.now(UTC)
 
 
 def _raise_value_error(message: str) -> None:

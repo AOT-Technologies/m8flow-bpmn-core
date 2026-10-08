@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import DateTime, MetaData, event
-from sqlalchemy.engine import Connection
-from sqlalchemy.orm import DeclarativeBase, Mapper
+from sqlalchemy.orm import DeclarativeBase
 
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
@@ -19,25 +17,6 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
-
-
-@event.listens_for(Base, "before_insert", propagate=True)
-@event.listens_for(Base, "before_update", propagate=True)
-def _normalize_datetime_values(
-    mapper: Mapper[Any], connection: Connection, target: Any
-) -> None:
-    """Accept numeric epoch values at the boundary while callers migrate.
-
-    The mapped schema and public contract are datetime-only. This narrow
-    coercion keeps old fixtures and staged downstream deployments writable
-    without retaining legacy columns or legacy attribute names.
-    """
-    for column in mapper.columns:
-        if not isinstance(column.type, DateTime):
-            continue
-        value = getattr(target, column.key, None)
-        if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
-            setattr(target, column.key, datetime.fromtimestamp(float(value), UTC))
 
 
 @event.listens_for(Base, "load", propagate=True)

@@ -19,20 +19,13 @@ class BpmnProcessDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
     __table_args__ = (
         UniqueConstraint(
             "m8f_tenant_id",
-            "full_process_model_hash",
-            name="m8f_bpmn_process_definition_full_process_model_hash_tenant_key",
-        ),
-        UniqueConstraint(
-            "m8f_tenant_id",
-            "full_process_model_hash",
-            "single_process_hash",
-            name="m8f_bpmn_process_definition_process_hash_key",
+            "process_xml_digest",
+            name="m8f_bpmn_process_definition_digest_tenant_key",
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    single_process_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    full_process_model_hash: Mapped[str | None] = mapped_column(String(255))
+    process_xml_digest: Mapped[str] = mapped_column(String(255), nullable=False)
     bpmn_identifier: Mapped[str] = mapped_column(
         String(255), index=True, nullable=False
     )

@@ -23,7 +23,7 @@ class UserGroupAssignmentModel(Base):
         index=True,
     )
     group_id: Mapped[int] = mapped_column(
-        ForeignKey("group.id"),
+        ForeignKey("m8f_group.id"),
         nullable=False,
         index=True,
     )

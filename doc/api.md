@@ -46,18 +46,12 @@ under the dataclass entry rather than repeated twice.
 - `ProcessInstanceStatus`
   Current values: `complete`, `error`, `not_started`, `running`,
   `suspended`, `terminated`, `user_input_required`, `waiting`.
-- `ProcessInstanceEventType`
-  Stable event-type enum used by process-instance event history, for
-  example `process_instance_created`, `process_instance_completed`,
-  `process_instance_error`, `process_instance_retried`,
-  `process_instance_suspended`, `process_instance_terminated`,
-  `task_completed`, `task_failed`, and `task_cancelled`.
 - `ProcessLifecycleEventType`
   Process-only event vocabulary with the same persisted string values.
 - `TaskEventType`
   Task-only event vocabulary with the same persisted string values.
 - `ProcessInstanceEventCategory`
-  Persisted event categories: `process` and `task`. Legacy rows may have a
+  Persisted non-null event categories: `process` and `task`.
   null category while remaining queryable.
 
 ---
@@ -300,8 +294,7 @@ Persist BPMN XML, and optional DMN XML, as a process definition.
 | `properties_json` | `dict[str, Any] \| None` | no | Arbitrary metadata such as `lane_owners`. |
 | `bpmn_version_control_type` | `str \| None` | no | Example: `"git"`. |
 | `bpmn_version_control_identifier` | `str \| None` | no | Example: branch or commit. |
-| `single_process_hash` | `str \| None` | no | Auto-computed if omitted. |
-| `full_process_model_hash` | `str \| None` | no | Auto-computed if omitted; used for idempotent upsert. |
+| `process_xml_digest` | `str \| None` | no | SHA-256 digest of the BPMN source; computed if omitted. |
 | `created_at` | `int \| None` | no | |
 | `updated_at` | `int \| None` | no | |
 
@@ -404,7 +397,7 @@ Claim a pending human task for a user.
 | Field | Type | Required |
 | --- | --- | --- |
 | `tenant_id` | `str` | yes |
-| `human_task_id` | `int` | yes |
+| `work_item_id` | `int` | yes |
 | `user_id` | `int` | yes |
 | `added_by` | `str` | no (default `"manual"`) |
 
@@ -425,7 +418,7 @@ Complete a claimed task and advance the workflow.
 | Field | Type | Required |
 | --- | --- | --- |
 | `tenant_id` | `str` | yes |
-| `human_task_id` | `int` | yes |
+| `work_item_id` | `int` | yes |
 | `user_id` | `int` | yes |
 | `completed_at` | `int \| None` | no |
 | `task_payload` | `dict[str, str] \| None` | no - persisted as process metadata |
@@ -475,7 +468,7 @@ Append an event to the process-instance event history.
 | --- | --- | --- | --- |
 | `tenant_id` | `str` | yes | |
 | `process_instance_id` | `int` | yes | |
-| `event_type` | `ProcessInstanceEventType \| ProcessLifecycleEventType \| TaskEventType \| str` | yes | |
+| `event_type` | `ProcessLifecycleEventType \| TaskEventType \| str` | yes | |
 | `task_guid` | `str \| None` | no | |
 | `user_id` | `int \| None` | no | When provided, tenant membership is enforced. |
 | `occurred_at` | `datetime \| None` | no | Timezone-aware UTC datetime; defaults to the current time with microsecond precision. |
@@ -712,7 +705,7 @@ public hook surface:
   Callable returning an `AuthorizationPolicy`.
 - `AuthorizationRequest`
   Carries `tenant_id`, `actor_user_id`, `command_key`, `permission`,
-  `target_uri`, `target_id`, and optional `metadata`.
+  `resource_type`, `resource_id`, and optional `metadata`.
 - `AuthorizationDecision`
   Shape: `{allowed: bool, reason: str | None}`.
 - `DatabaseAuthorizationPolicy`

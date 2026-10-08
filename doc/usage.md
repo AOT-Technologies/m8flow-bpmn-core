@@ -261,6 +261,6 @@ migrate to explicit resource targets.
   targets for the same URI pattern.
 - Shared-realm m8flow users can still be scoped to one tenant locally by
   storing the shared-realm issuer in `user.service` and persisting the tenant
-  id and slug in `tenant_specific_field_1` / `tenant_specific_field_2`.
+  id and slug in `realm_identifier` / `external_org_id`.
 - `task_payload` values are stored as process metadata keys at completion time,
   which is the closest match to a form submit in the example flows.

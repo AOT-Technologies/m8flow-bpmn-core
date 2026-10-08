@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core import api
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventModel
 from m8flow_bpmn_core.models.process_instance_metadata import (
     ProcessInstanceMetadataModel,
 )
+from m8flow_bpmn_core.models.work_item import WorkItemModel
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,7 +18,7 @@ class ProcessInstanceDetail:
     process_instance: ProcessInstanceModel
     metadata: list[ProcessInstanceMetadataModel]
     events: list[ProcessInstanceEventModel]
-    human_tasks: list[HumanTaskModel]
+    work_items: list[WorkItemModel]
 
 
 def list_process_instances(
@@ -62,10 +62,10 @@ def get_process_instance_detail(
             process_instance_id=process_instance_id,
         ),
     )
-    human_tasks = sorted(process_instance.human_tasks, key=lambda item: item.id)
+    work_items = sorted(process_instance.work_items, key=lambda item: item.id)
     return ProcessInstanceDetail(
         process_instance=process_instance,
         metadata=metadata,
         events=events,
-        human_tasks=human_tasks,
+        work_items=work_items,
     )

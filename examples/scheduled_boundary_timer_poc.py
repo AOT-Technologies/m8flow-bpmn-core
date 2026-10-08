@@ -36,10 +36,10 @@ from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core import api
 from m8flow_bpmn_core.db import build_engine, create_schema
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
 from m8flow_bpmn_core.services.authorization import (
     ROLE_ADMIN,
     ROLE_MANAGER,
@@ -386,7 +386,7 @@ def _run_boundary_timer_poc(
         + timedelta(seconds=BOUNDARY_TIMER_DELAY_SECONDS)
     )
     bpmn_xml = _render_boundary_timer_bpmn_xml(boundary_due_at)
-    import_timestamp = round(time.time())
+    import_timestamp = datetime.now(UTC).replace(microsecond=0)
     definition = _run_command_step(
         engine,
         step_number=1,
@@ -429,7 +429,7 @@ def _run_boundary_timer_poc(
     if deployment is not None:
         _print_backend_deployment_summary(deployment)
 
-    started_at = round(time.time())
+    started_at = datetime.now(UTC).replace(microsecond=0)
     process_instance = _run_command_step(
         engine,
         step_number=2,
@@ -470,7 +470,6 @@ def _run_boundary_timer_poc(
         operator_tasks,
         "boundary-timer review task",
         process_instance_id=process_instance.id,
-        task_name="Task_review",
     )
 
     with engine.begin() as connection:
@@ -503,7 +502,7 @@ def _run_boundary_timer_poc(
         tenant_id=context.tenant_id,
         process_instance_id=process_instance.id,
         operator_user_id=context.operator_user_id,
-        review_human_task_id=review_task.id,
+        review_work_item_id=review_task.id,
         boundary_due_at=boundary_due_at,
     )
 
@@ -529,7 +528,6 @@ def _run_boundary_timer_poc(
         operator_tasks_after_timeout,
         "boundary timeout task",
         process_instance_id=process_instance.id,
-        task_name="Task_timeout",
     )
 
     with engine.begin() as connection:
@@ -578,7 +576,7 @@ def _run_boundary_timer_poc(
         ),
         command=api.ClaimTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=timeout_task.id,
+            work_item_id=timeout_task.id,
             user_id=context.operator_user_id,
         ),
     )
@@ -593,9 +591,9 @@ def _run_boundary_timer_poc(
         ),
         command=api.CompleteTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=timeout_task.id,
+            work_item_id=timeout_task.id,
             user_id=context.operator_user_id,
-            completed_at=round(time.time()),
+            completed_at=datetime.now(UTC).replace(microsecond=0),
             task_payload={
                 "completed_after_boundary_timeout": "true",
                 "completed_by": context.operator_username,
@@ -788,12 +786,12 @@ def _load_process_human_tasks(
     *,
     tenant_id: str,
     process_instance_id: int,
-) -> list[HumanTaskModel]:
+) -> list[WorkItemModel]:
     return list(
         session.scalars(
-            select(HumanTaskModel).where(
-                HumanTaskModel.m8f_tenant_id == tenant_id,
-                HumanTaskModel.process_instance_id == process_instance_id,
+            select(WorkItemModel).where(
+                WorkItemModel.m8f_tenant_id == tenant_id,
+                WorkItemModel.process_instance_id == process_instance_id,
             )
         ).all()
     )
@@ -813,7 +811,7 @@ def _summarize_scheduler_job(scheduler_job: SchedulerJobModel) -> dict[str, Any]
     }
 
 
-def _summarize_human_task(task: HumanTaskModel) -> dict[str, Any]:
+def _summarize_human_task(task: WorkItemModel) -> dict[str, Any]:
     return {
         "id": task.id,
         "task_name": task.task_name,
@@ -831,7 +829,7 @@ def _run_scheduler_until_boundary_timer_fires(
     tenant_id: str,
     process_instance_id: int,
     operator_user_id: int,
-    review_human_task_id: int,
+    review_work_item_id: int,
     boundary_due_at: datetime,
 ) -> None:
     print()
@@ -854,7 +852,7 @@ def _run_scheduler_until_boundary_timer_fires(
             tenant_id=tenant_id,
             process_instance_id=process_instance_id,
             operator_user_id=operator_user_id,
-            review_human_task_id=review_human_task_id,
+            review_work_item_id=review_work_item_id,
         )
         if (
             timeout_task is not None
@@ -898,7 +896,7 @@ def _run_scheduler_until_boundary_timer_fires(
             tenant_id=tenant_id,
             process_instance_id=process_instance_id,
             operator_user_id=operator_user_id,
-            review_human_task_id=review_human_task_id,
+            review_work_item_id=review_work_item_id,
         )
         if (
             timeout_task is not None
@@ -926,8 +924,8 @@ def _current_boundary_timer_runtime_state(
     tenant_id: str,
     process_instance_id: int,
     operator_user_id: int,
-    review_human_task_id: int,
-) -> tuple[HumanTaskModel | None, HumanTaskModel | None, SchedulerJobModel | None]:
+    review_work_item_id: int,
+) -> tuple[WorkItemModel | None, WorkItemModel | None, SchedulerJobModel | None]:
     with engine.begin() as connection:
         session = Session(bind=connection, autoflush=False, expire_on_commit=False)
         try:
@@ -951,7 +949,7 @@ def _current_boundary_timer_runtime_state(
                 )
             )
             review_task = next(
-                (task for task in human_tasks if task.id == review_human_task_id),
+                (task for task in human_tasks if task.id == review_work_item_id),
                 None,
             )
             timeout_task = next(

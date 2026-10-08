@@ -50,9 +50,7 @@ class TaskModel(M8fTenantScopedMixin, TenantScoped, Base):
     bpmn_process = relationship("BpmnProcessModel", back_populates="tasks")
     process_instance = relationship("ProcessInstanceModel", back_populates="tasks")
     task_definition = relationship("TaskDefinitionModel")
-    human_tasks = relationship(
-        "HumanTaskModel", back_populates="task_model", cascade="all, delete-orphan"
-    )
+    work_items = relationship("WorkItemModel", back_populates="task_model")
     future_task = relationship(
         "FutureTaskModel",
         back_populates="task_model",

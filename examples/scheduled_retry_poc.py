@@ -370,7 +370,7 @@ def _run_retry_poc(
     _pause("Press Enter to continue to the import step.")
 
     bpmn_xml = _read_retry_bpmn_xml()
-    import_timestamp = round(time.time())
+    import_timestamp = datetime.now(UTC).replace(microsecond=0)
     definition = _run_command_step(
         engine,
         step_number=1,
@@ -411,7 +411,7 @@ def _run_retry_poc(
     if deployment is not None:
         _print_backend_deployment_summary(deployment)
 
-    started_at = round(time.time())
+    started_at = datetime.now(UTC).replace(microsecond=0)
     process_instance = _run_command_step(
         engine,
         step_number=2,
@@ -453,7 +453,7 @@ def _run_retry_poc(
         process_instance_id=process_instance.id,
     )
 
-    errored_at = round(time.time())
+    errored_at = datetime.now(UTC).replace(microsecond=0)
     errored_process_instance = _run_command_step(
         engine,
         step_number=4,
@@ -508,14 +508,12 @@ def _run_retry_poc(
     retry_due_at = datetime.now(UTC).replace(microsecond=0) + timedelta(
         seconds=RETRY_DELAY_SECONDS
     )
-    retry_due_at_in_seconds = int(retry_due_at.timestamp())
-    retry_scheduled_at_in_seconds = round(time.time())
     schedule_retry_command = api.ScheduleProcessInstanceRetryCommand(
         tenant_id=context.tenant_id,
         process_instance_id=process_instance.id,
         user_id=context.admin_user_id,
-        retry_at=retry_due_at_in_seconds,
-        scheduled_at=retry_scheduled_at_in_seconds,
+        retry_at=retry_due_at,
+        scheduled_at=datetime.now(UTC).replace(microsecond=0),
     )
     print("Command:")
     print(pformat(schedule_retry_command, sort_dicts=False, width=100))
@@ -565,7 +563,7 @@ def _run_retry_poc(
         tenant_id=context.tenant_id,
         process_instance_id=process_instance.id,
         operator_user_id=context.operator_user_id,
-        human_task_id=operator_task.id,
+        work_item_id=operator_task.id,
         retry_due_at=retry_due_at,
     )
 
@@ -659,7 +657,7 @@ def _run_retry_poc(
         ),
         command=api.ClaimTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=reopened_task.id,
+            work_item_id=reopened_task.id,
             user_id=context.operator_user_id,
         ),
     )
@@ -675,9 +673,9 @@ def _run_retry_poc(
         ),
         command=api.CompleteTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=reopened_task.id,
+            work_item_id=reopened_task.id,
             user_id=context.operator_user_id,
-            completed_at=round(time.time()),
+            completed_at=datetime.now(UTC).replace(microsecond=0),
             task_payload={
                 "completed_after_retry": "true",
                 "completed_by": context.operator_username,
@@ -912,7 +910,7 @@ def _run_scheduler_until_retry_executes(
     tenant_id: str,
     process_instance_id: int,
     operator_user_id: int,
-    human_task_id: int,
+    work_item_id: int,
     retry_due_at: datetime,
 ) -> None:
     print()
@@ -931,7 +929,7 @@ def _run_scheduler_until_retry_executes(
             tenant_id=tenant_id,
             process_instance_id=process_instance_id,
             operator_user_id=operator_user_id,
-            human_task_id=human_task_id,
+            work_item_id=work_item_id,
         )
         if (
             process_instance.status == api.ProcessInstanceStatus.running.value
@@ -971,7 +969,7 @@ def _run_scheduler_until_retry_executes(
             tenant_id=tenant_id,
             process_instance_id=process_instance_id,
             operator_user_id=operator_user_id,
-            human_task_id=human_task_id,
+            work_item_id=work_item_id,
         )
         if (
             process_instance.status == api.ProcessInstanceStatus.running.value
@@ -1017,7 +1015,7 @@ def _current_retry_runtime_state(
     tenant_id: str,
     process_instance_id: int,
     operator_user_id: int,
-    human_task_id: int,
+    work_item_id: int,
 ) -> tuple[ProcessInstanceModel, SchedulerJobModel | None, bool]:
     with engine.begin() as connection:
         session = Session(
@@ -1048,7 +1046,7 @@ def _current_retry_runtime_state(
                 )
             )
             task_reopened = any(
-                task.id == human_task_id
+                task.id == work_item_id
                 and task.process_instance_id == process_instance_id
                 for task in pending_tasks
             )

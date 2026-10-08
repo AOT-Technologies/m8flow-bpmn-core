@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, String, UniqueConstraint
+from sqlalchemy import String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import false
 
 from m8flow_bpmn_core.models.base import Base
 
 
 class GroupModel(Base):
-    __tablename__ = "group"
+    __tablename__ = "m8f_group"
     __table_args__ = (
         UniqueConstraint(
             "authorization_key",
@@ -23,14 +22,6 @@ class GroupModel(Base):
         String(255),
         index=True,
     )
-    source_is_open_id: Mapped[bool] = mapped_column(
-        Boolean,
-        default=False,
-        server_default=false(),
-        nullable=False,
-        index=True,
-    )
-
     user_group_assignments = relationship(
         "UserGroupAssignmentModel",
         cascade="all, delete-orphan",

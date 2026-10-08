@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import fields
+from datetime import UTC, datetime
 
 import pytest
 from SpiffWorkflow.util.task import TaskState
@@ -23,12 +24,10 @@ from m8flow_bpmn_core.application.queries import (
     ListProcessInstancesQuery,
 )
 from m8flow_bpmn_core.models.base import Base
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.process_instance_event import (
     ProcessInstanceEventCategory,
     ProcessInstanceEventModel,
-    ProcessInstanceEventType,
     ProcessLifecycleEventType,
     TaskEventType,
 )
@@ -36,12 +35,14 @@ from m8flow_bpmn_core.models.task import (
     M8F_TERMINATED_TASK_STATE,
     TaskModel,
 )
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.services.work_items import WorkItemState
 
 EXPECTED_COMMAND_FIELDS = {
-    ClaimTaskCommand: ["tenant_id", "human_task_id", "user_id", "added_by"],
+    ClaimTaskCommand: ["tenant_id", "work_item_id", "user_id", "added_by"],
     CompleteTaskCommand: [
         "tenant_id",
-        "human_task_id",
+        "work_item_id",
         "user_id",
         "completed_at",
         "task_payload",
@@ -68,8 +69,7 @@ EXPECTED_COMMAND_FIELDS = {
         "properties_json",
         "bpmn_version_control_type",
         "bpmn_version_control_identifier",
-        "single_process_hash",
-        "full_process_model_hash",
+        "process_xml_digest",
         "created_at",
         "updated_at",
     ],
@@ -137,7 +137,7 @@ def test_public_result_models_retain_response_attributes() -> None:
         "ended_at",
         "updated_at",
         "created_at",
-        "spiff_serializer_version",
+        "workflow_engine_version",
     }.issubset(ProcessInstanceModel.__mapper__.attrs.keys())
     assert {
         "id",
@@ -149,7 +149,7 @@ def test_public_result_models_retain_response_attributes() -> None:
         "lane_assignment_id",
         "created_at",
         "updated_at",
-    }.issubset(HumanTaskModel.__mapper__.attrs.keys())
+    }.issubset(WorkItemModel.__mapper__.attrs.keys())
     assert {
         "id",
         "process_instance_id",
@@ -167,7 +167,7 @@ def test_native_occurred_at_attributes_are_additive() -> None:
         "updated_at",
     }.issubset(ProcessInstanceModel.__mapper__.attrs.keys())
     assert {"created_at", "updated_at"}.issubset(
-        HumanTaskModel.__mapper__.attrs.keys()
+        WorkItemModel.__mapper__.attrs.keys()
     )
     assert "occurred_at" in ProcessInstanceEventModel.__mapper__.attrs
 
@@ -175,7 +175,7 @@ def test_native_occurred_at_attributes_are_additive() -> None:
 def test_schema_table_names_are_compatible_baseline() -> None:
     expected_tables = {
         "user",
-        "group",
+        "m8f_group",
         "principal",
         "user_group_assignment",
         "permission_target",
@@ -186,8 +186,8 @@ def test_schema_table_names_are_compatible_baseline() -> None:
         "process_instance",
         "task",
         "task_definition",
-        "human_task",
-        "human_task_user",
+        "work_item",
+        "work_item_user",
         "future_task",
         "json_data",
         "process_instance_event",
@@ -197,8 +197,8 @@ def test_schema_table_names_are_compatible_baseline() -> None:
     assert expected_tables.issubset(Base.metadata.tables)
 
 
-def test_public_enum_values_are_compatible() -> None:
-    assert [event.value for event in ProcessInstanceEventType] == [
+def test_event_enums_are_split_without_changing_persisted_values() -> None:
+    assert [event.value for event in ProcessLifecycleEventType] == [
         "process_instance_created",
         "process_instance_completed",
         "process_instance_error",
@@ -210,6 +210,8 @@ def test_public_enum_values_are_compatible() -> None:
         "process_instance_suspended",
         "process_instance_suspended_for_error",
         "process_instance_terminated",
+    ]
+    assert [event.value for event in TaskEventType] == [
         "task_cancelled",
         "task_completed",
         "task_data_edited",
@@ -218,31 +220,34 @@ def test_public_enum_values_are_compatible() -> None:
         "task_skipped",
     ]
 
-
-def test_event_enums_are_split_without_changing_persisted_values() -> None:
-    assert [event.value for event in ProcessLifecycleEventType] == [
-        event.value
-        for event in ProcessInstanceEventType
-        if event.value.startswith("process_")
-    ]
-    assert [event.value for event in TaskEventType] == [
-        event.value
-        for event in ProcessInstanceEventType
-        if event.value.startswith("task_")
-    ]
-
     process_event = ProcessInstanceEventModel(
         event_type=ProcessLifecycleEventType.process_instance_created,
         process_instance_id=1,
-        occurred_at=1,
+        occurred_at=datetime.fromtimestamp(1, UTC),
     )
     task_event = ProcessInstanceEventModel(
         event_type=TaskEventType.task_completed,
         process_instance_id=1,
-        occurred_at=1,
+        occurred_at=datetime.fromtimestamp(1, UTC),
     )
     assert process_event.category == ProcessInstanceEventCategory.process.value
     assert task_event.category == ProcessInstanceEventCategory.task.value
+
+    with pytest.raises(ValueError, match="does not match event type"):
+        ProcessInstanceEventModel(
+            event_type=TaskEventType.task_completed,
+            category=ProcessInstanceEventCategory.process,
+            process_instance_id=1,
+            occurred_at=datetime.fromtimestamp(1, UTC),
+        )
+
+    with pytest.raises(ValueError, match="Invalid process instance event category"):
+        ProcessInstanceEventModel(
+            event_type=TaskEventType.task_completed,
+            category="invalid",
+            process_instance_id=1,
+            occurred_at=datetime.fromtimestamp(1, UTC),
+        )
 
 
 def test_task_state_validation_uses_spiff_names_and_preserves_termination() -> None:
@@ -256,3 +261,7 @@ def test_task_state_validation_uses_spiff_names_and_preserves_termination() -> N
 
     with pytest.raises(ValueError):
         TaskModel(state="not-a-task-state")
+
+
+def test_work_item_termination_is_not_a_spiff_task_state() -> None:
+    assert WorkItemState.TERMINATED.value == M8F_TERMINATED_TASK_STATE

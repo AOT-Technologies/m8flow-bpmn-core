@@ -138,9 +138,5 @@ def delete_scheduler_job(
     return result.rowcount > 0
 
 
-def _resolve_timestamp(timestamp: datetime | int | float | None) -> datetime:
-    if isinstance(timestamp, datetime):
-        return timestamp
-    if timestamp is not None:
-        return datetime.fromtimestamp(float(timestamp), UTC)
-    return datetime.now(UTC)
+def _resolve_timestamp(timestamp: datetime | None) -> datetime:
+    return timestamp or datetime.now(UTC)

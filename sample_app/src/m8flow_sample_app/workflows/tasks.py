@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core import api
 from m8flow_bpmn_core.errors import NotFoundError
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
 from m8flow_sample_app import service_tasks as sample_app_service_tasks
 
 
@@ -17,7 +17,7 @@ def list_pending_tasks(
     *,
     tenant_id: str,
     user_id: int,
-) -> list[HumanTaskModel]:
+) -> list[WorkItemModel]:
     return api.execute_query(
         session,
         api.GetPendingTasksQuery(
@@ -32,13 +32,13 @@ def claim_task(
     *,
     tenant_id: str,
     user_id: int,
-    human_task_id: int,
-) -> HumanTaskModel:
+    work_item_id: int,
+) -> WorkItemModel:
     return api.execute_command(
         session,
         api.ClaimTaskCommand(
             tenant_id=tenant_id,
-            human_task_id=human_task_id,
+            work_item_id=work_item_id,
             user_id=user_id,
         ),
     )
@@ -49,9 +49,9 @@ def complete_task(
     *,
     tenant_id: str,
     user_id: int,
-    human_task_id: int,
+    work_item_id: int,
     task_payload: dict[str, object] | None,
-) -> HumanTaskModel:
+) -> WorkItemModel:
     with api.service_task_registry_scope(
         sample_app_service_tasks.build_sample_app_service_task_registry
     ):
@@ -59,7 +59,7 @@ def complete_task(
             session,
             api.CompleteTaskCommand(
                 tenant_id=tenant_id,
-                human_task_id=human_task_id,
+                work_item_id=work_item_id,
                 user_id=user_id,
                 task_payload=task_payload,
             ),
@@ -71,24 +71,24 @@ def get_accessible_task(
     *,
     tenant_id: str,
     user_id: int,
-    human_task_id: int,
-) -> HumanTaskModel:
+    work_item_id: int,
+) -> WorkItemModel:
     task = session.scalar(
-        select(HumanTaskModel).where(
-            HumanTaskModel.m8f_tenant_id == tenant_id,
-            HumanTaskModel.id == human_task_id,
+        select(WorkItemModel).where(
+            WorkItemModel.m8f_tenant_id == tenant_id,
+            WorkItemModel.id == work_item_id,
             exists(
                 select(1).where(
-                    HumanTaskUserModel.m8f_tenant_id == tenant_id,
-                    HumanTaskUserModel.human_task_id == HumanTaskModel.id,
-                    HumanTaskUserModel.user_id == user_id,
+                    WorkItemUserModel.m8f_tenant_id == tenant_id,
+                    WorkItemUserModel.work_item_id == WorkItemModel.id,
+                    WorkItemUserModel.user_id == user_id,
                 )
             ),
         )
     )
     if task is None:
         raise NotFoundError(
-            f"Task {human_task_id} was not found for the selected tenant and user."
+            f"Task {work_item_id} was not found for the selected tenant and user."
         )
     return task
 

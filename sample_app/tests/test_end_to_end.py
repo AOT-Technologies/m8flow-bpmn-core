@@ -13,7 +13,7 @@ from m8flow_bpmn_core import api
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
 from m8flow_bpmn_core.models.json_data import JsonDataModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventModel
@@ -568,12 +568,12 @@ def test_review_timeout_escalates_to_supervisor(
         assert process_instance is not None
         assert process_instance.status == "complete"
 
-        original_task = db_session.get(HumanTaskModel, original_task_id)
+        original_task = db_session.get(WorkItemModel, original_task_id)
         assert original_task is not None
         assert original_task.completed is True
         assert original_task.task_status == "CANCELLED"
 
-        supervisor_task = db_session.get(HumanTaskModel, supervisor_task_id)
+        supervisor_task = db_session.get(WorkItemModel, supervisor_task_id)
         assert supervisor_task is not None
         assert supervisor_task.completed is True
         assert supervisor_task.task_status == "COMPLETED"
@@ -941,7 +941,7 @@ def _load_seeded_users() -> tuple[
             db_session.scalars(
                 select(UserModel)
                 .where(
-                    UserModel.tenant_specific_field_1 == tenant.id,
+                    UserModel.realm_identifier == tenant.id,
                 )
                 .order_by(UserModel.username.asc())
             )
@@ -971,15 +971,15 @@ def _login(app_client: FlaskClient, *, tenant_id: str, user_id: int) -> None:
 
 def _task_id_for_title(tenant_id: str, task_title: str) -> int:
     with session_scope() as db_session:
-        task = db_session.scalars(
-            select(HumanTaskModel)
+        tasks = db_session.scalars(
+            select(WorkItemModel)
             .where(
-                HumanTaskModel.m8f_tenant_id == tenant_id,
-                HumanTaskModel.task_title == task_title,
-                HumanTaskModel.completed.is_(False),
+                WorkItemModel.m8f_tenant_id == tenant_id,
+                WorkItemModel.completed.is_(False),
             )
-            .order_by(HumanTaskModel.id.asc())
-        ).first()
+            .order_by(WorkItemModel.id.asc())
+        ).all()
+        task = next((item for item in tasks if item.task_title == task_title), None)
         assert task is not None
         return task.id
 

@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Any
 
 from m8flow_bpmn_core.models.process_instance_event import (
-    ProcessInstanceEventType,
     ProcessLifecycleEventType,
     TaskEventType,
 )
@@ -14,7 +13,7 @@ from m8flow_bpmn_core.models.process_instance_event import (
 @dataclass(frozen=True, slots=True)
 class ClaimTaskCommand:
     tenant_id: str
-    human_task_id: int
+    work_item_id: int
     user_id: int
     added_by: str = "manual"
 
@@ -22,7 +21,7 @@ class ClaimTaskCommand:
 @dataclass(frozen=True, slots=True)
 class CompleteTaskCommand:
     tenant_id: str
-    human_task_id: int
+    work_item_id: int
     user_id: int
     completed_at: datetime | None = None
     task_payload: dict[str, str] | None = None
@@ -33,7 +32,7 @@ class RecordProcessInstanceEventCommand:
     tenant_id: str
     process_instance_id: int
     event_type: (
-        ProcessInstanceEventType | ProcessLifecycleEventType | TaskEventType | str
+        ProcessLifecycleEventType | TaskEventType | str
     )
     task_guid: str | None = None
     user_id: int | None = None
@@ -65,8 +64,7 @@ class ImportBpmnProcessDefinitionCommand:
     properties_json: dict[str, Any] | None = None
     bpmn_version_control_type: str | None = None
     bpmn_version_control_identifier: str | None = None
-    single_process_hash: str | None = None
-    full_process_model_hash: str | None = None
+    process_xml_digest: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

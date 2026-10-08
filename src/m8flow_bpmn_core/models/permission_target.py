@@ -1,31 +1,28 @@
 from __future__ import annotations
 
-import re
+from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, Index, String, UniqueConstraint, and_, func
+from sqlalchemy import CheckConstraint, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from m8flow_bpmn_core.models.base import Base
-
-
-class InvalidPermissionTargetUriError(ValueError):
-    pass
 
 
 class InvalidPermissionTargetError(ValueError):
     pass
 
 
-class PermissionTargetModel(Base):
-    URI_ALL = "/%"
+class PermissionResourceType(StrEnum):
+    process_definition = "process_definition"
+    process_instance = "process_instance"
+    process_model = "process_model"
+    task = "task"
+    tenant = "tenant"
 
+
+class PermissionTargetModel(Base):
     __tablename__ = "permission_target"
     __table_args__ = (
-        UniqueConstraint(
-            "uri",
-            "command",
-            name="m8f_permission_target_uri_command_key",
-        ),
         UniqueConstraint(
             "resource_type",
             "resource_id",
@@ -33,16 +30,23 @@ class PermissionTargetModel(Base):
             name="m8f_permission_target_resource_command_key",
         ),
         CheckConstraint(
-            "(resource_type IS NULL AND resource_id IS NULL) OR "
-            "(resource_type IS NOT NULL AND resource_id IS NOT NULL)",
+            "resource_type IS NOT NULL AND "
+            "(resource_id IS NULL OR length(trim(resource_id)) > 0)",
             name="m8f_permission_target_resource_pair_check",
+        ),
+        CheckConstraint(
+            "resource_type IN ("
+            "'process_definition', 'process_instance', 'process_model', "
+            "'task', 'tenant')",
+            name="m8f_permission_target_resource_type_check",
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    uri: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    command: Mapped[str | None] = mapped_column(String(255), index=True)
-    resource_type: Mapped[str | None] = mapped_column(String(100), index=True)
+    command: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    resource_type: Mapped[str] = mapped_column(
+        String(100), index=True, nullable=False
+    )
     resource_id: Mapped[str | None] = mapped_column(String(255), index=True)
 
     permission_assignments = relationship(
@@ -50,19 +54,6 @@ class PermissionTargetModel(Base):
         back_populates="permission_target",
         cascade="all, delete-orphan",
     )
-
-    @validates("uri")
-    def validate_uri(self, key: str, value: str) -> str:
-        normalized = re.sub(r"\*", "%", value.strip())
-        if not normalized:
-            raise InvalidPermissionTargetUriError(
-                "Permission target uri cannot be blank"
-            )
-        if re.search(r"%.", normalized):
-            raise InvalidPermissionTargetUriError(
-                f"Wildcard must appear at end: {normalized}"
-            )
-        return normalized
 
     @validates("command")
     def validate_command(self, key: str, value: str | None) -> str | None:
@@ -76,27 +67,13 @@ class PermissionTargetModel(Base):
         if value is None:
             return None
         normalized = value.strip()
+        if key == "resource_type":
+            try:
+                return PermissionResourceType(normalized).value
+            except ValueError as exc:
+                allowed = ", ".join(item.value for item in PermissionResourceType)
+                raise InvalidPermissionTargetError(
+                    f"Unknown permission resource type {value!r}; expected one of: "
+                    f"{allowed}"
+                ) from exc
         return normalized or None
-
-
-Index(
-    "m8f_permission_target_uri_command_identity_key",
-    PermissionTargetModel.uri,
-    func.coalesce(PermissionTargetModel.command, ""),
-    unique=True,
-)
-Index(
-    "m8f_permission_target_resource_command_identity_key",
-    PermissionTargetModel.resource_type,
-    PermissionTargetModel.resource_id,
-    func.coalesce(PermissionTargetModel.command, ""),
-    unique=True,
-    sqlite_where=and_(
-        PermissionTargetModel.resource_type.is_not(None),
-        PermissionTargetModel.resource_id.is_not(None),
-    ),
-    postgresql_where=and_(
-        PermissionTargetModel.resource_type.is_not(None),
-        PermissionTargetModel.resource_id.is_not(None),
-    ),
-)

@@ -24,9 +24,9 @@ class UserModel(Base):
         String(255), index=True, nullable=False
     )
     display_name: Mapped[str | None] = mapped_column(String(255))
-    tenant_specific_field_1: Mapped[str | None] = mapped_column(String(255))
-    tenant_specific_field_2: Mapped[str | None] = mapped_column(String(255))
-    tenant_specific_field_3: Mapped[str | None] = mapped_column(String(255))
+    realm_identifier: Mapped[str | None] = mapped_column(String(255))
+    external_org_id: Mapped[str | None] = mapped_column(String(255))
+    external_user_id: Mapped[str | None] = mapped_column(String(255))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

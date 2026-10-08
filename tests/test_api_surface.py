@@ -52,7 +52,6 @@ EXPECTED_PUBLIC_API = frozenset(
         "ListSuspendedProcessInstancesQuery",
         "ListTerminatedProcessInstancesQuery",
         # Enums
-        "ProcessInstanceEventType",
         "ProcessInstanceEventCategory",
         "ProcessLifecycleEventType",
         "ProcessInstanceStatus",

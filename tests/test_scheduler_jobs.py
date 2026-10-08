@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -59,13 +61,13 @@ def test_upsert_scheduler_job_reuses_existing_row(session: Session) -> None:
         job_key=job_key,
         job_type=SchedulerJobType.intermediate_timer,
         process_instance_id=process_instance.id,
-        run_at=100,
+        run_at=datetime.fromtimestamp(100, UTC),
         payload_json={"event_value": "2026-06-24T16:00:00+00:00"},
-        updated_at=90,
-        created_at=80,
+        updated_at=datetime.fromtimestamp(90, UTC),
+        created_at=datetime.fromtimestamp(80, UTC),
     )
     created_job.locked_by = "worker-a"
-    created_job.locked_at = 91
+    created_job.locked_at = datetime.fromtimestamp(91, UTC)
     session.flush()
 
     updated_job = upsert_scheduler_job(
@@ -75,9 +77,9 @@ def test_upsert_scheduler_job_reuses_existing_row(session: Session) -> None:
         job_type=SchedulerJobType.intermediate_timer,
         process_instance_id=process_instance.id,
         bpmn_process_definition_id=definition.id,
-        run_at=140,
+        run_at=datetime.fromtimestamp(140, UTC),
         payload_json={"event_value": "2026-06-24T16:10:00+00:00"},
-        updated_at=120,
+        updated_at=datetime.fromtimestamp(120, UTC),
     )
 
     assert updated_job.id == created_job.id
@@ -137,8 +139,8 @@ def test_list_due_scheduler_jobs_orders_and_filters_locked_rows(
         job_key=due_definition_key,
         job_type=SchedulerJobType.timer_start,
         bpmn_process_definition_id=definition.id,
-        run_at=50,
-        updated_at=50,
+        run_at=datetime.fromtimestamp(50, UTC),
+        updated_at=datetime.fromtimestamp(50, UTC),
     )
     upsert_scheduler_job(
         session,
@@ -146,8 +148,8 @@ def test_list_due_scheduler_jobs_orders_and_filters_locked_rows(
         job_key=due_instance_key,
         job_type=SchedulerJobType.intermediate_timer,
         process_instance_id=process_instance.id,
-        run_at=60,
-        updated_at=60,
+        run_at=datetime.fromtimestamp(60, UTC),
+        updated_at=datetime.fromtimestamp(60, UTC),
     )
     upsert_scheduler_job(
         session,
@@ -155,8 +157,8 @@ def test_list_due_scheduler_jobs_orders_and_filters_locked_rows(
         job_key=future_key,
         job_type=SchedulerJobType.process_retry,
         process_instance_id=process_instance.id,
-        run_at=500,
-        updated_at=70,
+        run_at=datetime.fromtimestamp(500, UTC),
+        updated_at=datetime.fromtimestamp(70, UTC),
     )
     locked_job = upsert_scheduler_job(
         session,
@@ -164,25 +166,25 @@ def test_list_due_scheduler_jobs_orders_and_filters_locked_rows(
         job_key=locked_key,
         job_type=SchedulerJobType.intermediate_timer,
         process_instance_id=process_instance.id,
-        run_at=40,
-        updated_at=40,
+        run_at=datetime.fromtimestamp(40, UTC),
+        updated_at=datetime.fromtimestamp(40, UTC),
     )
     locked_job.locked_by = "worker-a"
-    locked_job.locked_at = 41
+    locked_job.locked_at = datetime.fromtimestamp(41, UTC)
     upsert_scheduler_job(
         session,
         tenant_id=other_tenant.id,
         job_key=other_tenant_key,
         job_type=SchedulerJobType.timer_start,
         bpmn_process_definition_id=definition.id,
-        run_at=30,
-        updated_at=30,
+        run_at=datetime.fromtimestamp(30, UTC),
+        updated_at=datetime.fromtimestamp(30, UTC),
     )
 
     due_jobs = list_due_scheduler_jobs(
         session,
         tenant_id=tenant.id,
-        now=100,
+        now=datetime.fromtimestamp(100, UTC),
     )
     assert [job.job_key for job in due_jobs] == [due_definition_key, due_instance_key]
 
@@ -200,8 +202,8 @@ def test_delete_scheduler_job_is_tenant_scoped(session: Session) -> None:
         job_key=job_key,
         job_type=SchedulerJobType.process_retry,
         process_instance_id=process_instance.id,
-        run_at=200,
-        updated_at=190,
+        run_at=datetime.fromtimestamp(200, UTC),
+        updated_at=datetime.fromtimestamp(190, UTC),
     )
 
     assert delete_scheduler_job(
@@ -235,21 +237,20 @@ def _seed_scheduler_context(
         service="http://localhost:7002/realms/tenant-scheduler",
         service_id="scheduler-user-keycloak",
         display_name="Scheduler User",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash="scheduler-single",
-        full_process_model_hash="scheduler-full",
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="scheduler-process",
         bpmn_name="Scheduler Process",
         properties_json={},
-        created_at=10,
-        updated_at=10,
+        created_at=datetime.fromtimestamp(10, UTC),
+        updated_at=datetime.fromtimestamp(10, UTC),
     )
     session.add(definition)
     session.flush()
@@ -257,13 +258,13 @@ def _seed_scheduler_context(
     process_instance = ProcessInstanceModel(
         m8f_tenant_id=tenant.id,
         process_model_identifier="scheduler-process",
-        process_model_display_name="Scheduler Process",
+        process_model_display_name="scheduler-process",
         process_initiator_id=user.id,
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=None,
         status="waiting",
-        created_at=20,
-        updated_at=20,
+        created_at=datetime.fromtimestamp(20, UTC),
+        updated_at=datetime.fromtimestamp(20, UTC),
     )
     session.add(process_instance)
     session.flush()

@@ -56,10 +56,6 @@ class FutureTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
         run_at: datetime,
         queued_to_run_at: datetime | None = None,
     ) -> None:
-        run_at = _as_datetime(run_at)
-        queued_to_run_at = (
-            _as_datetime(queued_to_run_at) if queued_to_run_at is not None else None
-        )
         task_info: dict[str, object] = {
             "m8f_tenant_id": tenant_id,
             "guid": guid,
@@ -106,9 +102,3 @@ class FutureTaskModel(M8fTenantScopedMixin, TenantScoped, Base):
             return
 
         session.execute(on_duplicate_key_stmt)
-
-
-def _as_datetime(value: datetime | int | float) -> datetime:
-    if isinstance(value, datetime):
-        return value
-    return datetime.fromtimestamp(float(value), UTC)

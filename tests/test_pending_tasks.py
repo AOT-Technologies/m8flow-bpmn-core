@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
 from m8flow_bpmn_core.services.tasks import get_pending_tasks
 
 
@@ -26,8 +28,8 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
         service=service_url,
         service_id="alice-keycloak",
         display_name="Alice",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
 
     session.add_all([tenant_a, tenant_b, user])
@@ -35,27 +37,25 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
 
     definition_a = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant_a.id,
-        single_process_hash="def-a-single",
-        full_process_model_hash="def-a-full",
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="invoice-approval",
         bpmn_name="Invoice Approval",
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at=900,
-        updated_at=900,
+        created_at=datetime.fromtimestamp(900, UTC),
+        updated_at=datetime.fromtimestamp(900, UTC),
     )
     definition_b = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant_b.id,
-        single_process_hash="def-b-single",
-        full_process_model_hash="def-b-full",
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="invoice-approval",
         bpmn_name="Invoice Approval",
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at=1_900,
-        updated_at=1_900,
+        created_at=datetime.fromtimestamp(1_900, UTC),
+        updated_at=datetime.fromtimestamp(1_900, UTC),
     )
     session.add_all([definition_a, definition_b])
     session.flush()
@@ -88,8 +88,8 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at=950,
-        updated_at=950,
+        created_at=datetime.fromtimestamp(950, UTC),
+        updated_at=datetime.fromtimestamp(950, UTC),
     )
     task_definition_b = TaskDefinitionModel(
         m8f_tenant_id=tenant_b.id,
@@ -98,8 +98,8 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at=1_950,
-        updated_at=1_950,
+        created_at=datetime.fromtimestamp(1_950, UTC),
+        updated_at=datetime.fromtimestamp(1_950, UTC),
     )
     session.add_all([task_definition_a, task_definition_b])
     session.flush()
@@ -107,24 +107,24 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
     process_a = ProcessInstanceModel(
         m8f_tenant_id=tenant_a.id,
         process_model_identifier="invoice-approval",
-        process_model_display_name="Invoice Approval",
+        process_model_display_name="invoice-approval",
         process_initiator_id=user.id,
         bpmn_process_definition_id=definition_a.id,
         bpmn_process_id=bpmn_process_a.id,
         status="running",
-        created_at=1_000,
-        updated_at=1_000,
+        created_at=datetime.fromtimestamp(1_000, UTC),
+        updated_at=datetime.fromtimestamp(1_000, UTC),
     )
     process_b = ProcessInstanceModel(
         m8f_tenant_id=tenant_b.id,
         process_model_identifier="invoice-approval",
-        process_model_display_name="Invoice Approval",
+        process_model_display_name="invoice-approval",
         process_initiator_id=user.id,
         bpmn_process_definition_id=definition_b.id,
         bpmn_process_id=bpmn_process_b.id,
         status="running",
-        created_at=2_000,
-        updated_at=2_000,
+        created_at=datetime.fromtimestamp(2_000, UTC),
+        updated_at=datetime.fromtimestamp(2_000, UTC),
     )
     session.add_all([process_a, process_b])
     session.flush()
@@ -165,55 +165,34 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
     session.add_all([task_pending, task_completed, task_other_tenant])
     session.flush()
 
-    pending_human_task = HumanTaskModel(
+    pending_human_task = WorkItemModel(
         m8f_tenant_id=tenant_a.id,
         process_instance_id=process_a.id,
         task_guid=task_pending.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=user.id,
-        task_name="approve_invoice",
-        task_title="Approve Invoice",
-        task_type="User Task",
         task_status="READY",
-        process_model_display_name=process_a.process_model_display_name,
-        bpmn_process_identifier=process_a.process_model_identifier,
-        lane_name="finance",
-        json_metadata={"priority": "high"},
         completed=False,
     )
-    completed_human_task = HumanTaskModel(
+    completed_human_task = WorkItemModel(
         m8f_tenant_id=tenant_a.id,
         process_instance_id=process_a.id,
         task_guid=task_completed.guid,
         lane_assignment_id=None,
         completed_by_user_id=user.id,
         actual_owner_id=user.id,
-        task_name="send_receipt",
-        task_title="Send Receipt",
-        task_type="User Task",
         task_status="COMPLETED",
-        process_model_display_name=process_a.process_model_display_name,
-        bpmn_process_identifier=process_a.process_model_identifier,
-        lane_name="finance",
-        json_metadata={"priority": "low"},
         completed=True,
     )
-    other_tenant_human_task = HumanTaskModel(
+    other_tenant_human_task = WorkItemModel(
         m8f_tenant_id=tenant_b.id,
         process_instance_id=process_b.id,
         task_guid=task_other_tenant.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=user.id,
-        task_name="approve_invoice",
-        task_title="Approve Invoice",
-        task_type="User Task",
         task_status="READY",
-        process_model_display_name=process_b.process_model_display_name,
-        bpmn_process_identifier=process_b.process_model_identifier,
-        lane_name="finance",
-        json_metadata={"priority": "high"},
         completed=False,
     )
     session.add_all([pending_human_task, completed_human_task, other_tenant_human_task])
@@ -221,21 +200,21 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
 
     session.add_all(
         [
-            HumanTaskUserModel(
+            WorkItemUserModel(
                 m8f_tenant_id=tenant_a.id,
-                human_task_id=pending_human_task.id,
+                work_item_id=pending_human_task.id,
                 user_id=user.id,
                 added_by="manual",
             ),
-            HumanTaskUserModel(
+            WorkItemUserModel(
                 m8f_tenant_id=tenant_a.id,
-                human_task_id=completed_human_task.id,
+                work_item_id=completed_human_task.id,
                 user_id=user.id,
                 added_by="manual",
             ),
-            HumanTaskUserModel(
+            WorkItemUserModel(
                 m8f_tenant_id=tenant_b.id,
-                human_task_id=other_tenant_human_task.id,
+                work_item_id=other_tenant_human_task.id,
                 user_id=user.id,
                 added_by="manual",
             ),

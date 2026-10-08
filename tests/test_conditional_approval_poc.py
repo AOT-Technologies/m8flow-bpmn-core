@@ -4,6 +4,7 @@ import ast
 import textwrap
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -13,17 +14,20 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from m8flow_bpmn_core import api
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import (
-    HumanTaskUserAddedBy,
-)
 from m8flow_bpmn_core.models.json_data import JsonDataModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.process_instance_event import (
+    ProcessLifecycleEventType,
+    TaskEventType,
+)
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.models.work_item_user import (
+    WorkItemUserAddedBy as WorkItemUserAddedBy,
+)
 from m8flow_bpmn_core.services.authorization import (
     ROLE_ADMIN,
     ROLE_MANAGER,
@@ -111,10 +115,10 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     context = _seed_conditional_approval_workflow(session, scenario, lane_owners)
 
     assert context.task_definitions["script"].typename == "ScriptTask"
-    assert context.task_definitions["script"].is_human_task() is False
+    assert context.task_definitions["script"].is_user_task() is False
     assert context.task_definitions["script"].properties_json["manual"] is False
     assert context.task_definitions["submit"].typename == "UserTask"
-    assert context.task_definitions["submit"].is_human_task() is True
+    assert context.task_definitions["submit"].is_user_task() is True
     assert context.task_definitions["submit"].properties_json["manual"] is True
     assert context.task_definitions["manager_review"].properties_json["lane"] == (
         "Manager"
@@ -123,7 +127,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         "Finance"
     )
     assert context.task_definitions["decision"].typename == "BusinessRuleTask"
-    assert context.task_definitions["decision"].is_human_task() is False
+    assert context.task_definitions["decision"].is_user_task() is False
 
     session.expire_all()
     process_instance = api.execute_query(
@@ -169,14 +173,14 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert submit_task.json_metadata is not None
     assert submit_task.json_metadata["lane_owners"] == lane_owners
     assert _assignment_summary(submit_task) == [
-        ("requester", HumanTaskUserAddedBy.process_initiator.value),
+        ("requester", WorkItemUserAddedBy.process_initiator.value),
     ]
 
     submit_claimed_task = api.execute_command(
         session,
         api.ClaimTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=submit_task.id,
+            work_item_id=submit_task.id,
             user_id=context.users["requester"].id,
         ),
     )
@@ -186,9 +190,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         session,
         api.CompleteTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=submit_task.id,
+            work_item_id=submit_task.id,
             user_id=context.users["requester"].id,
-            completed_at=110,
+            completed_at=datetime.fromtimestamp(110, UTC),
             task_payload={
                 "expense_date": "2026-04-01",
                 "expense_type": "Travel",
@@ -242,8 +246,8 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
     assert manager_task.json_metadata is not None
     assert manager_task.json_metadata["lane_owners"] == lane_owners
     assert _assignment_summary(manager_task) == [
-        ("manager", HumanTaskUserAddedBy.lane_owner.value),
-        ("reviewer", HumanTaskUserAddedBy.lane_owner.value),
+        ("manager", WorkItemUserAddedBy.lane_owner.value),
+        ("reviewer", WorkItemUserAddedBy.lane_owner.value),
     ]
     for username in ("manager", "reviewer"):
         assert [
@@ -261,7 +265,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         session,
         api.ClaimTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=manager_task.id,
+            work_item_id=manager_task.id,
             user_id=context.users["manager"].id,
         ),
     )
@@ -271,9 +275,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         session,
         api.CompleteTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=manager_task.id,
+            work_item_id=manager_task.id,
             user_id=context.users["manager"].id,
-            completed_at=120,
+            completed_at=datetime.fromtimestamp(120, UTC),
             task_payload={"decision": scenario.manager_decision},
         ),
     )
@@ -297,7 +301,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         assert process_instance.status == api.ProcessInstanceStatus.complete
         assert process_instance.ended_at.timestamp() == 120
 
-    finance_task: HumanTaskModel | None = None
+    finance_task: WorkItemModel | None = None
     if scenario.manager_decision == "Approved" and scenario.amount > 500:
         # Step 5: non auto-approved claims should appear in the Finance lane.
         finance_pending_tasks = api.execute_query(
@@ -324,7 +328,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         assert finance_task.json_metadata is not None
         assert finance_task.json_metadata["lane_owners"] == lane_owners
         assert _assignment_summary(finance_task) == [
-            ("james", HumanTaskUserAddedBy.lane_owner.value),
+            ("james", WorkItemUserAddedBy.lane_owner.value),
         ]
         assert [
             item.id
@@ -342,7 +346,7 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
             session,
             api.ClaimTaskCommand(
                 tenant_id=context.tenant.id,
-                human_task_id=finance_task.id,
+                work_item_id=finance_task.id,
                 user_id=context.users["finance"].id,
             ),
         )
@@ -352,9 +356,9 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
             session,
             api.CompleteTaskCommand(
                 tenant_id=context.tenant.id,
-                human_task_id=finance_task.id,
+                work_item_id=finance_task.id,
                 user_id=context.users["finance"].id,
-                completed_at=130,
+                completed_at=datetime.fromtimestamp(130, UTC),
                 task_payload={
                     "finance_decision": scenario.finance_decision or "Approved"
                 },
@@ -414,13 +418,13 @@ def test_conditional_approval_workflow_poc_supports_lanes_and_assignments(
         ),
     )
     expected_events = [
-        ProcessInstanceEventType.process_instance_created.value,
-        ProcessInstanceEventType.task_completed.value,
-        ProcessInstanceEventType.task_completed.value,
+        ProcessLifecycleEventType.process_instance_created.value,
+        TaskEventType.task_completed.value,
+        TaskEventType.task_completed.value,
     ]
     if finance_task is not None:
-        expected_events.append(ProcessInstanceEventType.task_completed.value)
-    expected_events.append(ProcessInstanceEventType.process_instance_completed.value)
+        expected_events.append(TaskEventType.task_completed.value)
+    expected_events.append(ProcessLifecycleEventType.process_instance_completed.value)
     assert [event.event_type for event in events] == expected_events
 
 
@@ -439,7 +443,7 @@ def test_conditional_approval_definition_can_start_multiple_instances(
             process_initiator_id=context.users["requester"].id,
             summary="Scenario: second-start",
             process_version=1,
-            started_at=200,
+            started_at=datetime.fromtimestamp(200, UTC),
             bpmn_process_id=CONDITIONAL_APPROVAL_PROCESS_ID,
         ),
     )
@@ -513,8 +517,8 @@ def _seed_conditional_approval_workflow(
             service=service_url,
             service_id="manager-keycloak",
             display_name="Manager",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "reviewer": UserModel(
             username="reviewer",
@@ -522,8 +526,8 @@ def _seed_conditional_approval_workflow(
             service=service_url,
             service_id="reviewer-keycloak",
             display_name="Reviewer",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "finance": UserModel(
             username="james",
@@ -531,8 +535,8 @@ def _seed_conditional_approval_workflow(
             service=service_url,
             service_id="finance-keycloak",
             display_name="Finance",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "admin": UserModel(
             username="admin",
@@ -540,8 +544,8 @@ def _seed_conditional_approval_workflow(
             service=service_url,
             service_id="admin-keycloak",
             display_name="Admin",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "requester": UserModel(
             username="requester",
@@ -549,8 +553,8 @@ def _seed_conditional_approval_workflow(
             service=service_url,
             service_id="requester-keycloak",
             display_name="Requester",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
     }
 
@@ -604,8 +608,8 @@ def _seed_conditional_approval_workflow(
             },
             bpmn_version_control_type="git",
             bpmn_version_control_identifier="main",
-            created_at=90,
-            updated_at=90,
+            created_at=datetime.fromtimestamp(90, UTC),
+            updated_at=datetime.fromtimestamp(90, UTC),
         ),
     )
     assert definition.source_bpmn_xml == bpmn_xml
@@ -625,7 +629,7 @@ def _seed_conditional_approval_workflow(
             process_initiator_id=users["requester"].id,
             summary=f"Scenario: {scenario.name}",
             process_version=1,
-            started_at=100,
+            started_at=datetime.fromtimestamp(100, UTC),
             bpmn_process_id=CONDITIONAL_APPROVAL_PROCESS_ID,
         ),
     )
@@ -680,10 +684,10 @@ def _load_conditional_approval_task_definitions(
     }
 
 
-def _assignment_summary(human_task: HumanTaskModel) -> list[tuple[str, str | None]]:
+def _assignment_summary(human_task: WorkItemModel) -> list[tuple[str, str | None]]:
     return sorted(
         (assignment.user.username, assignment.added_by)
-        for assignment in human_task.human_task_users
+        for assignment in human_task.work_item_users
     )
 
 
@@ -875,7 +879,7 @@ def _assemble_m8flow_process_instance_dict(
     assert process_instance.bpmn_process_definition is not None
 
     process_dict: dict[str, object] = {
-        "serializer_version": process_instance.spiff_serializer_version,
+        "serializer_version": process_instance.workflow_engine_version,
         "spec": dict(process_instance.bpmn_process_definition.properties_json),
         "subprocess_specs": {},
         "subprocesses": {},

@@ -25,6 +25,7 @@ The flow is a purchase-order approval with three lanes:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -114,7 +115,7 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
         session,
         api.ClaimTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=submit_task.id,
+            work_item_id=submit_task.id,
             user_id=context.users["requester"].id,
         ),
     )
@@ -122,9 +123,9 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
         session,
         api.CompleteTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=submit_task.id,
+            work_item_id=submit_task.id,
             user_id=context.users["requester"].id,
-            completed_at=110,
+            completed_at=datetime.fromtimestamp(110, UTC),
             task_payload={
                 "order_amount": "1000",
                 "vendor": "ACME Corp",
@@ -133,7 +134,7 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
         ),
     )
 
-    # Step 3: the parallel split fans out — both reviewers see their task.
+    # Step 3: the parallel split fans out; both reviewers see their task.
     finance_tasks = api.execute_query(
         session,
         api.GetPendingTasksQuery(
@@ -158,7 +159,7 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
         session,
         api.ClaimTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=finance_task.id,
+            work_item_id=finance_task.id,
             user_id=context.users["finance_user"].id,
         ),
     )
@@ -166,14 +167,14 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
         session,
         api.CompleteTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=finance_task.id,
+            work_item_id=finance_task.id,
             user_id=context.users["finance_user"].id,
-            completed_at=120,
+            completed_at=datetime.fromtimestamp(120, UTC),
             task_payload={"finance_decision": scenario.finance_decision},
         ),
     )
 
-    # After finance completes, the workflow must wait — compliance is still pending.
+    # After finance completes, compliance is still pending.
     instance_mid = api.execute_query(
         session,
         api.GetProcessInstanceQuery(
@@ -184,12 +185,12 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
     assert instance_mid.status == api.ProcessInstanceStatus.user_input_required
     assert instance_mid.ended_at is None
 
-    # Step 5: compliance reviewer completes their review — this releases the join.
+    # Step 5: compliance completes their review and releases the join.
     api.execute_command(
         session,
         api.ClaimTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=compliance_task.id,
+            work_item_id=compliance_task.id,
             user_id=context.users["compliance_user"].id,
         ),
     )
@@ -197,9 +198,9 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
         session,
         api.CompleteTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=compliance_task.id,
+            work_item_id=compliance_task.id,
             user_id=context.users["compliance_user"].id,
-            completed_at=130,
+            completed_at=datetime.fromtimestamp(130, UTC),
             task_payload={"compliance_decision": scenario.compliance_decision},
         ),
     )
@@ -221,7 +222,7 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
         session,
         api.ClaimTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=notify_task.id,
+            work_item_id=notify_task.id,
             user_id=context.users["requester"].id,
         ),
     )
@@ -229,9 +230,9 @@ def test_parallel_review_workflow_completes_through_both_reviewers(
         session,
         api.CompleteTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=notify_task.id,
+            work_item_id=notify_task.id,
             user_id=context.users["requester"].id,
-            completed_at=140,
+            completed_at=datetime.fromtimestamp(140, UTC),
         ),
     )
 
@@ -277,7 +278,7 @@ def test_parallel_review_join_does_not_advance_until_both_branches_complete(
         session,
         api.ClaimTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=submit_task.id,
+            work_item_id=submit_task.id,
             user_id=context.users["requester"].id,
         ),
     )
@@ -285,9 +286,9 @@ def test_parallel_review_join_does_not_advance_until_both_branches_complete(
         session,
         api.CompleteTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=submit_task.id,
+            work_item_id=submit_task.id,
             user_id=context.users["requester"].id,
-            completed_at=110,
+            completed_at=datetime.fromtimestamp(110, UTC),
             task_payload={"order_amount": "1000"},
         ),
     )
@@ -304,7 +305,7 @@ def test_parallel_review_join_does_not_advance_until_both_branches_complete(
         session,
         api.ClaimTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=finance_task.id,
+            work_item_id=finance_task.id,
             user_id=context.users["finance_user"].id,
         ),
     )
@@ -312,9 +313,9 @@ def test_parallel_review_join_does_not_advance_until_both_branches_complete(
         session,
         api.CompleteTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=finance_task.id,
+            work_item_id=finance_task.id,
             user_id=context.users["finance_user"].id,
-            completed_at=120,
+            completed_at=datetime.fromtimestamp(120, UTC),
             task_payload={"finance_decision": "Approved"},
         ),
     )
@@ -357,8 +358,8 @@ def _seed_parallel_review_workflow(
             service=service_url,
             service_id="requester-keycloak",
             display_name="Requester",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "finance_user": UserModel(
             username="finance_user",
@@ -366,8 +367,8 @@ def _seed_parallel_review_workflow(
             service=service_url,
             service_id="finance-keycloak",
             display_name="Finance User",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "admin": UserModel(
             username="admin",
@@ -375,8 +376,8 @@ def _seed_parallel_review_workflow(
             service=service_url,
             service_id="admin-keycloak",
             display_name="Admin",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "compliance_user": UserModel(
             username="compliance_user",
@@ -384,8 +385,8 @@ def _seed_parallel_review_workflow(
             service=service_url,
             service_id="compliance-keycloak",
             display_name="Compliance User",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
     }
     session.add(tenant)
@@ -426,8 +427,8 @@ def _seed_parallel_review_workflow(
                 "scenario_name": scenario.name,
                 "lane_owners": LANE_OWNERS,
             },
-            created_at=90,
-            updated_at=90,
+            created_at=datetime.fromtimestamp(90, UTC),
+            updated_at=datetime.fromtimestamp(90, UTC),
         ),
     )
 
@@ -437,9 +438,9 @@ def _seed_parallel_review_workflow(
             tenant_id=tenant.id,
             bpmn_process_definition_id=definition.id,
             process_initiator_id=users["requester"].id,
-            summary=f"Parallel review — {scenario.name}",
+            summary=f"Parallel review ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â {scenario.name}",
             process_version=1,
-            started_at=100,
+            started_at=datetime.fromtimestamp(100, UTC),
             bpmn_process_id=PROCESS_ID,
         ),
     )

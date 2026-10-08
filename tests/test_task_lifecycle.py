@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
 from m8flow_bpmn_core.models.future_task import FutureTaskModel
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
 from m8flow_bpmn_core.services.authorization import ROLE_USER, ensure_v1_role
 from m8flow_bpmn_core.services.tasks import claim_task, complete_task, get_pending_tasks
 
@@ -25,8 +27,8 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
         service=service_url,
         service_id="alice-keycloak",
         display_name="Alice",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
 
     session.add_all([tenant, user])
@@ -40,15 +42,14 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash="def-single",
-        full_process_model_hash="def-full",
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="invoice-approval",
         bpmn_name="Invoice Approval",
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at=900,
-        updated_at=900,
+        created_at=datetime.fromtimestamp(900, UTC),
+        updated_at=datetime.fromtimestamp(900, UTC),
     )
     session.add(definition)
     session.flush()
@@ -72,8 +73,8 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at=950,
-        updated_at=950,
+        created_at=datetime.fromtimestamp(950, UTC),
+        updated_at=datetime.fromtimestamp(950, UTC),
     )
     session.add(task_definition)
     session.flush()
@@ -81,13 +82,13 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
     process_instance = ProcessInstanceModel(
         m8f_tenant_id=tenant.id,
         process_model_identifier="invoice-approval",
-        process_model_display_name="Invoice Approval",
+        process_model_display_name="invoice-approval",
         process_initiator_id=user.id,
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at=1_000,
-        updated_at=1_000,
+        created_at=datetime.fromtimestamp(1_000, UTC),
+        updated_at=datetime.fromtimestamp(1_000, UTC),
     )
     session.add(process_instance)
     session.flush()
@@ -106,29 +107,22 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
     session.add(task)
     session.flush()
 
-    human_task = HumanTaskModel(
+    human_task = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
         task_guid=task.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
-        task_name="approve_invoice",
-        task_title="Approve Invoice",
-        task_type="User Task",
         task_status="READY",
-        process_model_display_name=process_instance.process_model_display_name,
-        bpmn_process_identifier=process_instance.process_model_identifier,
-        lane_name="finance",
-        json_metadata={"priority": "high"},
         completed=False,
     )
     session.add(human_task)
     session.flush()
     session.add(
-        HumanTaskUserModel(
+        WorkItemUserModel(
             m8f_tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
             added_by="manual",
         )
@@ -139,15 +133,15 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
         session,
         tenant_id=tenant.id,
         guid=task.guid,
-        run_at=100,
-        queued_to_run_at=90,
+        run_at=datetime.fromtimestamp(100, UTC),
+        queued_to_run_at=datetime.fromtimestamp(90, UTC),
     )
     FutureTaskModel.insert_or_update(
         session,
         tenant_id=tenant.id,
         guid=task.guid,
-        run_at=200,
-        queued_to_run_at=150,
+        run_at=datetime.fromtimestamp(200, UTC),
+        queued_to_run_at=datetime.fromtimestamp(150, UTC),
     )
 
     future_task = session.get(FutureTaskModel, task.guid)
@@ -159,7 +153,7 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
     claimed_task = claim_task(
         session,
         tenant_id=tenant.id,
-        human_task_id=human_task.id,
+        work_item_id=human_task.id,
         user_id=user.id,
     )
     assert claimed_task.actual_owner_id == user.id
@@ -172,9 +166,9 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
     completed_task = complete_task(
         session,
         tenant_id=tenant.id,
-        human_task_id=human_task.id,
+        work_item_id=human_task.id,
         user_id=user.id,
-        completed_at=1_234,
+        completed_at=datetime.fromtimestamp(1_234, UTC),
     )
     assert completed_task.completed is True
     assert completed_task.completed_by_user_id == user.id

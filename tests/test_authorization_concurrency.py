@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -40,7 +41,6 @@ def _initialize_authorization_state(
                 session,
                 user_id=user_id,
                 permission="execute",
-                target_uri="/tasks/123",
                 command=TASK_CLAIM_COMMAND,
                 resource_type="task",
                 resource_id=123,
@@ -49,8 +49,9 @@ def _initialize_authorization_state(
                 session,
                 user_id=user_id,
                 permission="execute",
-                target_uri="/ui/tasks/123",
-                command=None,
+                command=TASK_CLAIM_COMMAND,
+                resource_type="task",
+                resource_id=124,
             )
             session.commit()
             return (
@@ -83,8 +84,8 @@ def test_authorization_initialization_is_race_safe(tmp_path: Path) -> None:
                 service="http://localhost:7002/realms/tenant-concurrent",
                 service_id="concurrent-user-keycloak",
                 display_name="Concurrent User",
-                created_at=1,
-                updated_at=1,
+                created_at=datetime.fromtimestamp(1, UTC),
+                updated_at=datetime.fromtimestamp(1, UTC),
             )
             session.add(user)
             session.commit()

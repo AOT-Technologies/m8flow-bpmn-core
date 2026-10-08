@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -11,13 +12,13 @@ from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
 
 VALIDATION_BPMN_PATH = (
     Path(__file__).with_name("fixtures") / "invoice_approval_poc.bpmn"
@@ -34,8 +35,8 @@ class TenantValidationContext:
     definition: BpmnProcessDefinitionModel
     process_instance: ProcessInstanceModel
     foreign_process_instance: ProcessInstanceModel
-    human_task: HumanTaskModel
-    foreign_human_task: HumanTaskModel
+    human_task: WorkItemModel
+    foreign_human_task: WorkItemModel
 
 
 def test_initialize_process_instance_rejects_initiator_from_other_tenant(
@@ -52,7 +53,7 @@ def test_initialize_process_instance_rejects_initiator_from_other_tenant(
                 process_initiator_id=context.foreign_user.id,
                 summary="Cross-tenant workflow start should fail",
                 process_version=1,
-                started_at=100,
+                started_at=datetime.fromtimestamp(100, UTC),
                 bpmn_process_id="invoice_approval_poc",
             ),
         )
@@ -126,7 +127,7 @@ def test_claim_and_complete_task_reject_cross_tenant_users(
             session,
             api.ClaimTaskCommand(
                 tenant_id=context.tenant.id,
-                human_task_id=context.human_task.id,
+                work_item_id=context.human_task.id,
                 user_id=context.foreign_user.id,
             ),
         )
@@ -136,9 +137,9 @@ def test_claim_and_complete_task_reject_cross_tenant_users(
             session,
             api.CompleteTaskCommand(
                 tenant_id=context.tenant.id,
-                human_task_id=context.human_task.id,
+                work_item_id=context.human_task.id,
                 user_id=context.foreign_user.id,
-                completed_at=120,
+                completed_at=datetime.fromtimestamp(120, UTC),
             ),
         )
 
@@ -166,8 +167,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         service=tenant_service,
         service_id="tenant-user-keycloak",
         display_name="Tenant User",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     tenant_observer = UserModel(
         username="tenant-observer",
@@ -175,8 +176,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         service=tenant_service,
         service_id="tenant-observer-keycloak",
         display_name="Tenant Observer",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     foreign_user = UserModel(
         username="tenant-user",
@@ -184,8 +185,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         service=foreign_service,
         service_id="foreign-user-keycloak",
         display_name="Foreign User",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all(
         [tenant, foreign_tenant, tenant_user, tenant_observer, foreign_user]
@@ -194,8 +195,7 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash="validation-single",
-        full_process_model_hash="validation-full",
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="tenant-validation-process",
         bpmn_name="Tenant Validation Process",
         source_bpmn_xml=VALIDATION_BPMN_PATH.read_text(encoding="utf-8"),
@@ -203,8 +203,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at=900,
-        updated_at=900,
+        created_at=datetime.fromtimestamp(900, UTC),
+        updated_at=datetime.fromtimestamp(900, UTC),
     )
     session.add(definition)
     session.flush()
@@ -228,8 +228,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         bpmn_name="Approve Expense",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at=950,
-        updated_at=950,
+        created_at=datetime.fromtimestamp(950, UTC),
+        updated_at=datetime.fromtimestamp(950, UTC),
     )
     session.add(task_definition)
     session.flush()
@@ -237,21 +237,20 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
     process_instance = ProcessInstanceModel(
         m8f_tenant_id=tenant.id,
         process_model_identifier="tenant-validation-process",
-        process_model_display_name="Tenant Validation Process",
+        process_model_display_name="tenant-validation-process",
         process_initiator_id=tenant_user.id,
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at=1_000,
-        updated_at=1_000,
+        created_at=datetime.fromtimestamp(1_000, UTC),
+        updated_at=datetime.fromtimestamp(1_000, UTC),
     )
     session.add(process_instance)
     session.flush()
 
     foreign_definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=foreign_tenant.id,
-        single_process_hash="validation-single-foreign",
-        full_process_model_hash="validation-full-foreign",
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="tenant-validation-process-foreign",
         bpmn_name="Tenant Validation Foreign Process",
         source_bpmn_xml=VALIDATION_BPMN_PATH.read_text(encoding="utf-8"),
@@ -259,8 +258,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at=901,
-        updated_at=901,
+        created_at=datetime.fromtimestamp(901, UTC),
+        updated_at=datetime.fromtimestamp(901, UTC),
     )
     session.add(foreign_definition)
     session.flush()
@@ -284,8 +283,8 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
         bpmn_name="Approve Expense",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at=951,
-        updated_at=951,
+        created_at=datetime.fromtimestamp(951, UTC),
+        updated_at=datetime.fromtimestamp(951, UTC),
     )
     session.add(foreign_task_definition)
     session.flush()
@@ -293,13 +292,13 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
     foreign_process_instance = ProcessInstanceModel(
         m8f_tenant_id=foreign_tenant.id,
         process_model_identifier="tenant-validation-process-foreign",
-        process_model_display_name="Tenant Validation Foreign Process",
+        process_model_display_name="tenant-validation-process-foreign",
         process_initiator_id=foreign_user.id,
         bpmn_process_definition_id=foreign_definition.id,
         bpmn_process_id=foreign_bpmn_process.id,
         status="running",
-        created_at=1_001,
-        updated_at=1_001,
+        created_at=datetime.fromtimestamp(1_001, UTC),
+        updated_at=datetime.fromtimestamp(1_001, UTC),
     )
     session.add(foreign_process_instance)
     session.flush()
@@ -318,21 +317,14 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
     session.add(foreign_task)
     session.flush()
 
-    foreign_human_task = HumanTaskModel(
+    foreign_human_task = WorkItemModel(
         m8f_tenant_id=foreign_tenant.id,
         process_instance_id=foreign_process_instance.id,
         task_guid=foreign_task.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
-        task_name="approve_expense",
-        task_title="Approve Expense",
-        task_type="UserTask",
         task_status="READY",
-        process_model_display_name=foreign_process_instance.process_model_display_name,
-        bpmn_process_identifier=foreign_process_instance.process_model_identifier,
-        lane_name="finance",
-        json_metadata={"priority": "high"},
         completed=False,
     )
     session.add(foreign_human_task)
@@ -352,21 +344,14 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
     session.add(task)
     session.flush()
 
-    human_task = HumanTaskModel(
+    human_task = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
         task_guid=task.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
-        task_name="approve_expense",
-        task_title="Approve Expense",
-        task_type="UserTask",
         task_status="READY",
-        process_model_display_name=process_instance.process_model_display_name,
-        bpmn_process_identifier=process_instance.process_model_identifier,
-        lane_name="finance",
-        json_metadata={"priority": "high"},
         completed=False,
     )
     session.add(human_task)
@@ -374,21 +359,21 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
 
     session.add_all(
         [
-            HumanTaskUserModel(
+            WorkItemUserModel(
                 m8f_tenant_id=tenant.id,
-                human_task_id=human_task.id,
+                work_item_id=human_task.id,
                 user_id=tenant_user.id,
                 added_by="manual",
             ),
-            HumanTaskUserModel(
+            WorkItemUserModel(
                 m8f_tenant_id=tenant.id,
-                human_task_id=human_task.id,
+                work_item_id=human_task.id,
                 user_id=foreign_user.id,
                 added_by="manual",
             ),
-            HumanTaskUserModel(
+            WorkItemUserModel(
                 m8f_tenant_id=foreign_tenant.id,
-                human_task_id=foreign_human_task.id,
+                work_item_id=foreign_human_task.id,
                 user_id=foreign_user.id,
                 added_by="manual",
             ),

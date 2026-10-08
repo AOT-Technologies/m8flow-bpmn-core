@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import text
@@ -11,7 +12,6 @@ from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.process_model_bpmn_version import (
     ProcessModelBpmnVersionModel,
@@ -20,6 +20,7 @@ from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
 from m8flow_bpmn_core.utils.keycloak import (
     ProvisionedKeycloakOrganization,
     ProvisionedKeycloakSharedRealmContext,
@@ -135,20 +136,19 @@ def test_align_shared_db_tenant_with_keycloak_organization_updates_example_rows(
         service="http://localhost:6842/realms/m8flow",
         service_id="kc-manager",
         display_name="Manager",
-        tenant_specific_field_1=tenant.id,
-        tenant_specific_field_2=tenant.slug,
-        created_at=1,
-        updated_at=1,
+        external_org_id=tenant.id,
+        realm_identifier=tenant.slug,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash="legacy-single",
-        full_process_model_hash="legacy-full",
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="legacy-process",
         bpmn_name="Legacy Process",
         properties_json={"version": 1},
-        created_at=10,
-        updated_at=10,
+        created_at=datetime.fromtimestamp(10, UTC),
+        updated_at=datetime.fromtimestamp(10, UTC),
     )
     session.add(tenant)
     session.flush()
@@ -175,8 +175,8 @@ def test_align_shared_db_tenant_with_keycloak_organization_updates_example_rows(
     assert session.get(M8flowTenantModel, example_poc.DEMO_TENANT["id"]) is None
     assert stored_definition is not None
     assert stored_definition.m8f_tenant_id == "org-demo"
-    assert stored_user.tenant_specific_field_1 == "org-demo"
-    assert stored_user.tenant_specific_field_2 == example_poc.DEMO_TENANT["slug"]
+    assert stored_user.external_org_id == "org-demo"
+    assert stored_user.realm_identifier == example_poc.DEMO_TENANT["slug"]
     assert warnings
     assert "realigned" in warnings[0]
 
@@ -294,12 +294,12 @@ def test_seed_demo_context_uses_keycloak_user_ids_for_shared_db(
     assert context.tenant_id == "org-demo"
     assert requester.service == "http://localhost:6842/realms/m8flow"
     assert requester.service_id == "kc-requester"
-    assert requester.tenant_specific_field_1 == "org-demo"
-    assert requester.tenant_specific_field_2 == example_poc.DEMO_TENANT["slug"]
+    assert requester.external_org_id == "org-demo"
+    assert requester.realm_identifier == example_poc.DEMO_TENANT["slug"]
     assert foreign_noise.service == "http://localhost:6842/realms/m8flow"
     assert foreign_noise.service_id == "kc-foreign-noise"
-    assert foreign_noise.tenant_specific_field_1 == "org-noise-a"
-    assert foreign_noise.tenant_specific_field_2 == (
+    assert foreign_noise.external_org_id == "org-noise-a"
+    assert foreign_noise.realm_identifier == (
         example_poc.OTHER_DEMO_TENANTS[0]["slug"]
     )
 
@@ -417,10 +417,8 @@ def test_get_or_create_user_backfills_principal_for_reused_shared_db_user(
         service="http://localhost:7002/realms/conditional-approval-example",
         service_id="legacy-manager-id",
         display_name="Manager",
-        tenant_specific_field_1="org-demo",
-        tenant_specific_field_2=example_poc.DEMO_TENANT["slug"],
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add(existing_user)
     session.flush()
@@ -465,11 +463,8 @@ def test_get_or_create_user_reuses_same_realm_username_even_without_tenant_field
         service="http://localhost:6842/realms/m8flow",
         service_id="legacy-manager-id",
         display_name="Manager",
-        tenant_specific_field_1=None,
-        tenant_specific_field_2=None,
-        tenant_specific_field_3=None,
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add(existing_user)
     session.flush()
@@ -495,8 +490,8 @@ def test_get_or_create_user_reuses_same_realm_username_even_without_tenant_field
     assert user.id == existing_user.id
     assert user.service == "http://localhost:6842/realms/m8flow"
     assert user.service_id == "kc-manager"
-    assert user.tenant_specific_field_1 == "org-demo"
-    assert user.tenant_specific_field_2 == example_poc.DEMO_TENANT["slug"]
+    assert user.external_org_id == "org-demo"
+    assert user.realm_identifier == example_poc.DEMO_TENANT["slug"]
     assert principal_user_id == user.id
     assert any(
         "already exists for service 'http://localhost:6842/realms/m8flow' "
@@ -575,21 +570,20 @@ def test_realign_existing_example_process_model_identifiers_updates_rows(
         service="http://localhost:7002/realms/conditional-approval-example",
         service_id="poc-requester-keycloak",
         display_name="Requester",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash="legacy-single",
-        full_process_model_hash="legacy-full",
+        process_xml_digest="test-definition-digest",
         bpmn_identifier=example_poc.M8FLOW_BACKEND_PROCESS_MODEL_ID,
         bpmn_name=example_poc.M8FLOW_BACKEND_PROCESS_MODEL_DISPLAY_NAME,
         properties_json={"version": 1},
-        created_at=10,
-        updated_at=10,
+        created_at=datetime.fromtimestamp(10, UTC),
+        updated_at=datetime.fromtimestamp(10, UTC),
     )
     session.add(definition)
     session.flush()
@@ -597,13 +591,13 @@ def test_realign_existing_example_process_model_identifiers_updates_rows(
     process_instance = ProcessInstanceModel(
         m8f_tenant_id=tenant.id,
         process_model_identifier=example_poc.M8FLOW_BACKEND_PROCESS_MODEL_ID,
-        process_model_display_name=example_poc.M8FLOW_BACKEND_PROCESS_MODEL_DISPLAY_NAME,
+        process_model_display_name=example_poc.M8FLOW_BACKEND_PROCESS_MODEL_ID,
         process_initiator_id=user.id,
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=None,
         status="running",
-        created_at=20,
-        updated_at=20,
+        created_at=datetime.fromtimestamp(20, UTC),
+        updated_at=datetime.fromtimestamp(20, UTC),
     )
     session.add(process_instance)
     session.flush()
@@ -629,8 +623,8 @@ def test_realign_existing_example_process_model_identifiers_updates_rows(
         bpmn_name="Legacy Task",
         typename="UserTask",
         properties_json={"legacy": True},
-        created_at=25,
-        updated_at=25,
+        created_at=datetime.fromtimestamp(25, UTC),
+        updated_at=datetime.fromtimestamp(25, UTC),
     )
     session.add(task_definition)
     session.flush()
@@ -649,18 +643,11 @@ def test_realign_existing_example_process_model_identifiers_updates_rows(
     session.add(task)
     session.flush()
 
-    human_task = HumanTaskModel(
+    human_task = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
         task_guid=task.guid,
-        task_name="legacy_task",
-        task_title="Legacy Task",
-        task_type="UserTask",
         task_status="READY",
-        process_model_display_name=example_poc.M8FLOW_BACKEND_PROCESS_MODEL_DISPLAY_NAME,
-        bpmn_process_identifier=example_poc.M8FLOW_BACKEND_PROCESS_MODEL_ID,
-        lane_name="Manager",
-        json_metadata={"legacy": True},
         completed=False,
     )
     session.add(human_task)
@@ -670,7 +657,7 @@ def test_realign_existing_example_process_model_identifiers_updates_rows(
             process_model_identifier=example_poc.M8FLOW_BACKEND_PROCESS_MODEL_ID,
             bpmn_xml_hash="legacy-bpmn-hash",
             bpmn_xml_file_contents="<xml />",
-            created_at=30,
+            created_at=datetime.fromtimestamp(30, UTC),
         )
     )
     session.flush()

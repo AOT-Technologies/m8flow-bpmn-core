@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.dialects import mysql
@@ -52,39 +54,35 @@ def test_get_or_create_preserves_explicit_defaults_and_existing_values(
         identifier="tenant-a:reviewers",
         name="Reviewers",
     )
-    assert group.source_is_open_id is False
 
     same_group = find_or_create_group(
         session,
         identifier="tenant-a:reviewers",
         name="Renamed reviewers",
-        source_is_open_id=True,
     )
     assert same_group.id == group.id
     assert same_group.name == "Reviewers"
-    assert same_group.source_is_open_id is False
 
 
-def test_resource_target_conflict_does_not_overwrite_existing_uri(
+def test_resource_target_conflict_does_not_overwrite_existing_pair(
     session: Session,
 ) -> None:
     first = find_or_create_permission_target(
         session,
-        uri="/tasks/first",
         command="task.read",
         resource_type="task",
         resource_id="42",
     )
     second = find_or_create_permission_target(
         session,
-        uri="/tasks/second",
         command="task.read",
         resource_type="task",
         resource_id="42",
     )
 
     assert second.id == first.id
-    assert second.uri == "/tasks/first"
+    assert second.resource_type == "task"
+    assert second.resource_id == "42"
 
 
 def test_mysql_get_or_create_uses_a_non_mutating_duplicate_action() -> None:
@@ -115,21 +113,20 @@ def test_mysql_get_or_create_uses_a_non_mutating_duplicate_action() -> None:
             "name": "Reviewers",
             "identifier": "tenant-a:reviewers",
             "authorization_key": "authorization:reviewers",
-            "source_is_open_id": False,
         },
         conflict_columns=("authorization_key",),
     )
 
     sql = str(session.executed[0].compile(dialect=mysql.dialect()))
     assert "ON DUPLICATE KEY UPDATE" in sql
-    assert "id = `group`.id" in sql
+    assert "id = m8f_group.id" in sql
     assert result is not None
 
 
 def test_authorization_specs_resolve_command_keys_and_actor_fields() -> None:
     claim_command = ClaimTaskCommand(
         tenant_id="tenant-a",
-        human_task_id=10,
+        work_item_id=10,
         user_id=123,
     )
     claim_spec = authorization_spec_for_command(claim_command)
@@ -144,7 +141,7 @@ def test_authorization_specs_resolve_command_keys_and_actor_fields() -> None:
         process_initiator_id=456,
         summary="Start",
         process_version=1,
-        started_at=100,
+        started_at=datetime.fromtimestamp(100, UTC),
         bpmn_process_id="Process_1",
     )
     start_spec = authorization_spec_for_command(start_command)
@@ -215,8 +212,9 @@ def test_database_authorization_policy_honors_deny_over_permit(
         session,
         user_id=user.id,
         permission="execute",
-        target_uri="/tasks/%",
         command=TASK_COMPLETE_COMMAND,
+        resource_type="tenant",
+        resource_id=tenant.id,
         grant_type="deny",
     )
 
@@ -234,30 +232,6 @@ def test_database_authorization_policy_honors_deny_over_permit(
     assert "deny permission matched" in decision.reason
 
 
-def test_database_authorization_policy_accepts_uri_only_grants_as_fallback(
-    session: Session,
-) -> None:
-    tenant, user = _seed_tenant_and_user(session, tenant_id="tenant-a")
-    grant_permission_to_user(
-        session,
-        user_id=user.id,
-        permission="execute",
-        target_uri="/tasks/%",
-        command=None,
-    )
-
-    decision = DatabaseAuthorizationPolicy().authorize(
-        session,
-        build_authorization_request(
-            tenant_id=tenant.id,
-            actor_user_id=user.id,
-            command_key=TASK_CLAIM_COMMAND,
-        ),
-    )
-
-    assert decision.allowed is True
-
-
 def test_database_authorization_policy_matches_explicit_resource_pairs(
     session: Session,
 ) -> None:
@@ -266,7 +240,6 @@ def test_database_authorization_policy_matches_explicit_resource_pairs(
         session,
         user_id=user.id,
         permission="execute",
-        target_uri="/tasks/%",
         command=TASK_CLAIM_COMMAND,
         resource_type="task",
         resource_id=123,
@@ -277,7 +250,7 @@ def test_database_authorization_policy_matches_explicit_resource_pairs(
         actor_user_id=user.id,
         command_key=TASK_CLAIM_COMMAND,
         resource_type="task",
-        resource_id="123",
+        resource_id=123,
     )
     non_matching = build_authorization_request(
         tenant_id=tenant.id,
@@ -292,7 +265,7 @@ def test_database_authorization_policy_matches_explicit_resource_pairs(
     assert policy.authorize(session, non_matching).allowed is False
 
 
-def test_explicit_request_does_not_fall_back_to_legacy_uri_target(
+def test_database_authorization_policy_matches_type_wide_target(
     session: Session,
 ) -> None:
     tenant, user = _seed_tenant_and_user(session, tenant_id="tenant-a")
@@ -300,22 +273,20 @@ def test_explicit_request_does_not_fall_back_to_legacy_uri_target(
         session,
         user_id=user.id,
         permission="execute",
-        target_uri="/tasks/%",
         command=TASK_CLAIM_COMMAND,
+        resource_type="task",
+        resource_id=None,
     )
 
-    decision = DatabaseAuthorizationPolicy().authorize(
-        session,
-        build_authorization_request(
-            tenant_id=tenant.id,
-            actor_user_id=user.id,
-            command_key=TASK_CLAIM_COMMAND,
-            resource_type="task",
-            resource_id="123",
-        ),
+    request = build_authorization_request(
+        tenant_id=tenant.id,
+        actor_user_id=user.id,
+        command_key=TASK_CLAIM_COMMAND,
+        resource_type="task",
+        resource_id="any-task",
     )
 
-    assert decision.allowed is False
+    assert DatabaseAuthorizationPolicy().authorize(session, request).allowed is True
 
 
 def test_permission_target_requires_a_complete_resource_pair(
@@ -328,9 +299,9 @@ def test_permission_target_requires_a_complete_resource_pair(
             session,
             user_id=user.id,
             permission="execute",
-            target_uri="/tasks/123",
             command=TASK_CLAIM_COMMAND,
             resource_type="task",
+            resource_id="",
         )
 
 
@@ -465,7 +436,6 @@ def test_authorization_group_key_allows_duplicate_legacy_identifiers(
     legacy_group = GroupModel(
         name="legacy manager",
         identifier="tenant-a:manager",
-        source_is_open_id=False,
     )
     session.add(legacy_group)
     session.flush()
@@ -496,8 +466,8 @@ def _seed_tenant_and_user(
         service=f"http://localhost:7002/realms/{tenant_id}",
         service_id=f"user-{tenant_id}-keycloak",
         display_name=f"User {tenant_id}",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()

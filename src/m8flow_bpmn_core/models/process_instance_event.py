@@ -4,33 +4,11 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from m8flow_bpmn_core.models.base import Base
 from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantScoped
-
-
-class ProcessInstanceEventType(StrEnum):
-    """Compatibility enum containing the original combined event values."""
-
-    process_instance_created = "process_instance_created"
-    process_instance_completed = "process_instance_completed"
-    process_instance_error = "process_instance_error"
-    process_instance_force_run = "process_instance_force_run"
-    process_instance_migrated = "process_instance_migrated"
-    process_instance_resumed = "process_instance_resumed"
-    process_instance_retried = "process_instance_retried"
-    process_instance_rewound_to_task = "process_instance_rewound_to_task"
-    process_instance_suspended = "process_instance_suspended"
-    process_instance_suspended_for_error = "process_instance_suspended_for_error"
-    process_instance_terminated = "process_instance_terminated"
-    task_cancelled = "task_cancelled"
-    task_completed = "task_completed"
-    task_data_edited = "task_data_edited"
-    task_executed_manually = "task_executed_manually"
-    task_failed = "task_failed"
-    task_skipped = "task_skipped"
 
 
 class ProcessLifecycleEventType(StrEnum):
@@ -63,8 +41,7 @@ class ProcessInstanceEventCategory(StrEnum):
 
 def event_category_for_type(
     event_type: (
-        ProcessInstanceEventType
-        | ProcessLifecycleEventType
+        ProcessLifecycleEventType
         | TaskEventType
         | str
     ),
@@ -84,6 +61,12 @@ def event_category_for_type(
 
 class ProcessInstanceEventModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "process_instance_event"
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('process', 'task')",
+            name="m8f_process_instance_event_category_check",
+        ),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     task_guid: Mapped[str | None] = mapped_column(String(36), index=True)
     process_instance_id: Mapped[int] = mapped_column(
@@ -92,7 +75,7 @@ class ProcessInstanceEventModel(M8fTenantScopedMixin, TenantScoped, Base):
         nullable=False,
     )
     event_type: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
-    category: Mapped[str | None] = mapped_column(String(20), index=True)
+    category: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
     occurred_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
@@ -112,15 +95,40 @@ class ProcessInstanceEventModel(M8fTenantScopedMixin, TenantScoped, Base):
             normalized = (
                 value.value
                 if isinstance(value, StrEnum)
-                else ProcessInstanceEventType(value).value
+                else value
             )
             self.category = event_category_for_type(normalized).value
             return normalized
         except ValueError as exc:  # pragma: no cover - defensive guard
             allowed_values = ", ".join(
-                event_type.value for event_type in ProcessInstanceEventType
+                [
+                    *(event_type.value for event_type in ProcessLifecycleEventType),
+                    *(event_type.value for event_type in TaskEventType),
+                ]
             )
             raise ValidationError(
                 f"Invalid process instance event type: {value!r}. "
                 f"Expected one of: {allowed_values}"
             ) from exc
+
+    @validates("category")
+    def validate_category(self, key: str, value: Any) -> str:
+        from m8flow_bpmn_core.errors import ValidationError
+
+        try:
+            normalized = ProcessInstanceEventCategory(value).value
+        except ValueError as exc:
+            raise ValidationError(
+                f"Invalid process instance event category: {value!r}. "
+                "Expected 'process' or 'task'."
+            ) from exc
+
+        event_type = self.__dict__.get("event_type")
+        if event_type is not None:
+            expected = event_category_for_type(event_type).value
+            if normalized != expected:
+                raise ValidationError(
+                    f"Event category {normalized!r} does not match event type "
+                    f"{event_type!r}; expected {expected!r}."
+                )
+        return normalized

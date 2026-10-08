@@ -38,6 +38,7 @@ from m8flow_bpmn_core.models.permission_assignment import (
 )
 from m8flow_bpmn_core.models.permission_target import (
     InvalidPermissionTargetError,
+    PermissionResourceType,
     PermissionTargetModel,
 )
 from m8flow_bpmn_core.models.principal import PrincipalModel
@@ -59,10 +60,11 @@ PROCESS_ERROR_COMMAND = "process.error"
 PROCESS_RETRY_COMMAND = "process.retry"
 PROCESS_TERMINATE_COMMAND = "process.terminate"
 
-TASKS_TARGET_URI = "/tasks/%"
-PROCESS_DEFINITIONS_TARGET_URI = "/process-definitions/%"
-PROCESS_INSTANCES_TARGET_URI = "/process-instances/%"
-PROCESS_MODELS_TARGET_URI = "/process-models/%"
+RESOURCE_TASK = PermissionResourceType.task
+RESOURCE_PROCESS_DEFINITION = PermissionResourceType.process_definition
+RESOURCE_PROCESS_INSTANCE = PermissionResourceType.process_instance
+RESOURCE_PROCESS_MODEL = PermissionResourceType.process_model
+RESOURCE_TENANT = PermissionResourceType.tenant
 
 ROLE_USER = "user"
 ROLE_MANAGER = "manager"
@@ -73,7 +75,7 @@ BASIC_ROLE_NAMES = frozenset({ROLE_USER, ROLE_MANAGER, ROLE_ADMIN})
 class CommandAuthorizationSpec:
     command_key: str
     permission: str
-    target_uri: str
+    resource_type: PermissionResourceType
     actor_field_name: str | None = None
 
 
@@ -83,11 +85,16 @@ class AuthorizationRequest:
     actor_user_id: int
     command_key: str
     permission: str
-    target_uri: str
-    target_id: int | None = None
-    resource_type: str | None = None
-    resource_id: str | None = None
+    resource_type: PermissionResourceType
+    resource_id: str
     metadata: Mapping[str, object] | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "resource_type",
+            PermissionResourceType(self.resource_type).value,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,83 +119,83 @@ COMMAND_AUTHORIZATION_SPECS: dict[type[object], CommandAuthorizationSpec] = {
     ClaimTaskCommand: CommandAuthorizationSpec(
         command_key=TASK_CLAIM_COMMAND,
         permission=PermissionAction.execute.value,
-        target_uri=TASKS_TARGET_URI,
+        resource_type=RESOURCE_TASK,
         actor_field_name="user_id",
     ),
     CompleteTaskCommand: CommandAuthorizationSpec(
         command_key=TASK_COMPLETE_COMMAND,
         permission=PermissionAction.execute.value,
-        target_uri=TASKS_TARGET_URI,
+        resource_type=RESOURCE_TASK,
         actor_field_name="user_id",
     ),
     CreateProcessInstanceCommand: CommandAuthorizationSpec(
         command_key=PROCESS_CREATE_COMMAND,
         permission=PermissionAction.create.value,
-        target_uri=PROCESS_INSTANCES_TARGET_URI,
+        resource_type=RESOURCE_PROCESS_INSTANCE,
         actor_field_name="process_initiator_id",
     ),
     ImportBpmnProcessDefinitionCommand: CommandAuthorizationSpec(
         command_key=PROCESS_DEFINITION_IMPORT_COMMAND,
         permission=PermissionAction.create.value,
-        target_uri=PROCESS_DEFINITIONS_TARGET_URI,
+        resource_type=RESOURCE_PROCESS_DEFINITION,
         actor_field_name="user_id",
     ),
     InitializeProcessInstanceFromDefinitionCommand: CommandAuthorizationSpec(
         command_key=PROCESS_START_COMMAND,
         permission=PermissionAction.start.value,
-        target_uri=PROCESS_MODELS_TARGET_URI,
+        resource_type=RESOURCE_PROCESS_MODEL,
         actor_field_name="process_initiator_id",
     ),
     InitializeProcessInstanceWorkflowCommand: CommandAuthorizationSpec(
         command_key=PROCESS_WORKFLOW_INITIALIZE_COMMAND,
         permission=PermissionAction.execute.value,
-        target_uri=PROCESS_INSTANCES_TARGET_URI,
+        resource_type=RESOURCE_PROCESS_INSTANCE,
     ),
     UpsertProcessInstanceMetadataCommand: CommandAuthorizationSpec(
         command_key=PROCESS_METADATA_UPSERT_COMMAND,
         permission=PermissionAction.update.value,
-        target_uri=PROCESS_INSTANCES_TARGET_URI,
+        resource_type=RESOURCE_PROCESS_INSTANCE,
     ),
     RecordProcessInstanceEventCommand: CommandAuthorizationSpec(
         command_key=PROCESS_EVENT_RECORD_COMMAND,
         permission=PermissionAction.create.value,
-        target_uri=PROCESS_INSTANCES_TARGET_URI,
+        resource_type=RESOURCE_PROCESS_INSTANCE,
         actor_field_name="user_id",
     ),
     SuspendProcessInstanceCommand: CommandAuthorizationSpec(
         command_key=PROCESS_SUSPEND_COMMAND,
         permission=PermissionAction.execute.value,
-        target_uri=PROCESS_INSTANCES_TARGET_URI,
+        resource_type=RESOURCE_PROCESS_INSTANCE,
         actor_field_name="user_id",
     ),
     ResumeProcessInstanceCommand: CommandAuthorizationSpec(
         command_key=PROCESS_RESUME_COMMAND,
         permission=PermissionAction.execute.value,
-        target_uri=PROCESS_INSTANCES_TARGET_URI,
+        resource_type=RESOURCE_PROCESS_INSTANCE,
         actor_field_name="user_id",
     ),
     ErrorProcessInstanceCommand: CommandAuthorizationSpec(
         command_key=PROCESS_ERROR_COMMAND,
         permission=PermissionAction.execute.value,
-        target_uri=PROCESS_INSTANCES_TARGET_URI,
+        resource_type=RESOURCE_PROCESS_INSTANCE,
         actor_field_name="user_id",
     ),
     RetryProcessInstanceCommand: CommandAuthorizationSpec(
         command_key=PROCESS_RETRY_COMMAND,
         permission=PermissionAction.execute.value,
-        target_uri=PROCESS_INSTANCES_TARGET_URI,
+        resource_type=RESOURCE_PROCESS_INSTANCE,
         actor_field_name="user_id",
     ),
     ScheduleProcessInstanceRetryCommand: CommandAuthorizationSpec(
         command_key=PROCESS_RETRY_COMMAND,
         permission=PermissionAction.execute.value,
-        target_uri=PROCESS_INSTANCES_TARGET_URI,
+        resource_type=RESOURCE_PROCESS_INSTANCE,
         actor_field_name="user_id",
     ),
     TerminateProcessInstanceCommand: CommandAuthorizationSpec(
         command_key=PROCESS_TERMINATE_COMMAND,
         permission=PermissionAction.execute.value,
-        target_uri=PROCESS_INSTANCES_TARGET_URI,
+        resource_type=RESOURCE_PROCESS_INSTANCE,
         actor_field_name="user_id",
     ),
 }
@@ -255,7 +262,8 @@ class DatabaseAuthorizationPolicy:
                 allowed=False,
                 reason=(
                     "A deny permission matched "
-                    f"{request.command_key} on {request.target_uri}"
+                    f"{request.command_key} on "
+                    f"{request.resource_type}:{request.resource_id}"
                 ),
             )
 
@@ -269,7 +277,8 @@ class DatabaseAuthorizationPolicy:
             allowed=False,
             reason=(
                 "No matching permission grant was found for "
-                f"{request.command_key} on {request.target_uri}"
+                f"{request.command_key} on "
+                f"{request.resource_type}:{request.resource_id}"
             ),
         )
 
@@ -314,10 +323,8 @@ def build_authorization_request(
     actor_user_id: int,
     command_key: str,
     permission: str | None = None,
-    target_uri: str | None = None,
-    target_id: int | None = None,
     resource_type: str | None = None,
-    resource_id: str | None = None,
+    resource_id: str | int | None = None,
     metadata: Mapping[str, object] | None = None,
 ) -> AuthorizationRequest:
     spec = authorization_spec_for_command_key(command_key)
@@ -326,10 +333,8 @@ def build_authorization_request(
         actor_user_id=actor_user_id,
         command_key=command_key,
         permission=permission or spec.permission,
-        target_uri=target_uri or spec.target_uri,
-        target_id=target_id,
-        resource_type=resource_type,
-        resource_id=resource_id,
+        resource_type=PermissionResourceType(resource_type or spec.resource_type),
+        resource_id=str(resource_id if resource_id is not None else tenant_id),
         metadata=metadata,
     )
 
@@ -376,10 +381,8 @@ def require_command_authorization(
     actor_user_id: int,
     command_key: str,
     permission: str | None = None,
-    target_uri: str | None = None,
-    target_id: int | None = None,
     resource_type: str | None = None,
-    resource_id: str | None = None,
+    resource_id: str | int | None = None,
     metadata: Mapping[str, object] | None = None,
     policy: AuthorizationPolicy | None = None,
 ) -> None:
@@ -388,8 +391,6 @@ def require_command_authorization(
         actor_user_id=actor_user_id,
         command_key=command_key,
         permission=permission,
-        target_uri=target_uri,
-        target_id=target_id,
         resource_type=resource_type,
         resource_id=resource_id,
         metadata=metadata,
@@ -466,37 +467,28 @@ def permission_assignment_matches_request(
     if target_command is not None and target_command != request.command_key:
         return False
 
-    target_has_type = permission_target.resource_type is not None
-    target_has_id = permission_target.resource_id is not None
-    request_has_type = request.resource_type is not None
-    request_has_id = request.resource_id is not None
-
-    if target_has_type != target_has_id or request_has_type != request_has_id:
+    target_resource_type = _normalize_resource_component(
+        permission_target.resource_type
+    )
+    target_resource_id = _normalize_resource_component(permission_target.resource_id)
+    request_resource_type = _normalize_resource_component(request.resource_type)
+    request_resource_id = _normalize_resource_component(request.resource_id)
+    if target_resource_type is None or request_resource_type is None:
         return False
-
-    if target_has_type:
-        return bool(
-            request_has_type
-            and permission_target.resource_type == request.resource_type
-            and permission_target.resource_id == request.resource_id
-        )
-
-    if request_has_type:
+    if target_resource_type == RESOURCE_TENANT:
+        return target_resource_id is None or target_resource_id == request.tenant_id
+    if target_resource_type != request_resource_type:
         return False
+    # A null target id is an explicit type-wide grant. It is not a URI
+    # wildcard and does not require Python glob or regex matching.
+    return target_resource_id is None or target_resource_id == request_resource_id
 
-    return permission_target_matches_uri(permission_target, request.target_uri)
 
-
-def permission_target_matches_uri(
-    permission_target: PermissionTargetModel,
-    target_uri: str,
-) -> bool:
-    normalized_target_uri = target_uri.strip()
-    normalized_permission_uri = permission_target.uri.strip()
-
-    if normalized_permission_uri.endswith("%"):
-        return normalized_target_uri.startswith(normalized_permission_uri[:-1])
-    return normalized_permission_uri == normalized_target_uri
+def _normalize_resource_component(value: object) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
 
 
 def group_identifier_applies_to_tenant(
@@ -592,7 +584,6 @@ def find_or_create_group(
     *,
     identifier: str,
     name: str | None = None,
-    source_is_open_id: bool = False,
 ) -> GroupModel:
     existing = session.scalar(
         select(GroupModel).where(GroupModel.identifier == identifier)
@@ -609,7 +600,6 @@ def find_or_create_group(
             "name": name or identifier,
             "identifier": identifier,
             "authorization_key": authorization_key,
-            "source_is_open_id": source_is_open_id,
         },
         conflict_columns=("authorization_key",),
     )
@@ -621,13 +611,11 @@ def add_user_to_group(
     user_id: int,
     group_identifier: str,
     group_name: str | None = None,
-    source_is_open_id: bool = False,
 ) -> UserGroupAssignmentModel:
     group = find_or_create_group(
         session,
         identifier=group_identifier,
         name=group_name,
-        source_is_open_id=source_is_open_id,
     )
     return _get_or_create(
         session,
@@ -669,51 +657,36 @@ def find_or_create_principal_for_group(
 def find_or_create_permission_target(
     session: Session,
     *,
-    uri: str,
     command: str | None = None,
-    resource_type: str | None = None,
-    resource_id: str | int | None = None,
+    resource_type: str,
+    resource_id: str | int | None,
 ) -> PermissionTargetModel:
-    normalized_resource_type = (
-        resource_type.strip() if resource_type is not None else None
-    )
+    normalized_resource_type = PermissionResourceType(resource_type.strip()).value
     normalized_resource_id = (
         str(resource_id).strip() if resource_id is not None else None
     )
-    if (normalized_resource_type is None) != (normalized_resource_id is None):
-        raise InvalidPermissionTargetError(
-            "resource_type and resource_id must be provided together"
-        )
+    if not normalized_resource_id and resource_id is not None:
+        raise InvalidPermissionTargetError("resource_id cannot be blank")
     candidate = PermissionTargetModel(
-        uri=uri,
         command=command,
-        resource_type=resource_type,
+        resource_type=normalized_resource_type,
         resource_id=normalized_resource_id,
     )
-    conflict_columns: tuple[str, ...]
-    if normalized_resource_type is not None:
-        lookup = {
-            "resource_type": candidate.resource_type,
-            "resource_id": candidate.resource_id,
-            "command": candidate.command,
-        }
-        conflict_columns = (
-            ("resource_type", "resource_id", "command")
-            if candidate.command is not None
-            else ()
-        )
-    else:
-        lookup = {
-            "uri": candidate.uri,
-            "command": candidate.command,
-        }
-        conflict_columns = ("uri", "command") if candidate.command is not None else ()
+    lookup = {
+        "resource_type": candidate.resource_type,
+        "resource_id": candidate.resource_id,
+        "command": candidate.command,
+    }
+    conflict_columns = (
+        ("resource_type", "resource_id", "command")
+        if candidate.command is not None
+        else ()
+    )
     return _get_or_create(
         session,
         PermissionTargetModel,
         lookup=lookup,
         values={
-            "uri": candidate.uri,
             "command": candidate.command,
             "resource_type": candidate.resource_type,
             "resource_id": candidate.resource_id,
@@ -727,24 +700,20 @@ def grant_permission_to_group(
     *,
     group_identifier: str,
     permission: str,
-    target_uri: str,
     command: str | None = None,
-    resource_type: str | None = None,
-    resource_id: str | int | None = None,
+    resource_type: str,
+    resource_id: str | int | None,
     grant_type: str = PermitDeny.permit.value,
     group_name: str | None = None,
-    source_is_open_id: bool = False,
 ) -> PermissionAssignmentModel:
     group = find_or_create_group(
         session,
         identifier=group_identifier,
         name=group_name,
-        source_is_open_id=source_is_open_id,
     )
     principal = find_or_create_principal_for_group(session, group_id=group.id)
     permission_target = find_or_create_permission_target(
         session,
-        uri=target_uri,
         command=command,
         resource_type=resource_type,
         resource_id=resource_id,
@@ -763,16 +732,14 @@ def grant_permission_to_user(
     *,
     user_id: int,
     permission: str,
-    target_uri: str,
     command: str | None = None,
-    resource_type: str | None = None,
-    resource_id: str | int | None = None,
+    resource_type: str,
+    resource_id: str | int | None,
     grant_type: str = PermitDeny.permit.value,
 ) -> PermissionAssignmentModel:
     principal = find_or_create_principal_for_user(session, user_id=user_id)
     permission_target = find_or_create_permission_target(
         session,
-        uri=target_uri,
         command=command,
         resource_type=resource_type,
         resource_id=resource_id,
@@ -793,7 +760,6 @@ def grant_command_permissions_to_group(
     command_keys: Sequence[str],
     grant_type: str = PermitDeny.permit.value,
     group_name: str | None = None,
-    source_is_open_id: bool = False,
 ) -> list[PermissionAssignmentModel]:
     assignments: list[PermissionAssignmentModel] = []
     for command_key in command_keys:
@@ -803,11 +769,11 @@ def grant_command_permissions_to_group(
                 session,
                 group_identifier=group_identifier,
                 permission=spec.permission,
-                target_uri=spec.target_uri,
                 command=spec.command_key,
+                resource_type=RESOURCE_TENANT,
+                resource_id=group_identifier.split(":", 1)[0],
                 grant_type=grant_type,
                 group_name=group_name,
-                source_is_open_id=source_is_open_id,
             )
         )
     return assignments
@@ -915,7 +881,6 @@ __all__ = [
     "group_identifier_applies_to_tenant",
     "permission_assignment_matches_request",
     "permission_assignments_for_user",
-    "permission_target_matches_uri",
     "require_command_authorization",
     "resolve_authorization_policy",
     "set_default_authorization_policy_factory",

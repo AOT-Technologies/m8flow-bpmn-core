@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -50,8 +50,8 @@ def test_import_definition_schedules_timer_start_job(session: Session) -> None:
         service="http://localhost:7002/realms/tenant-timer-start-scheduling",
         service_id="timer-start-admin-keycloak",
         display_name="Timer Start Admin",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()
@@ -70,8 +70,8 @@ def test_import_definition_schedules_timer_start_job(session: Session) -> None:
             user_id=user.id,
             bpmn_name="Timer Start Scheduling Process",
             source_bpmn_xml=TIMER_START_BPMN,
-            created_at=10,
-            updated_at=10,
+            created_at=datetime.fromtimestamp(10, UTC),
+            updated_at=datetime.fromtimestamp(10, UTC),
         ),
     )
 

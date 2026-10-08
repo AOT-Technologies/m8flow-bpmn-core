@@ -415,7 +415,7 @@ def _run_timer_poc(
         + timedelta(seconds=SCHEDULE_DELAY_SECONDS)
     )
     bpmn_xml = _render_timer_start_bpmn_xml(scheduled_due_at)
-    import_timestamp = round(time.time())
+    import_timestamp = datetime.now(UTC).replace(microsecond=0)
     import_command = api.ImportBpmnProcessDefinitionCommand(
         tenant_id=context.tenant_id,
         bpmn_identifier=PROCESS_MODEL_IDENTIFIER,
@@ -609,7 +609,7 @@ def _run_timer_poc(
         ),
         command=api.ClaimTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=operator_task.id,
+            work_item_id=operator_task.id,
             user_id=context.operator_user_id,
         ),
     )
@@ -625,9 +625,9 @@ def _run_timer_poc(
         ),
         command=api.CompleteTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=operator_task.id,
+            work_item_id=operator_task.id,
             user_id=context.operator_user_id,
-            completed_at=round(time.time()),
+            completed_at=datetime.now(UTC).replace(microsecond=0),
             task_payload={
                 "acknowledged_by": context.operator_username,
                 "acknowledged_at": datetime.now(UTC).replace(

@@ -396,7 +396,7 @@ def _run_cycle_timer_poc(
     _pause("Press Enter to execute the import command.")
 
     bpmn_xml = _render_cycle_timer_bpmn_xml(cycle_expression)
-    import_timestamp = round(time.time())
+    import_timestamp = datetime.now(UTC).replace(microsecond=0)
     import_command = api.ImportBpmnProcessDefinitionCommand(
         tenant_id=context.tenant_id,
         bpmn_identifier=PROCESS_MODEL_IDENTIFIER,
@@ -649,7 +649,7 @@ def _run_cycle_timer_poc(
         pformat(
             [
                 {
-                    "human_task_id": task.id,
+                    "work_item_id": task.id,
                     "process_instance_id": task.process_instance_id,
                     "task_name": task.task_name,
                     "task_status": task.task_status,

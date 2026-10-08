@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -12,13 +12,13 @@ from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
 
 VALIDATION_BPMN_PATH = (
     Path(__file__).with_name("fixtures") / "invoice_approval_poc.bpmn"
@@ -30,7 +30,7 @@ class AuthorizationHookContext:
     tenant: M8flowTenantModel
     user: UserModel
     definition: BpmnProcessDefinitionModel
-    human_task: HumanTaskModel
+    human_task: WorkItemModel
 
 
 def test_public_policy_scope_receives_task_request_metadata(
@@ -53,16 +53,17 @@ def test_public_policy_scope_receives_task_request_metadata(
             session,
             api.ClaimTaskCommand(
                 tenant_id=context.tenant.id,
-                human_task_id=context.human_task.id,
+                work_item_id=context.human_task.id,
                 user_id=context.user.id,
             ),
         )
 
     request = captured["request"]
     assert request.command_key == api.TASK_CLAIM_COMMAND
-    assert request.target_id == context.human_task.id
+    assert request.resource_type == "task"
+    assert request.resource_id == context.human_task.task_guid
     assert request.metadata is not None
-    assert request.metadata["human_task_id"] == context.human_task.id
+    assert request.metadata["work_item_id"] == context.human_task.id
     assert (
         request.metadata["process_instance_id"]
         == context.human_task.process_instance_id
@@ -103,7 +104,7 @@ def test_public_default_policy_factory_overrides_process_start_authorization(
                     process_initiator_id=context.user.id,
                     summary="Blocked by policy hook",
                     process_version=1,
-                    started_at=100,
+                    started_at=datetime.fromtimestamp(100, UTC),
                     bpmn_process_id="invoice_approval_poc",
                 ),
             )
@@ -114,7 +115,8 @@ def test_public_default_policy_factory_overrides_process_start_authorization(
 
     request = captured["request"]
     assert request.command_key == api.PROCESS_START_COMMAND
-    assert request.target_id == context.definition.id
+    assert request.resource_type == "process_model"
+    assert request.resource_id == context.definition.process_model_identifier
     assert request.metadata is not None
     assert (
         request.metadata["bpmn_process_definition_id"]
@@ -141,8 +143,8 @@ def _seed_authorization_hook_context(
         service=f"http://localhost:7002/realms/{tenant.slug}",
         service_id="policy-user-keycloak",
         display_name="Policy User",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()
@@ -150,15 +152,14 @@ def _seed_authorization_hook_context(
     bpmn_xml = VALIDATION_BPMN_PATH.read_text(encoding="utf-8")
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash=hashlib.sha256(f"single::{bpmn_xml}".encode()).hexdigest(),
-        full_process_model_hash=hashlib.sha256(bpmn_xml.encode("utf-8")).hexdigest(),
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="invoice-approval-poc",
         bpmn_name="Invoice Approval POC",
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at=90,
-        updated_at=90,
+        created_at=datetime.fromtimestamp(90, UTC),
+        updated_at=datetime.fromtimestamp(90, UTC),
     )
     definition.source_bpmn_xml = bpmn_xml
     session.add(definition)
@@ -182,9 +183,9 @@ def _seed_authorization_hook_context(
         bpmn_identifier="approve_invoice",
         bpmn_name="Approve Invoice",
         typename="UserTask",
-        properties_json={"allowGuest": False},
-        created_at=95,
-        updated_at=95,
+        properties_json={"allowGuest": False, "lane": "finance"},
+        created_at=datetime.fromtimestamp(95, UTC),
+        updated_at=datetime.fromtimestamp(95, UTC),
     )
     session.add(task_definition)
     session.flush()
@@ -192,13 +193,13 @@ def _seed_authorization_hook_context(
     process_instance = ProcessInstanceModel(
         m8f_tenant_id=tenant.id,
         process_model_identifier=definition.process_model_identifier,
-        process_model_display_name="Invoice Approval POC",
+        process_model_display_name=definition.process_model_identifier,
         process_initiator_id=user.id,
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at=100,
-        updated_at=100,
+        created_at=datetime.fromtimestamp(100, UTC),
+        updated_at=datetime.fromtimestamp(100, UTC),
     )
     session.add(process_instance)
     session.flush()
@@ -210,37 +211,30 @@ def _seed_authorization_hook_context(
         process_instance_id=process_instance.id,
         task_definition_id=task_definition.id,
         state="READY",
-        properties_json={"task_spec": "Approve Invoice"},
+        properties_json={"task_spec": "Approve Invoice", "lane": "finance"},
         json_data_hash="authorization-hooks-task-json",
         python_env_data_hash="authorization-hooks-task-env",
     )
     session.add(task)
     session.flush()
 
-    human_task = HumanTaskModel(
+    human_task = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
         task_guid=task.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
-        task_name="approve_invoice",
-        task_title="Approve Invoice",
-        task_type="User Task",
         task_status="READY",
-        process_model_display_name=process_instance.process_model_display_name,
-        bpmn_process_identifier=process_instance.process_model_identifier,
-        lane_name="finance",
-        json_metadata={"priority": "high"},
         completed=False,
     )
     session.add(human_task)
     session.flush()
 
     session.add(
-        HumanTaskUserModel(
+        WorkItemUserModel(
             m8f_tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
             added_by="manual",
         )
