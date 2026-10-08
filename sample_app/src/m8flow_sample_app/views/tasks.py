@@ -55,26 +55,26 @@ def register_task_routes(app: Flask) -> None:
                 user_id=identity.user.id,
             )
             rows = []
-            for human_task in tasks:
+            for work_item in tasks:
                 actions = []
-                if human_task.actual_owner_id is None:
+                if work_item.actual_owner_id is None:
                     actions.append(
                         post_button(
-                            url_for("claim_task_action", human_task_id=human_task.id),
+                            url_for("claim_task_action", work_item_id=work_item.id),
                             "Claim",
                         )
                     )
                 actions.append(
-                    f'<a href="{escape(url_for("task_detail", human_task_id=human_task.id))}">Open</a>'
+                    f'<a href="{escape(url_for("task_detail", work_item_id=work_item.id))}">Open</a>'
                 )
                 rows.append(
                     f"""
 <tr>
-  <td>{human_task.id}</td>
-  <td>{escape(human_task.task_title or human_task.task_name)}</td>
-  <td>{escape(human_task.task_status)}</td>
-  <td>{escape(human_task.lane_name or '')}</td>
-  <td>{human_task.process_instance_id}</td>
+  <td>{work_item.id}</td>
+  <td>{escape(work_item.task_title or work_item.task_name)}</td>
+  <td>{escape(work_item.task_status)}</td>
+  <td>{escape(work_item.lane_name or '')}</td>
+  <td>{work_item.process_instance_id}</td>
   <td class="actions">{''.join(actions)}</td>
 </tr>
 """
@@ -105,8 +105,8 @@ tenant and user.</p>
 """
             return render_page("Tasks", body, identity=identity)
 
-    @app.post("/tasks/<int:human_task_id>/claim")
-    def claim_task_action(human_task_id: int):
+    @app.post("/tasks/<int:work_item_id>/claim")
+    def claim_task_action(work_item_id: int):
         with session_scope() as db_session:
             identity = get_active_identity(db_session)
             if identity is None:
@@ -116,16 +116,16 @@ tenant and user.</p>
                     db_session,
                     tenant_id=identity.tenant.id,
                     user_id=identity.user.id,
-                    human_task_id=human_task_id,
+                    work_item_id=work_item_id,
                 )
             except api.BpmnCoreError as exc:
                 flash(str(exc), "error")
             else:
-                flash(f"Task {human_task_id} claimed.", "success")
+                flash(f"Task {work_item_id} claimed.", "success")
             return redirect(url_for("tasks_page"))
 
-    @app.get("/tasks/<int:human_task_id>")
-    def task_detail(human_task_id: int):
+    @app.get("/tasks/<int:work_item_id>")
+    def task_detail(work_item_id: int):
         with session_scope() as db_session:
             identity = get_active_identity(db_session)
             if identity is None:
@@ -136,7 +136,7 @@ tenant and user.</p>
                     db_session,
                     tenant_id=identity.tenant.id,
                     user_id=identity.user.id,
-                    human_task_id=human_task_id,
+                    work_item_id=work_item_id,
                 )
             except api.BpmnCoreError as exc:
                 flash(str(exc), "error")
@@ -148,7 +148,7 @@ tenant and user.</p>
             )
             claim_html = (
                 post_button(
-                    url_for("claim_task_action", human_task_id=task.id),
+                    url_for("claim_task_action", work_item_id=task.id),
                     "Claim this task",
                 )
                 if task.actual_owner_id is None and not task.completed
@@ -177,8 +177,8 @@ tenant and user.</p>
 """
             return render_page(f"Task {task.id}", body, identity=identity)
 
-    @app.post("/tasks/<int:human_task_id>/complete")
-    def complete_task_action(human_task_id: int):
+    @app.post("/tasks/<int:work_item_id>/complete")
+    def complete_task_action(work_item_id: int):
         with session_scope() as db_session:
             identity = get_active_identity(db_session)
             if identity is None:
@@ -191,14 +191,14 @@ tenant and user.</p>
                     db_session,
                     tenant_id=identity.tenant.id,
                     user_id=identity.user.id,
-                    human_task_id=human_task_id,
+                    work_item_id=work_item_id,
                     task_payload=payload,
                 )
             except (ValueError, api.BpmnCoreError) as exc:
                 flash(str(exc), "error")
-                return redirect(url_for("task_detail", human_task_id=human_task_id))
+                return redirect(url_for("task_detail", work_item_id=work_item_id))
 
-            flash(f"Task {human_task_id} completed.", "success")
+            flash(f"Task {work_item_id} completed.", "success")
             return redirect(url_for("tasks_page"))
 
 
@@ -233,7 +233,7 @@ def _complete_task_form(*, task_name: str | None, task_id: int) -> str:
             "out and the workflow escalated to the Supervisor lane.</p>"
         )
     return f"""
-<form method="post" action="{escape(url_for("complete_task_action", human_task_id=task_id))}">
+<form method="post" action="{escape(url_for("complete_task_action", work_item_id=task_id))}">
   <label for="task_payload_json">Task payload JSON</label><br />
   <textarea id="task_payload_json" name="task_payload_json">{escape(example_json)}</textarea><br /><br />
   <button type="submit">Submit task payload and complete</button>

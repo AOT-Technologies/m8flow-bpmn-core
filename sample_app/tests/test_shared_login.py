@@ -360,7 +360,7 @@ def _load_shared_seeded_admin() -> tuple[M8flowTenantModel, UserModel]:
         admin_user = db_session.scalar(
             select(UserModel).where(
                 UserModel.username == "alpha-admin",
-                UserModel.tenant_specific_field_1 == tenant.id,
+                UserModel.realm_identifier == tenant.id,
             )
         )
         assert admin_user is not None

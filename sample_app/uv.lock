@@ -248,8 +248,8 @@ wheels = [
 
 [[package]]
 name = "m8flow-bpmn-core"
-version = "0.2.0"
-source = { path = "vendor/m8flow_bpmn_core-0.2.0-py3-none-any.whl" }
+version = "0.2.1"
+source = { path = "vendor/m8flow_bpmn_core-0.2.1-py3-none-any.whl" }
 dependencies = [
     { name = "alembic" },
     { name = "pydantic" },
@@ -258,7 +258,7 @@ dependencies = [
     { name = "sqlalchemy" },
 ]
 wheels = [
-    { filename = "m8flow_bpmn_core-0.2.0-py3-none-any.whl", hash = "sha256:399fbcdbb29fb6cb143efae8f462b1c7c96b0a8dd6cf833090fdc5e464b6898f" },
+    { filename = "m8flow_bpmn_core-0.2.1-py3-none-any.whl", hash = "sha256:61dbcbb7cbdb862ac2f89f5e4bf00e6e6b2d25b3aceca1a5aeaeF2984bf70f69" },
 ]
 
 [package.metadata]
@@ -299,7 +299,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.16,<2.0" },
     { name = "defusedxml", specifier = ">=0.7,<1.0" },
     { name = "flask", specifier = ">=3.0,<4.0" },
-    { name = "m8flow-bpmn-core", path = "vendor/m8flow_bpmn_core-0.2.0-py3-none-any.whl" },
+    { name = "m8flow-bpmn-core", path = "vendor/m8flow_bpmn_core-0.2.1-py3-none-any.whl" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4.0" },
     { name = "pydantic-settings", specifier = ">=2.3,<3.0" },
     { name = "sqlalchemy", specifier = ">=2.0,<3.0" },

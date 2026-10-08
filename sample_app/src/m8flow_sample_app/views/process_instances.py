@@ -247,7 +247,7 @@ def register_process_instance_routes(app: Flask) -> None:
                 else "<p>No events have been recorded for this instance yet.</p>"
             )
 
-            human_task_rows = "".join(
+            work_item_rows = "".join(
                 f"""
 <tr>
   <td>{human_task.id}</td>
@@ -257,16 +257,16 @@ def register_process_instance_routes(app: Flask) -> None:
   <td>{human_task.actual_owner_id or ''}</td>
   <td>{
       (
-          f'<a href="{escape(url_for("task_detail", human_task_id=human_task.id))}">Open task</a>'
+          f'<a href="{escape(url_for("task_detail", work_item_id=human_task.id))}">Open task</a>'
           if any(owner.id == identity.user.id for owner in human_task.potential_owners)
           else "Not assigned to active user"
       )
   }</td>
 </tr>
 """
-                for human_task in detail.human_tasks
+                for human_task in detail.work_items
             )
-            human_tasks_html = (
+            work_items_html = (
                 f"""
 <table>
   <thead>
@@ -279,11 +279,11 @@ def register_process_instance_routes(app: Flask) -> None:
       <th>Action</th>
     </tr>
   </thead>
-  <tbody>{human_task_rows}</tbody>
+  <tbody>{work_item_rows}</tbody>
 </table>
 """
-                if detail.human_tasks
-                else "<p>No human tasks are attached to this instance.</p>"
+                if detail.work_items
+                else "<p>No work items are attached to this instance.</p>"
             )
 
             body = f"""
@@ -293,8 +293,8 @@ def register_process_instance_routes(app: Flask) -> None:
 <p><strong>Started by:</strong> {escape(detail.process_instance.process_initiator.username)}</p>
 <p><strong>Started:</strong> {format_timestamp(detail.process_instance.started_at)}</p>
 <p><strong>Ended:</strong> {format_timestamp(detail.process_instance.ended_at)}</p>
-<h2>Human tasks</h2>
-{human_tasks_html}
+<h2>Work items</h2>
+{work_items_html}
 <h2>Metadata</h2>
 {metadata_html}
 <h2>Events</h2>

@@ -159,8 +159,8 @@ def test_shared_seed_uses_keycloak_organization_and_user_ids(
         assert alpha_admin is not None
         assert alpha_admin.service == keycloak_context.service_issuer
         assert alpha_admin.service_id == "kc-alpha-admin"
-        assert alpha_admin.tenant_specific_field_1 == "org-alpha"
-        assert alpha_admin.tenant_specific_field_2 == "sample-tenant-alpha"
+        assert alpha_admin.realm_identifier == "org-alpha"
+        assert alpha_admin.external_org_id == "sample-tenant-alpha"
         assert (
             db_session.scalar(
                 select(PrincipalModel).where(PrincipalModel.user_id == alpha_admin.id)
@@ -217,7 +217,7 @@ def test_shared_seed_realigns_legacy_tenant_and_user_rows(
         alpha_users = list(
             db_session.scalars(
                 select(UserModel).where(
-                    UserModel.tenant_specific_field_2 == "sample-tenant-alpha"
+                    UserModel.external_org_id == "sample-tenant-alpha"
                 )
             )
         )
@@ -231,7 +231,7 @@ def test_shared_seed_realigns_legacy_tenant_and_user_rows(
         assert all(
             user.service == keycloak_context.service_issuer for user in alpha_users
         )
-        assert all(user.tenant_specific_field_1 == "org-alpha" for user in alpha_users)
+        assert all(user.realm_identifier == "org-alpha" for user in alpha_users)
 
     get_settings.cache_clear()
 
@@ -268,8 +268,8 @@ def test_shared_seed_backfills_missing_principal_for_existing_user(
                 service="http://localhost:6842/realms/m8flow",
                 service_id="kc-beta-admin",
                 display_name="Beta Admin",
-                tenant_specific_field_1="org-beta",
-                tenant_specific_field_2="sample-tenant-beta",
+                realm_identifier="org-beta",
+                external_org_id="sample-tenant-beta",
                 created_at=datetime.fromtimestamp(0, UTC),
                 updated_at=datetime.fromtimestamp(0, UTC),
             )
