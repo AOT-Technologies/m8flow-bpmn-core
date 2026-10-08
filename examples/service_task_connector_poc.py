@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import threading
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -555,8 +554,8 @@ def _run_service_task_connector_poc(
                 },
                 bpmn_version_control_type="git",
                 bpmn_version_control_identifier="service-task-poc",
-                created_at=round(time.time()),
-                updated_at=round(time.time()),
+                created_at=datetime.now(UTC).replace(microsecond=0),
+                updated_at=datetime.now(UTC).replace(microsecond=0),
             ),
             registry=registry,
         )
@@ -586,7 +585,7 @@ def _run_service_task_connector_poc(
                 submission_metadata={
                     "submission_message": PROCESS_START_MESSAGE,
                 },
-                started_at=round(time.time()),
+                started_at=datetime.now(UTC).replace(microsecond=0),
             ),
             registry=registry,
         )
@@ -638,7 +637,7 @@ def _run_service_task_connector_poc(
             ),
             command=api.ClaimTaskCommand(
                 tenant_id=context.tenant_id,
-                human_task_id=operator_task.id,
+                work_item_id=operator_task.id,
                 user_id=context.operator_user_id,
             ),
             registry=registry,
@@ -655,9 +654,9 @@ def _run_service_task_connector_poc(
             ),
             command=api.CompleteTaskCommand(
                 tenant_id=context.tenant_id,
-                human_task_id=operator_task.id,
+                work_item_id=operator_task.id,
                 user_id=context.operator_user_id,
-                completed_at=round(time.time()),
+                completed_at=datetime.now(UTC).replace(microsecond=0),
                 task_payload={
                     "decision": TASK_COMPLETION_DECISION,
                     "completed_by": context.operator_username,

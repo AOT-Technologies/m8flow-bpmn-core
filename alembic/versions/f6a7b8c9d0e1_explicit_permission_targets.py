@@ -36,17 +36,35 @@ def upgrade() -> None:
         ["resource_id"],
         unique=False,
     )
-    with op.batch_alter_table("permission_target", recreate="always") as batch_op:
-        batch_op.create_unique_constraint(
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table(
+            "permission_target", recreate="always"
+        ) as batch_op:
+            batch_op.create_unique_constraint(
+                "m8f_permission_target_resource_command_key",
+                ["resource_type", "resource_id", "command"],
+            )
+    else:
+        op.create_unique_constraint(
             "m8f_permission_target_resource_command_key",
+            "permission_target",
             ["resource_type", "resource_id", "command"],
         )
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("permission_target", recreate="always") as batch_op:
-        batch_op.drop_constraint(
-            "m8f_permission_target_resource_command_key", type_="unique"
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table(
+            "permission_target", recreate="always"
+        ) as batch_op:
+            batch_op.drop_constraint(
+                "m8f_permission_target_resource_command_key", type_="unique"
+            )
+    else:
+        op.drop_constraint(
+            "m8f_permission_target_resource_command_key",
+            "permission_target",
+            type_="unique",
         )
     op.drop_index(
         "ix_permission_target_resource_id", table_name="permission_target"

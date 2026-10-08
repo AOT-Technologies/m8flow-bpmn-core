@@ -52,7 +52,7 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
         ForeignKey("bpmn_process.id"),
         index=True,
     )
-    spiff_serializer_version: Mapped[str | None] = mapped_column(String(50))
+    workflow_engine_version: Mapped[str | None] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(
         String(50), index=True, nullable=False, default="running"
     )
@@ -87,20 +87,18 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
     tasks = relationship(
         "TaskModel", back_populates="process_instance", cascade="all, delete-orphan"
     )
-    human_tasks = relationship(
-        "HumanTaskModel",
+    work_items = relationship(
+        "WorkItemModel",
         back_populates="process_instance",
         cascade="all, delete-orphan",
-        overlaps="active_human_tasks",
     )
-    active_human_tasks = relationship(
-        "HumanTaskModel",
+    active_work_items = relationship(
+        "WorkItemModel",
         primaryjoin=(
-            "and_(HumanTaskModel.process_instance_id == ProcessInstanceModel.id, "
-            "HumanTaskModel.completed == False)"
+            "and_(WorkItemModel.process_instance_id == ProcessInstanceModel.id, "
+            "WorkItemModel.completed == False)"
         ),
         viewonly=True,
-        overlaps="human_tasks",
     )
     process_instance_events = relationship(
         "ProcessInstanceEventModel",

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import os
+from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect
+from sqlalchemy.orm import Session
 
+from m8flow_bpmn_core.models.user import UserModel
 from m8flow_bpmn_core.settings import get_settings
 
 
@@ -15,6 +20,69 @@ def _alembic_config() -> Config:
     config = Config(str(repository_root / "alembic.ini"))
     config.set_main_option("script_location", str(repository_root / "alembic"))
     return config
+
+
+@pytest.mark.skipif(
+    not os.getenv("M8FLOW_POSTGRES_UPGRADE_DATABASE_URL", "").startswith(
+        "postgresql"
+    ),
+    reason=(
+        "set M8FLOW_POSTGRES_UPGRADE_DATABASE_URL to run the PostgreSQL "
+        "upgrade test"
+    ),
+)
+def test_postgresql_upgrade_supports_post_2038_timezone_aware_values(
+    monkeypatch,
+) -> None:
+    database_url = os.environ["M8FLOW_POSTGRES_UPGRADE_DATABASE_URL"]
+    monkeypatch.setenv("M8FLOW_DATABASE_URL", database_url)
+    get_settings.cache_clear()
+
+    try:
+        command.upgrade(_alembic_config(), "head")
+        engine = sa.create_engine(database_url)
+        try:
+            with engine.connect() as connection:
+                assert connection.scalar(
+                    sa.text("SELECT version_num FROM alembic_version")
+                ) == "k2l3m4n5o6p7"
+
+                legacy_columns = {
+                    "created_at_in_seconds",
+                    "updated_at_in_seconds",
+                    "start_in_seconds",
+                    "end_in_seconds",
+                    "task_updated_at_in_seconds",
+                    "run_at_in_seconds",
+                    "queued_to_run_at_in_seconds",
+                    "timestamp",
+                }
+                for table_name in inspect(connection).get_table_names():
+                    columns = {
+                        column["name"]
+                        for column in inspect(connection).get_columns(table_name)
+                    }
+                    assert columns.isdisjoint(legacy_columns), table_name
+
+            timestamp = datetime(2040, 1, 1, 12, 30, tzinfo=UTC)
+            with Session(engine) as session:
+                user = UserModel(
+                    username="postgres-upgrade-post-2038",
+                    service="test",
+                    service_id="postgres-upgrade-post-2038",
+                    created_at=timestamp,
+                    updated_at=timestamp,
+                )
+                session.add(user)
+                session.flush()
+                session.refresh(user)
+                assert user.created_at == timestamp
+                assert user.updated_at == timestamp
+                session.rollback()
+        finally:
+            engine.dispose()
+    finally:
+        get_settings.cache_clear()
 
 
 def test_full_migration_chain_reaches_head_on_sqlite(
@@ -32,7 +100,7 @@ def test_full_migration_chain_reaches_head_on_sqlite(
             with engine.connect() as connection:
                 assert connection.scalar(
                     sa.text("SELECT version_num FROM alembic_version")
-                ) == "f7a8b9c0d1e2"
+                ) == "k2l3m4n5o6p7"
                 legacy_columns = {
                     "created_at_in_seconds",
                     "updated_at_in_seconds",
@@ -132,21 +200,29 @@ def test_authorization_migrations_preserve_legacy_rows(
                     "INSERT INTO permission_target (uri, command) "
                     "VALUES (:uri, :command)"
                 ),
-                {"uri": "/tasks/%", "command": "task.claim"},
+                {
+                    "uri": "/tasks/42",
+                    "command": "task.claim",
+                },
             )
 
         command.upgrade(config, "head")
 
         inspector = inspect(engine)
-        group_columns = {column["name"] for column in inspector.get_columns("group")}
+        group_columns = {
+            column["name"] for column in inspector.get_columns("m8f_group")
+        }
         target_columns = {
             column["name"]
             for column in inspector.get_columns("permission_target")
         }
         assert "authorization_key" in group_columns
+        assert "source_is_open_id" not in group_columns
         assert {"resource_type", "resource_id"} <= target_columns
+        assert "uri" not in target_columns
         assert "m8f_group_authorization_key" in {
-            item.get("name") for item in inspector.get_unique_constraints("group")
+            item.get("name")
+            for item in inspector.get_unique_constraints("m8f_group")
         }
         assert "m8f_principal_exactly_one_subject" in {
             item.get("name") for item in inspector.get_check_constraints("principal")
@@ -155,22 +231,59 @@ def test_authorization_migrations_preserve_legacy_rows(
         with engine.connect() as connection:
             legacy_target = connection.execute(
                 sa.text(
-                    "SELECT uri, command, resource_type, resource_id "
-                    "FROM permission_target WHERE uri = '/tasks/%'"
+                    "SELECT command, resource_type, resource_id "
+                    "FROM permission_target "
+                    "WHERE resource_type = 'task' AND resource_id = '42'"
                 )
             ).one()
             assert tuple(legacy_target) == (
-                "/tasks/%",
                 "task.claim",
-                None,
-                None,
+                "task",
+                "42",
             )
             assert connection.scalar(
                 sa.text(
-                    "SELECT COUNT(*) FROM \"group\" "
+                    "SELECT COUNT(*) FROM m8f_group "
                     "WHERE identifier = 'tenant-a:manager'"
                 )
             ) == 1
+    finally:
+        engine.dispose()
+        get_settings.cache_clear()
+
+
+def test_breaking_migration_maps_collection_uri_to_type_wide_target(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'preflight-uri.db'}"
+    monkeypatch.setenv("M8FLOW_DATABASE_URL", database_url)
+    get_settings.cache_clear()
+
+    config = _alembic_config()
+    command.upgrade(config, "e1f2a3b4c5d6")
+    engine = sa.create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    "INSERT INTO permission_target (uri, command) "
+                    "VALUES ('/tasks/%', 'task.claim')"
+                )
+            )
+
+        command.upgrade(config, "head")
+
+        with engine.connect() as connection:
+            assert connection.scalar(
+                sa.text("SELECT version_num FROM alembic_version")
+            ) == "k2l3m4n5o6p7"
+            target = connection.execute(
+                sa.text(
+                    "SELECT resource_type, resource_id FROM permission_target"
+                )
+            ).one()
+            assert tuple(target) == ("task", None)
     finally:
         engine.dispose()
         get_settings.cache_clear()

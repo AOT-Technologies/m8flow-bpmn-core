@@ -10,7 +10,7 @@ from m8flow_bpmn_core.models.base import Base
 from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantScoped
 
 
-class HumanTaskUserAddedBy(StrEnum):
+class WorkItemUserAddedBy(StrEnum):
     guest = "guest"
     lane_assignment = "lane_assignment"
     lane_owner = "lane_owner"
@@ -18,28 +18,27 @@ class HumanTaskUserAddedBy(StrEnum):
     process_initiator = "process_initiator"
 
 
-class HumanTaskUserModel(M8fTenantScopedMixin, TenantScoped, Base):
-    __tablename__ = "human_task_user"
+class WorkItemUserModel(M8fTenantScopedMixin, TenantScoped, Base):
+    __tablename__ = "work_item_user"
     __table_args__ = (
-        UniqueConstraint(
-            "human_task_id", "user_id", name="m8f_human_task_user_key"
-        ),
+        UniqueConstraint("work_item_id", "user_id", name="m8f_work_item_user_key"),
     )
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    human_task_id: Mapped[int] = mapped_column(
-        ForeignKey("human_task.id"), index=True, nullable=False
+    work_item_id: Mapped[int] = mapped_column(
+        ForeignKey("work_item.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
     )
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("user.id"), index=True, nullable=False
+        ForeignKey("user.id"), primary_key=True, index=True, nullable=False
     )
     added_by: Mapped[str | None] = mapped_column(String(20), index=True)
 
-    human_task = relationship("HumanTaskModel", back_populates="human_task_users")
+    work_item = relationship("WorkItemModel", back_populates="work_item_users")
     user = relationship("UserModel")
 
     @validates("added_by")
     def validate_added_by(self, key: str, value: Any) -> Any:
         if value is None:
             return None
-        return HumanTaskUserAddedBy(value).value
+        return WorkItemUserAddedBy(value).value

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -12,14 +12,14 @@ from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
 from m8flow_bpmn_core.services.authorization import (
     ROLE_ADMIN,
     ROLE_USER,
@@ -43,7 +43,7 @@ class TaskContext:
     tenant: M8flowTenantModel
     actor: UserModel
     process_instance: ProcessInstanceModel
-    human_task: HumanTaskModel
+    human_task: WorkItemModel
 
 
 def test_process_definition_import_requires_command_permission(
@@ -60,8 +60,8 @@ def test_process_definition_import_requires_command_permission(
         service=f"http://localhost:7002/realms/{tenant.slug}",
         service_id="importer-keycloak",
         display_name="Importer",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, actor])
     session.flush()
@@ -111,7 +111,7 @@ def test_process_start_requires_command_permission(session: Session) -> None:
                 process_initiator_id=context.actor.id,
                 summary="Unauthorized start",
                 process_version=1,
-                started_at=100,
+                started_at=datetime.fromtimestamp(100, UTC),
                 bpmn_process_id="invoice_approval_poc",
             ),
         )
@@ -130,7 +130,7 @@ def test_process_start_requires_command_permission(session: Session) -> None:
             process_initiator_id=context.actor.id,
             summary="Authorized start",
             process_version=1,
-            started_at=110,
+            started_at=datetime.fromtimestamp(110, UTC),
             bpmn_process_id="invoice_approval_poc",
         ),
     )
@@ -147,7 +147,7 @@ def test_task_claim_requires_command_permission(session: Session) -> None:
             session,
             api.ClaimTaskCommand(
                 tenant_id=context.tenant.id,
-                human_task_id=context.human_task.id,
+                work_item_id=context.human_task.id,
                 user_id=context.actor.id,
             ),
         )
@@ -162,7 +162,7 @@ def test_task_claim_requires_command_permission(session: Session) -> None:
         session,
         api.ClaimTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=context.human_task.id,
+            work_item_id=context.human_task.id,
             user_id=context.actor.id,
         ),
     )
@@ -179,9 +179,9 @@ def test_task_completion_requires_command_permission(session: Session) -> None:
             session,
             api.CompleteTaskCommand(
                 tenant_id=context.tenant.id,
-                human_task_id=context.human_task.id,
+                work_item_id=context.human_task.id,
                 user_id=context.actor.id,
-                completed_at=120,
+                completed_at=datetime.fromtimestamp(120, UTC),
             ),
         )
 
@@ -195,7 +195,7 @@ def test_task_completion_requires_command_permission(session: Session) -> None:
         session,
         api.ClaimTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=context.human_task.id,
+            work_item_id=context.human_task.id,
             user_id=context.actor.id,
         ),
     )
@@ -203,9 +203,9 @@ def test_task_completion_requires_command_permission(session: Session) -> None:
         session,
         api.CompleteTaskCommand(
             tenant_id=context.tenant.id,
-            human_task_id=context.human_task.id,
+            work_item_id=context.human_task.id,
             user_id=context.actor.id,
-            completed_at=130,
+            completed_at=datetime.fromtimestamp(130, UTC),
         ),
     )
 
@@ -223,7 +223,7 @@ def test_process_suspend_requires_command_permission(session: Session) -> None:
                 tenant_id=context.tenant.id,
                 process_instance_id=context.process_instance.id,
                 user_id=context.actor.id,
-                suspended_at=140,
+                suspended_at=datetime.fromtimestamp(140, UTC),
             ),
         )
 
@@ -239,7 +239,7 @@ def test_process_suspend_requires_command_permission(session: Session) -> None:
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
             user_id=context.actor.id,
-            suspended_at=150,
+            suspended_at=datetime.fromtimestamp(150, UTC),
         ),
     )
 
@@ -258,7 +258,7 @@ def test_process_resume_requires_command_permission(session: Session) -> None:
                 tenant_id=context.tenant.id,
                 process_instance_id=context.process_instance.id,
                 user_id=context.actor.id,
-                resumed_at=160,
+                resumed_at=datetime.fromtimestamp(160, UTC),
             ),
         )
 
@@ -274,7 +274,7 @@ def test_process_resume_requires_command_permission(session: Session) -> None:
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
             user_id=context.actor.id,
-            resumed_at=170,
+            resumed_at=datetime.fromtimestamp(170, UTC),
         ),
     )
 
@@ -284,7 +284,7 @@ def test_process_resume_requires_command_permission(session: Session) -> None:
 def test_process_retry_requires_command_permission(session: Session) -> None:
     context = _seed_task_context(session)
     context.process_instance.status = "error"
-    context.process_instance.ended_at = 180
+    context.process_instance.ended_at = datetime.fromtimestamp(180, UTC)
     session.flush()
 
     with pytest.raises(api.AuthorizationError, match="process.retry"):
@@ -294,7 +294,7 @@ def test_process_retry_requires_command_permission(session: Session) -> None:
                 tenant_id=context.tenant.id,
                 process_instance_id=context.process_instance.id,
                 user_id=context.actor.id,
-                retried_at=190,
+                retried_at=datetime.fromtimestamp(190, UTC),
             ),
         )
 
@@ -310,7 +310,7 @@ def test_process_retry_requires_command_permission(session: Session) -> None:
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
             user_id=context.actor.id,
-            retried_at=200,
+            retried_at=datetime.fromtimestamp(200, UTC),
         ),
     )
 
@@ -320,7 +320,7 @@ def test_process_retry_requires_command_permission(session: Session) -> None:
 def test_process_retry_schedule_requires_command_permission(session: Session) -> None:
     context = _seed_task_context(session)
     context.process_instance.status = "error"
-    context.process_instance.ended_at = 180
+    context.process_instance.ended_at = datetime.fromtimestamp(180, UTC)
     session.flush()
 
     with pytest.raises(api.AuthorizationError, match="process.retry"):
@@ -330,8 +330,8 @@ def test_process_retry_schedule_requires_command_permission(session: Session) ->
                 tenant_id=context.tenant.id,
                 process_instance_id=context.process_instance.id,
                 user_id=context.actor.id,
-                retry_at=220,
-                scheduled_at=190,
+                retry_at=datetime.fromtimestamp(220, UTC),
+                scheduled_at=datetime.fromtimestamp(190, UTC),
             ),
         )
 
@@ -347,8 +347,8 @@ def test_process_retry_schedule_requires_command_permission(session: Session) ->
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
             user_id=context.actor.id,
-            retry_at=220,
-            scheduled_at=200,
+            retry_at=datetime.fromtimestamp(220, UTC),
+            scheduled_at=datetime.fromtimestamp(200, UTC),
         ),
     )
 
@@ -367,7 +367,7 @@ def test_process_terminate_requires_command_permission(session: Session) -> None
                 tenant_id=context.tenant.id,
                 process_instance_id=context.process_instance.id,
                 user_id=context.actor.id,
-                terminated_at=210,
+                terminated_at=datetime.fromtimestamp(210, UTC),
             ),
         )
 
@@ -383,7 +383,7 @@ def test_process_terminate_requires_command_permission(session: Session) -> None
             tenant_id=context.tenant.id,
             process_instance_id=context.process_instance.id,
             user_id=context.actor.id,
-            terminated_at=220,
+            terminated_at=datetime.fromtimestamp(220, UTC),
         ),
     )
 
@@ -402,8 +402,8 @@ def _seed_definition_context(session: Session) -> DefinitionContext:
         service=f"http://localhost:7002/realms/{tenant.slug}",
         service_id="starter-keycloak",
         display_name="Starter",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, actor])
     session.flush()
@@ -411,15 +411,14 @@ def _seed_definition_context(session: Session) -> DefinitionContext:
     bpmn_xml = VALIDATION_BPMN_PATH.read_text(encoding="utf-8")
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash=hashlib.sha256(f"single::{bpmn_xml}".encode()).hexdigest(),
-        full_process_model_hash=hashlib.sha256(bpmn_xml.encode("utf-8")).hexdigest(),
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="invoice-approval-poc",
         bpmn_name="Invoice Approval POC",
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at=90,
-        updated_at=90,
+        created_at=datetime.fromtimestamp(90, UTC),
+        updated_at=datetime.fromtimestamp(90, UTC),
     )
     definition.source_bpmn_xml = bpmn_xml
     session.add(definition)
@@ -444,23 +443,22 @@ def _seed_task_context(session: Session) -> TaskContext:
         service=f"http://localhost:7002/realms/{tenant.slug}",
         service_id="task-user-keycloak",
         display_name="Task User",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, actor])
     session.flush()
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash="command-auth-single",
-        full_process_model_hash="command-auth-full",
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="command-auth-process",
         bpmn_name="Command Auth Process",
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at=900,
-        updated_at=900,
+        created_at=datetime.fromtimestamp(900, UTC),
+        updated_at=datetime.fromtimestamp(900, UTC),
     )
     session.add(definition)
     session.flush()
@@ -484,8 +482,8 @@ def _seed_task_context(session: Session) -> TaskContext:
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at=950,
-        updated_at=950,
+        created_at=datetime.fromtimestamp(950, UTC),
+        updated_at=datetime.fromtimestamp(950, UTC),
     )
     session.add(task_definition)
     session.flush()
@@ -493,13 +491,13 @@ def _seed_task_context(session: Session) -> TaskContext:
     process_instance = ProcessInstanceModel(
         m8f_tenant_id=tenant.id,
         process_model_identifier="command-auth-process",
-        process_model_display_name="Command Auth Process",
+        process_model_display_name="command-auth-process",
         process_initiator_id=actor.id,
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at=1_000,
-        updated_at=1_000,
+        created_at=datetime.fromtimestamp(1_000, UTC),
+        updated_at=datetime.fromtimestamp(1_000, UTC),
     )
     session.add(process_instance)
     session.flush()
@@ -518,30 +516,23 @@ def _seed_task_context(session: Session) -> TaskContext:
     session.add(task)
     session.flush()
 
-    human_task = HumanTaskModel(
+    human_task = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
         task_guid=task.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
-        task_name="approve_invoice",
-        task_title="Approve Invoice",
-        task_type="User Task",
         task_status="READY",
-        process_model_display_name=process_instance.process_model_display_name,
-        bpmn_process_identifier=process_instance.process_model_identifier,
-        lane_name="finance",
-        json_metadata={"priority": "high"},
         completed=False,
     )
     session.add(human_task)
     session.flush()
 
     session.add(
-        HumanTaskUserModel(
+        WorkItemUserModel(
             m8f_tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=actor.id,
             added_by="manual",
         )

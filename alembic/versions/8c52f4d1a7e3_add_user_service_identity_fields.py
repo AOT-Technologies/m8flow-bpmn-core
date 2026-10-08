@@ -43,9 +43,23 @@ def upgrade() -> None:
         {"service": DEFAULT_SERVICE_URL},
     )
 
-    with op.batch_alter_table("user", recreate="always") as batch_op:
-        batch_op.alter_column("service", nullable=False)
-        batch_op.alter_column("service_id", nullable=False)
+    if connection.dialect.name == "sqlite":
+        with op.batch_alter_table("user", recreate="always") as batch_op:
+            batch_op.alter_column("service", nullable=False)
+            batch_op.alter_column("service_id", nullable=False)
+    else:
+        op.alter_column(
+            "user",
+            "service",
+            existing_type=sa.String(length=255),
+            nullable=False,
+        )
+        op.alter_column(
+            "user",
+            "service_id",
+            existing_type=sa.String(length=255),
+            nullable=False,
+        )
 
     op.drop_index(op.f("ix_user_username"), table_name="user")
     op.create_index(op.f("ix_user_username"), "user", ["username"], unique=False)
@@ -54,10 +68,13 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_user_service_id"), "user", ["service_id"], unique=False
     )
-    with op.batch_alter_table("user", recreate="always") as batch_op:
-        batch_op.create_unique_constraint(
-            "service_key", ["service", "service_id"]
-        )
+    if connection.dialect.name == "sqlite":
+        with op.batch_alter_table("user", recreate="always") as batch_op:
+            batch_op.create_unique_constraint(
+                "service_key", ["service", "service_id"]
+            )
+    else:
+        op.create_unique_constraint("service_key", "user", ["service", "service_id"])
 
 
 def downgrade() -> None:

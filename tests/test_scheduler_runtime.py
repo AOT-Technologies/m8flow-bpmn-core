@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -12,8 +13,6 @@ from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
 from m8flow_bpmn_core.models.future_task import FutureTaskModel
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.json_data import JsonDataModel
 from m8flow_bpmn_core.models.process_instance import (
     WORKFLOW_STATE_JSON_DATA_KEY,
@@ -24,6 +23,8 @@ from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
 from m8flow_bpmn_core.services import scheduler_runtime
 from m8flow_bpmn_core.services.authorization import ROLE_ADMIN, ensure_v1_role
 from m8flow_bpmn_core.services.scheduler_jobs import (
@@ -205,7 +206,7 @@ def test_run_due_scheduler_jobs_reschedules_stale_due_timer(
     )
     scheduler_job = _load_scheduler_job(session, tenant_id=tenant.id)
     expected_run_at = scheduler_job.run_at
-    scheduler_job.run_at = 0
+    scheduler_job.run_at = datetime.fromtimestamp(0, UTC)
     session.flush()
 
     processed_count = api.run_due_scheduler_jobs(
@@ -262,7 +263,7 @@ def test_run_due_scheduler_jobs_advances_past_due_intermediate_timer(
         event_value="1970-01-01T00:00:00+00:00",
     )
     scheduler_job = _load_scheduler_job(session, tenant_id=tenant.id)
-    scheduler_job.run_at = 0
+    scheduler_job.run_at = datetime.fromtimestamp(0, UTC)
     session.flush()
 
     processed_count = api.run_due_scheduler_jobs(
@@ -325,7 +326,7 @@ def test_run_due_scheduler_jobs_executes_interrupting_boundary_timer(
             tenant_id=tenant.id,
             bpmn_process_definition_id=definition.id,
             process_initiator_id=user.id,
-            started_at=20,
+            started_at=datetime.fromtimestamp(20, UTC),
         ),
     )
     boundary_task = next(
@@ -350,7 +351,7 @@ def test_run_due_scheduler_jobs_executes_interrupting_boundary_timer(
         event_value="1970-01-01T00:00:00+00:00",
     )
     scheduler_job = _load_scheduler_job(session, tenant_id=tenant.id)
-    scheduler_job.run_at = 0
+    scheduler_job.run_at = datetime.fromtimestamp(0, UTC)
     session.flush()
 
     processed_count = api.run_due_scheduler_jobs(
@@ -392,7 +393,7 @@ def test_run_due_scheduler_jobs_executes_interrupting_boundary_timer(
     )
 
     cancelled_review_human_task = session.get(
-        HumanTaskModel,
+        WorkItemModel,
         original_review_human_task.id,
     )
     assert cancelled_review_human_task is not None
@@ -407,8 +408,8 @@ def test_run_due_scheduler_jobs_executes_interrupting_boundary_timer(
     assert cancelled_review_human_task.completed is True
     assert cancelled_review_human_task.task_status == "CANCELLED"
     assert [event.event_type for event in events] == [
-        api.ProcessInstanceEventType.process_instance_created.value,
-        api.ProcessInstanceEventType.task_cancelled.value,
+        api.ProcessLifecycleEventType.process_instance_created.value,
+        api.TaskEventType.task_cancelled.value,
     ]
 
 
@@ -422,14 +423,14 @@ def test_run_due_scheduler_jobs_executes_scheduled_process_retry(
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            retry_at=200,
-            scheduled_at=190,
+            retry_at=datetime.fromtimestamp(200, UTC),
+            scheduled_at=datetime.fromtimestamp(190, UTC),
         ),
     )
 
     processed_count = api.run_due_scheduler_jobs(
         session,
-        now=200,
+        now=datetime.fromtimestamp(200, UTC),
         worker_id="inline-retry-worker",
         tenant_id=tenant.id,
     )
@@ -473,8 +474,8 @@ def test_run_due_scheduler_jobs_executes_scheduled_process_retry(
     assert pending_tasks[0].task_status == "READY"
     assert scheduler_jobs == []
     assert [event.event_type for event in events] == [
-        api.ProcessInstanceEventType.process_instance_error.value,
-        api.ProcessInstanceEventType.process_instance_retried.value,
+        api.ProcessLifecycleEventType.process_instance_error.value,
+        api.ProcessLifecycleEventType.process_instance_retried.value,
     ]
 
 
@@ -491,7 +492,7 @@ def test_run_due_scheduler_jobs_executes_timer_start_job(
         source_bpmn_xml=TIMER_START_BPMN,
     )
     scheduler_job = _load_scheduler_job(session, tenant_id=tenant.id)
-    scheduler_job.run_at = 0
+    scheduler_job.run_at = datetime.fromtimestamp(0, UTC)
     session.flush()
 
     processed_count = api.run_due_scheduler_jobs(
@@ -519,8 +520,8 @@ def test_run_due_scheduler_jobs_executes_timer_start_job(
     assert process_instances[0].bpmn_process_definition_id == definition.id
     assert process_instances[0].process_initiator_id != user.id
     assert process_instances[0].status == api.ProcessInstanceStatus.user_input_required
-    assert len(process_instances[0].human_tasks) == 1
-    assert process_instances[0].human_tasks[0].task_status == "READY"
+    assert len(process_instances[0].work_items) == 1
+    assert process_instances[0].work_items[0].task_status == "READY"
     assert scheduler_jobs == []
 
 
@@ -542,7 +543,7 @@ def test_run_due_scheduler_jobs_uses_definition_lane_owners_for_timer_start(
         },
     )
     scheduler_job = _load_scheduler_job(session, tenant_id=tenant.id)
-    scheduler_job.run_at = 0
+    scheduler_job.run_at = datetime.fromtimestamp(0, UTC)
     session.flush()
 
     processed_count = api.run_due_scheduler_jobs(
@@ -568,8 +569,8 @@ def test_run_due_scheduler_jobs_uses_definition_lane_owners_for_timer_start(
 
     assert len(process_instances) == 1
     assert process_instances[0].bpmn_process_definition_id == definition.id
-    assert process_instances[0].human_tasks[0].lane_name == "Operations"
-    assert process_instances[0].human_tasks[0].json_metadata["lane_owners"] == {
+    assert process_instances[0].work_items[0].lane_name == "Operations"
+    assert process_instances[0].work_items[0].json_metadata["lane_owners"] == {
         "Operations": [user.username]
     }
     assert len(pending_tasks) == 1
@@ -594,7 +595,7 @@ def test_run_due_scheduler_jobs_executes_past_due_timer_start_definition(
         },
     )
     scheduler_job = _load_scheduler_job(session, tenant_id=tenant.id)
-    scheduler_job.run_at = 0
+    scheduler_job.run_at = datetime.fromtimestamp(0, UTC)
     definition.source_bpmn_xml = TIMER_START_LANE_BPMN.replace(
         "2099-01-01T00:00:00+00:00",
         "1970-01-01T00:00:00+00:00",
@@ -625,7 +626,7 @@ def test_run_due_scheduler_jobs_executes_past_due_timer_start_definition(
     assert len(process_instances) == 1
     assert process_instances[0].bpmn_process_definition_id == definition.id
     assert process_instances[0].status == api.ProcessInstanceStatus.user_input_required
-    assert len(process_instances[0].human_tasks) == 1
+    assert len(process_instances[0].work_items) == 1
     assert len(pending_tasks) == 1
     assert pending_tasks[0].process_instance_id == process_instances[0].id
 
@@ -643,7 +644,7 @@ def test_run_due_scheduler_jobs_reschedules_recurring_timer_start_job(
         source_bpmn_xml=TIMER_START_CYCLE_BPMN,
     )
     scheduler_job = _load_scheduler_job(session, tenant_id=tenant.id)
-    scheduler_job.run_at = 0
+    scheduler_job.run_at = datetime.fromtimestamp(0, UTC)
     scheduler_job.payload_json = {
         "scheduled_from": "test",
         "timer_task": {
@@ -677,7 +678,7 @@ def test_run_due_scheduler_jobs_reschedules_recurring_timer_start_job(
     scheduler_job = _load_scheduler_job(session, tenant_id=tenant.id)
     human_tasks = list(
         session.scalars(
-            select(HumanTaskModel).order_by(HumanTaskModel.id)
+            select(WorkItemModel).order_by(WorkItemModel.id)
         ).all()
     )
 
@@ -729,10 +730,10 @@ def test_run_due_scheduler_jobs_continues_batch_after_job_error(
         job_key=first_job_key,
         job_type="process_retry",
         process_instance_id=first_process_instance.id,
-        run_at=10,
+        run_at=datetime.fromtimestamp(10, UTC),
         payload_json={"requested_by_user_id": user.id},
-        updated_at=10,
-        created_at=10,
+        updated_at=datetime.fromtimestamp(10, UTC),
+        created_at=datetime.fromtimestamp(10, UTC),
     )
     second_job = upsert_scheduler_job(
         session,
@@ -740,10 +741,10 @@ def test_run_due_scheduler_jobs_continues_batch_after_job_error(
         job_key=second_job_key,
         job_type="process_retry",
         process_instance_id=second_process_instance.id,
-        run_at=10,
+        run_at=datetime.fromtimestamp(10, UTC),
         payload_json={"requested_by_user_id": user.id},
-        updated_at=10,
-        created_at=10,
+        updated_at=datetime.fromtimestamp(10, UTC),
+        created_at=datetime.fromtimestamp(10, UTC),
     )
 
     executed_job_keys: list[str] = []
@@ -767,7 +768,7 @@ def test_run_due_scheduler_jobs_continues_batch_after_job_error(
     with pytest.raises(api.ValidationError, match="boom"):
         api.run_due_scheduler_jobs(
             session,
-            now=10,
+            now=datetime.fromtimestamp(10, UTC),
             worker_id="inline-failure-worker",
             tenant_id=tenant.id,
         )
@@ -807,10 +808,10 @@ def test_run_due_scheduler_jobs_raises_summary_for_multiple_job_errors(
         job_key=first_job_key,
         job_type="process_retry",
         process_instance_id=first_process_instance.id,
-        run_at=10,
+        run_at=datetime.fromtimestamp(10, UTC),
         payload_json={"requested_by_user_id": user.id},
-        updated_at=10,
-        created_at=10,
+        updated_at=datetime.fromtimestamp(10, UTC),
+        created_at=datetime.fromtimestamp(10, UTC),
     )
     second_job = upsert_scheduler_job(
         session,
@@ -818,10 +819,10 @@ def test_run_due_scheduler_jobs_raises_summary_for_multiple_job_errors(
         job_key=second_job_key,
         job_type="process_retry",
         process_instance_id=second_process_instance.id,
-        run_at=10,
+        run_at=datetime.fromtimestamp(10, UTC),
         payload_json={"requested_by_user_id": user.id},
-        updated_at=10,
-        created_at=10,
+        updated_at=datetime.fromtimestamp(10, UTC),
+        created_at=datetime.fromtimestamp(10, UTC),
     )
 
     executed_job_keys: list[str] = []
@@ -842,7 +843,7 @@ def test_run_due_scheduler_jobs_raises_summary_for_multiple_job_errors(
     with pytest.raises(api.BpmnCoreError) as exc_info:
         api.run_due_scheduler_jobs(
             session,
-            now=10,
+            now=datetime.fromtimestamp(10, UTC),
             worker_id="inline-failure-worker",
             tenant_id=tenant.id,
         )
@@ -880,8 +881,8 @@ def _seed_timer_actor(
         service="http://localhost:7002/realms/tenant-scheduler-runtime",
         service_id="timer-runtime-admin-keycloak",
         display_name="Timer Runtime Admin",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()
@@ -907,11 +908,11 @@ def _create_stub_process_instance(
         process_model_display_name=process_model_identifier,
         process_initiator_id=user_id,
         status=api.ProcessInstanceStatus.error.value,
-        started_at=10,
-        ended_at=10,
-        task_updated_at=10,
-        created_at=10,
-        updated_at=10,
+        started_at=datetime.fromtimestamp(10, UTC),
+        ended_at=datetime.fromtimestamp(10, UTC),
+        task_updated_at=datetime.fromtimestamp(10, UTC),
+        created_at=datetime.fromtimestamp(10, UTC),
+        updated_at=datetime.fromtimestamp(10, UTC),
     )
     session.add(process_instance)
     session.flush()
@@ -932,8 +933,8 @@ def _initialize_waiting_timer_process(
             user_id=user_id,
             bpmn_name="Timer Runtime Process",
             source_bpmn_xml=INTERMEDIATE_TIMER_BPMN,
-            created_at=10,
-            updated_at=10,
+            created_at=datetime.fromtimestamp(10, UTC),
+            updated_at=datetime.fromtimestamp(10, UTC),
         ),
     )
     return api.execute_command(
@@ -942,7 +943,7 @@ def _initialize_waiting_timer_process(
             tenant_id=tenant_id,
             bpmn_process_definition_id=definition.id,
             process_initiator_id=user_id,
-            started_at=20,
+            started_at=datetime.fromtimestamp(20, UTC),
         ),
     )
 
@@ -966,8 +967,8 @@ def _import_process_definition(
             bpmn_name=bpmn_name,
             source_bpmn_xml=source_bpmn_xml,
             properties_json=properties_json,
-            created_at=10,
-            updated_at=10,
+            created_at=datetime.fromtimestamp(10, UTC),
+            updated_at=datetime.fromtimestamp(10, UTC),
         ),
     )
 
@@ -1020,7 +1021,7 @@ def _set_waiting_timer_event_value(
 
 def _seed_errored_retry_process(
     session: Session,
-) -> tuple[M8flowTenantModel, UserModel, ProcessInstanceModel, HumanTaskModel]:
+) -> tuple[M8flowTenantModel, UserModel, ProcessInstanceModel, WorkItemModel]:
     tenant = M8flowTenantModel(
         id="tenant-scheduler-retry-runtime",
         name="Tenant Scheduler Retry Runtime",
@@ -1032,8 +1033,8 @@ def _seed_errored_retry_process(
         service="http://localhost:7002/realms/tenant-scheduler-retry-runtime",
         service_id="retry-runtime-admin-keycloak",
         display_name="Retry Runtime Admin",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()
@@ -1046,13 +1047,12 @@ def _seed_errored_retry_process(
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash="retry-runtime-single",
-        full_process_model_hash="retry-runtime-full",
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="retry-runtime-process",
         bpmn_name="Retry Runtime Process",
         properties_json={},
-        created_at=10,
-        updated_at=10,
+        created_at=datetime.fromtimestamp(10, UTC),
+        updated_at=datetime.fromtimestamp(10, UTC),
     )
     session.add(definition)
     session.flush()
@@ -1065,8 +1065,8 @@ def _seed_errored_retry_process(
         direct_parent_process_id=None,
         properties_json={"root": "retry-runtime-root"},
         json_data_hash="retry-runtime-json",
-        started_at=20.0,
-        ended_at=130.0,
+        started_at=datetime.fromtimestamp(20.0, UTC),
+        ended_at=datetime.fromtimestamp(130.0, UTC),
     )
     session.add(bpmn_process)
     session.flush()
@@ -1078,8 +1078,8 @@ def _seed_errored_retry_process(
         bpmn_name="Retry Runtime Task",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at=30,
-        updated_at=30,
+        created_at=datetime.fromtimestamp(30, UTC),
+        updated_at=datetime.fromtimestamp(30, UTC),
     )
     session.add(task_definition)
     session.flush()
@@ -1087,16 +1087,16 @@ def _seed_errored_retry_process(
     process_instance = ProcessInstanceModel(
         m8f_tenant_id=tenant.id,
         process_model_identifier="retry-runtime-process",
-        process_model_display_name="Retry Runtime Process",
+        process_model_display_name="retry-runtime-process",
         process_initiator_id=user.id,
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="error",
-        started_at=20,
-        ended_at=130,
-        task_updated_at=130,
-        created_at=20,
-        updated_at=130,
+        started_at=datetime.fromtimestamp(20, UTC),
+        ended_at=datetime.fromtimestamp(130, UTC),
+        task_updated_at=datetime.fromtimestamp(130, UTC),
+        created_at=datetime.fromtimestamp(20, UTC),
+        updated_at=datetime.fromtimestamp(130, UTC),
     )
     session.add(process_instance)
     session.flush()
@@ -1111,8 +1111,8 @@ def _seed_errored_retry_process(
         properties_json={"task_spec": "Retry Runtime Task"},
         json_data_hash="retry-runtime-task-json",
         python_env_data_hash="retry-runtime-task-env",
-        started_at=20.0,
-        ended_at=130.0,
+        started_at=datetime.fromtimestamp(20.0, UTC),
+        ended_at=datetime.fromtimestamp(130.0, UTC),
     )
     session.add(task)
     session.flush()
@@ -1120,41 +1120,34 @@ def _seed_errored_retry_process(
     future_task = FutureTaskModel(
         m8f_tenant_id=tenant.id,
         guid=task.guid,
-        run_at=130,
-        queued_to_run_at=130,
+        run_at=datetime.fromtimestamp(130, UTC),
+        queued_to_run_at=datetime.fromtimestamp(130, UTC),
         completed=True,
         archived_for_process_instance_status=True,
-        updated_at=130,
+        updated_at=datetime.fromtimestamp(130, UTC),
     )
     session.add(future_task)
     session.flush()
 
-    human_task = HumanTaskModel(
+    human_task = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
         task_guid=task.guid,
         lane_assignment_id=None,
         completed_by_user_id=user.id,
         actual_owner_id=user.id,
-        task_name="retry_runtime_task",
-        task_title="Retry Runtime Task",
-        task_type="User Task",
         task_status="TERMINATED",
-        process_model_display_name=process_instance.process_model_display_name,
-        bpmn_process_identifier=process_instance.process_model_identifier,
-        lane_name="finance",
-        json_metadata={"priority": "high"},
         completed=True,
-        updated_at=130,
-        created_at=20,
+        updated_at=datetime.fromtimestamp(130, UTC),
+        created_at=datetime.fromtimestamp(20, UTC),
     )
     session.add(human_task)
     session.flush()
 
     session.add(
-        HumanTaskUserModel(
+        WorkItemUserModel(
             m8f_tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
             added_by="manual",
         )
@@ -1165,8 +1158,8 @@ def _seed_errored_retry_process(
         session,
         tenant_id=tenant.id,
         process_instance_id=process_instance.id,
-        event_type=api.ProcessInstanceEventType.process_instance_error,
-        occurred_at=130.0,
+        event_type=api.ProcessLifecycleEventType.process_instance_error,
+        occurred_at=datetime.fromtimestamp(130.0, UTC),
         user_id=user.id,
     )
     session.flush()

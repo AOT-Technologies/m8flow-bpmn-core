@@ -36,7 +36,7 @@ def upgrade() -> None:
         sa.Column(
             "source_is_open_id",
             sa.Boolean(),
-            server_default=sa.text("0"),
+            server_default=sa.false(),
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_group")),

@@ -100,6 +100,10 @@ LEGACY_EPOCH_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _quote_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
 def _alter_legacy_epoch_types(type_: sa.types.TypeEngine) -> None:
     bind = op.get_bind()
     if bind.dialect.name == "sqlite":
@@ -127,20 +131,23 @@ def upgrade() -> None:
     dialect = bind.dialect.name
     for table_name, pairs in TIMESTAMP_COLUMNS.items():
         for legacy_name, native_name in pairs:
+            quoted_table = _quote_identifier(table_name)
+            quoted_legacy = _quote_identifier(legacy_name)
+            quoted_native = _quote_identifier(native_name)
             if dialect == "sqlite":
                 expression = (
-                    f"datetime({legacy_name}, 'unixepoch')"
+                    f"datetime({quoted_legacy}, 'unixepoch')"
                 )
             elif dialect == "postgresql":
-                expression = f"to_timestamp({legacy_name})"
+                expression = f"to_timestamp({quoted_legacy})"
             elif dialect == "mysql":
-                expression = f"FROM_UNIXTIME({legacy_name})"
+                expression = f"FROM_UNIXTIME({quoted_legacy})"
             else:
                 continue
             op.execute(
                 sa.text(
-                    f"UPDATE {table_name} SET {native_name} = {expression} "
-                    f"WHERE {legacy_name} IS NOT NULL"
+                    f"UPDATE {quoted_table} SET {quoted_native} = {expression} "
+                    f"WHERE {quoted_legacy} IS NOT NULL"
                 )
             )
 

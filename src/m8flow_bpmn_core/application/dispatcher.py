@@ -92,7 +92,7 @@ def execute_command(
             return claim_task(
                 session,
                 tenant_id=command.tenant_id,
-                human_task_id=command.human_task_id,
+            work_item_id=command.work_item_id,
                 user_id=command.user_id,
                 added_by=command.added_by,
             )
@@ -100,7 +100,7 @@ def execute_command(
             return complete_task(
                 session,
                 tenant_id=command.tenant_id,
-                human_task_id=command.human_task_id,
+            work_item_id=command.work_item_id,
                 user_id=command.user_id,
                 completed_at=command.completed_at,
                 task_payload=command.task_payload,
@@ -142,8 +142,7 @@ def execute_command(
                 bpmn_version_control_identifier=(
                     command.bpmn_version_control_identifier
                 ),
-                single_process_hash=command.single_process_hash,
-                full_process_model_hash=command.full_process_model_hash,
+                process_xml_digest=command.process_xml_digest,
                 user_id=command.user_id,
                 created_at=command.created_at,
                 updated_at=command.updated_at,

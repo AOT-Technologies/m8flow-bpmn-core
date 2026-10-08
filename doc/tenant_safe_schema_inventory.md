@@ -1,7 +1,8 @@
 # Tenant-safe schema migration inventory
 
-This document records Part 1 of the tenant-safe schema and timestamp migration.
-It is an inventory only; it does not change runtime or database behavior.
+This document records the tenant-safe JSON and timestamp schema after the
+breaking migration work. Historical column names are listed only to explain
+the upgrade path; they are not part of the current ORM or public API.
 
 ## JSON payload references
 
@@ -39,15 +40,16 @@ duplicated deterministically, preserving tenant-local copies.
 - Current compatibility documentation already states that equal hashes may
   exist independently for different tenants.
 
-Part 2 preserves the current public payload-hash API while making tenant
-identity mandatory at every read/write boundary. Part 3 makes the legacy
-backfill deterministic and validates all data before re-keying.
+Tenant identity is mandatory at every JSON read and write boundary. The
+breaking migration validates legacy ownership before re-keying and fails
+without changing payload rows when references are ambiguous, orphaned, or
+missing.
 
 ## Timestamp inventory
 
-The ORM currently keeps legacy epoch columns and nullable timezone-aware
-compatibility columns side by side. The following models still expose legacy
-legacy `*_in_seconds` storage migrated to timezone-aware datetime fields:
+All persisted model timestamps now use timezone-aware `DateTime` columns. The
+following table records the historical epoch columns and their current native
+datetime replacements:
 
 | Model/table | Legacy fields | Current compatibility fields |
 | --- | --- | --- |
@@ -58,24 +60,25 @@ legacy `*_in_seconds` storage migrated to timezone-aware datetime fields:
 | `TaskDefinitionModel` / `task_definition` | `created_at_in_seconds`, `updated_at_in_seconds` | `created_at`, `updated_at` |
 | `TaskModel` / `task` | `start_in_seconds`, `end_in_seconds` | `started_at`, `ended_at` |
 | `ProcessInstanceModel` / `process_instance` | `start_in_seconds`, `end_in_seconds`, `task_updated_at_in_seconds`, `created_at_in_seconds`, `updated_at_in_seconds` | `started_at`, `ended_at`, `task_updated_at`, `created_at`, `updated_at` |
-| `HumanTaskModel` / `human_task` | `created_at_in_seconds`, `updated_at_in_seconds` | `created_at`, `updated_at` |
+| `WorkItemModel` / `work_item` | `human_task.created_at_in_seconds`, `human_task.updated_at_in_seconds` | `created_at`, `updated_at` |
 | `FutureTaskModel` / `future_task` | `run_at_in_seconds`, `queued_to_run_at_in_seconds`, `updated_at_in_seconds` | `run_at`, `queued_to_run_at`, `updated_at` |
 | `ProcessInstanceMetadataModel` / `process_instance_metadata` | `created_at_in_seconds`, `updated_at_in_seconds` | `created_at`, `updated_at` |
 | `ProcessModelBpmnVersionModel` / `process_model_bpmn_version` | `created_at_in_seconds` | `created_at` |
 | `SchedulerJobModel` / `scheduler_job` | `locked_at_in_seconds`, `run_at_in_seconds`, `created_at_in_seconds`, `updated_at_in_seconds` | `locked_at`, `run_at`, `created_at`, `updated_at` |
 
-`ProcessInstanceEventModel` is a related timestamp case: its legacy `timestamp`
-column is paired with the timezone-aware `occurred_at` column, although it does
-not use the `_in_seconds` suffix.
+`ProcessInstanceEventModel` is a related timestamp case: its historical
+`timestamp` column was replaced by the timezone-aware `occurred_at` column.
 
-The model declarations use `BIGINT` for most legacy epoch fields. The process
-and task start/end fields still use `Numeric(17, 6)`. The compatibility
-migration widens legacy integer fields to `BIGINT` and backfills native datetime
-columns, but service methods continue to accept and write epoch arguments in
-many paths. Part 5 therefore needs an explicit compatibility policy rather
-than only a column-type change.
+The destructive migration removes the legacy persisted epoch columns after
+validation and backfill. Epoch values that remain in timer payloads are
+workflow serialization data, not database timestamp columns; their scope is
+documented in `doc/scheduling.md`.
 
-## Required follow-up parts
+## Historical implementation plan (completed)
+
+The following section is retained as migration history. Its legacy column names
+describe the pre-breaking schema and must not be interpreted as current ORM
+models or active compatibility fields.
 
 1. **Part 2 — tenant-qualified JSON model and access paths:** verify every
    lookup, insert, update, and delete requires the tenant/hash pair.
@@ -94,9 +97,9 @@ than only a column-type change.
    [`migration_runbook.md`](migration_runbook.md), including backups,
    validation, failed-upgrade recovery, and downgrade limits.
 
-## Part 1 conclusion
+## Historical Part 1 conclusion
 
-The highest-risk dependencies are the three un-FKed JSON hash references and
-the split timestamp representation. No implementation change is made in this
-part. The next implementation should start with tenant-qualified JSON access
-contracts, then add migration validation before any destructive data rewrite.
+The highest-risk dependencies were the three application-level JSON hash
+references and the split timestamp representation. Those implementation parts
+are now complete; production rollout requires the coordinated downstream
+M8Flow migration described in `doc/release_migration_strategy.md`.

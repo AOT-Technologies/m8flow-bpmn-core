@@ -13,7 +13,6 @@ from m8flow_bpmn_core.models.process_instance import (
 )
 from m8flow_bpmn_core.models.process_instance_event import (
     ProcessInstanceEventModel,
-    ProcessInstanceEventType,
     ProcessLifecycleEventType,
     TaskEventType,
 )
@@ -153,7 +152,7 @@ def record_process_instance_event(
     tenant_id: str,
     process_instance_id: int,
     event_type: (
-        ProcessInstanceEventType | ProcessLifecycleEventType | TaskEventType | str
+        ProcessLifecycleEventType | TaskEventType | str
     ),
     occurred_at: datetime | None = None,
     task_guid: str | None = None,
@@ -269,8 +268,8 @@ def suspend_process_instance(
         tenant_id=tenant_id,
         actor_user_id=user_id,
         command_key=PROCESS_SUSPEND_COMMAND,
-        target_uri=f"/process-instances/{process_instance.id}",
-        target_id=process_instance.id,
+        resource_type="process_instance",
+        resource_id=process_instance.id,
     )
     if process_instance.status == ProcessInstanceStatus.suspended.value:
         return process_instance
@@ -325,6 +324,7 @@ def error_process_instance(
     process_instance.ended_at = occurred_at
     process_instance.updated_at = occurred_at
     _close_process_instance_runtime_state(
+        session,
         process_instance,
         occurred_at=occurred_at,
         user_id=user_id,
@@ -362,8 +362,8 @@ def resume_process_instance(
         tenant_id=tenant_id,
         actor_user_id=user_id,
         command_key=PROCESS_RESUME_COMMAND,
-        target_uri=f"/process-instances/{process_instance.id}",
-        target_id=process_instance.id,
+        resource_type="process_instance",
+        resource_id=process_instance.id,
     )
     if process_instance.status == ProcessInstanceStatus.running.value:
         return process_instance
@@ -412,8 +412,8 @@ def retry_process_instance(
         tenant_id=tenant_id,
         actor_user_id=user_id,
         command_key=PROCESS_RETRY_COMMAND,
-        target_uri=f"/process-instances/{process_instance.id}",
-        target_id=process_instance.id,
+        resource_type="process_instance",
+        resource_id=process_instance.id,
     )
     if process_instance.status != ProcessInstanceStatus.error.value:
         raise InvalidStateError("Only errored process instances can be retried")
@@ -423,6 +423,7 @@ def retry_process_instance(
     process_instance.ended_at = None
     process_instance.updated_at = occurred_at
     _reopen_process_instance_runtime_state(
+        session,
         process_instance,
         occurred_at=occurred_at,
     )
@@ -477,8 +478,8 @@ def schedule_process_instance_retry(
         tenant_id=tenant_id,
         actor_user_id=user_id,
         command_key=PROCESS_RETRY_COMMAND,
-        target_uri=f"/process-instances/{process_instance.id}",
-        target_id=process_instance.id,
+        resource_type="process_instance",
+        resource_id=process_instance.id,
     )
     if process_instance.status != ProcessInstanceStatus.error.value:
         raise InvalidStateError(
@@ -498,7 +499,7 @@ def schedule_process_instance_retry(
         run_at=retry_at,
         payload_json={
             "requested_by_user_id": user_id,
-            "scheduled_at_in_seconds": occurred_at.timestamp(),
+            "scheduled_at": occurred_at.isoformat(),
         },
         updated_at=occurred_at,
         created_at=occurred_at,
@@ -526,8 +527,8 @@ def terminate_process_instance(
         tenant_id=tenant_id,
         actor_user_id=user_id,
         command_key=PROCESS_TERMINATE_COMMAND,
-        target_uri=f"/process-instances/{process_instance.id}",
-        target_id=process_instance.id,
+        resource_type="process_instance",
+        resource_id=process_instance.id,
     )
     if process_instance.status == ProcessInstanceStatus.terminated.value:
         return process_instance
@@ -544,6 +545,7 @@ def terminate_process_instance(
     process_instance.ended_at = occurred_at
     process_instance.updated_at = occurred_at
     _close_process_instance_runtime_state(
+        session,
         process_instance,
         occurred_at=occurred_at,
         user_id=user_id,
@@ -562,6 +564,7 @@ def terminate_process_instance(
 
 
 def _close_process_instance_runtime_state(
+    session: Session,
     process_instance: ProcessInstanceModel,
     *,
     occurred_at: datetime,
@@ -577,11 +580,12 @@ def _close_process_instance_runtime_state(
             task.future_task.archived_for_process_instance_status = True
             task.future_task.updated_at = occurred_at
 
-    for human_task in process_instance.human_tasks:
-        if human_task.completed:
+    for work_item in process_instance.work_items:
+        if work_item.completed:
             continue
+        work_item = session.merge(work_item)
         close_work_item(
-            human_task,
+            work_item,
             state=WorkItemState.TERMINATED,
             occurred_at=occurred_at,
             user_id=user_id,
@@ -589,6 +593,7 @@ def _close_process_instance_runtime_state(
 
 
 def _reopen_process_instance_runtime_state(
+    session: Session,
     process_instance: ProcessInstanceModel,
     *,
     occurred_at: datetime,
@@ -605,10 +610,13 @@ def _reopen_process_instance_runtime_state(
             task.future_task.archived_for_process_instance_status = False
             task.future_task.updated_at = occurred_at
 
-    for human_task in process_instance.human_tasks:
-        if human_task.task_status != "TERMINATED" and not human_task.completed:
+    for work_item in process_instance.work_items:
+        if (
+            work_item.task_status != WorkItemState.TERMINATED.value
+            and not work_item.completed
+        ):
             continue
-        reopen_work_item(human_task, occurred_at=occurred_at)
+        reopen_work_item(work_item, occurred_at=occurred_at)
 
 
 def _delete_scheduled_process_retry_job(
@@ -677,9 +685,5 @@ def _process_retry_scheduler_job_key(*, process_instance_id: int) -> str:
     )
 
 
-def _resolve_timestamp(timestamp: datetime | int | float | None) -> datetime:
-    if isinstance(timestamp, datetime):
-        return timestamp
-    if timestamp is not None:
-        return datetime.fromtimestamp(float(timestamp), UTC)
-    return datetime.now(UTC)
+def _resolve_timestamp(timestamp: datetime | None) -> datetime:
+    return timestamp or datetime.now(UTC)

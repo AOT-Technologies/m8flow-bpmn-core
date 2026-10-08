@@ -7,6 +7,7 @@ The contract now fails fast with ``api.ValidationError``.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -32,8 +33,8 @@ def _make_tenant(session: Session) -> tuple[M8flowTenantModel, UserModel]:
         service=f"http://localhost:7002/realms/{TENANT_SLUG}",
         service_id="bpmn-admin-keycloak",
         display_name="BPMN Admin",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()

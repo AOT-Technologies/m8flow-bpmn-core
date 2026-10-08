@@ -7,6 +7,7 @@ from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_bpmn_core.models.base import Base
+from m8flow_bpmn_core.models.task_types import USER_TASK_TYPENAMES
 from m8flow_bpmn_core.models.tenant_scoped import M8fTenantScopedMixin, TenantScoped
 
 
@@ -41,5 +42,5 @@ class TaskDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
         back_populates="task_definitions",
     )
 
-    def is_human_task(self) -> bool:
-        return self.typename in ["UserTask", "ManualTask", "NoneTask"]
+    def is_user_task(self) -> bool:
+        return self.typename in USER_TASK_TYPENAMES

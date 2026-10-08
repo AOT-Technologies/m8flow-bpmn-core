@@ -75,8 +75,6 @@ def test_registry_registers_lists_and_executes_service_tasks() -> None:
                 tenant_id="tenant-a",
                 process_instance_id=17,
                 task_guid="task-guid-1",
-                task_name="Task_fetch",
-                task_type="ServiceTask",
             ),
         )
     )

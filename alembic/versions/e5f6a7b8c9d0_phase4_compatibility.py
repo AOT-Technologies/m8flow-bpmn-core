@@ -89,23 +89,40 @@ def _rename_constraints() -> None:
             }
         if old_name not in names:
             continue
-        with op.batch_alter_table(table_name, recreate="always") as batch_op:
-            batch_op.drop_constraint(old_name, type_=kind)
+        if kind == "unique":
+            columns = next(
+                item["column_names"]
+                for item in inspector.get_unique_constraints(table_name)
+                if item.get("name") == old_name
+            )
+        else:
+            foreign_key = next(
+                item
+                for item in inspector.get_foreign_keys(table_name)
+                if item.get("name") == old_name
+            )
+
+        if bind.dialect.name == "sqlite":
+            with op.batch_alter_table(table_name, recreate="always") as batch_op:
+                batch_op.drop_constraint(old_name, type_=kind)
+                if kind == "unique":
+                    batch_op.create_unique_constraint(new_name, columns)
+                else:
+                    batch_op.create_foreign_key(
+                        new_name,
+                        foreign_key["referred_table"],
+                        foreign_key["constrained_columns"],
+                        foreign_key["referred_columns"],
+                        ondelete=(foreign_key.get("options") or {}).get("ondelete"),
+                    )
+        else:
+            op.drop_constraint(old_name, table_name, type_=kind)
             if kind == "unique":
-                columns = next(
-                    item["column_names"]
-                    for item in inspector.get_unique_constraints(table_name)
-                    if item.get("name") == old_name
-                )
-                batch_op.create_unique_constraint(new_name, columns)
+                op.create_unique_constraint(new_name, table_name, columns)
             else:
-                foreign_key = next(
-                    item
-                    for item in inspector.get_foreign_keys(table_name)
-                    if item.get("name") == old_name
-                )
-                batch_op.create_foreign_key(
+                op.create_foreign_key(
                     new_name,
+                    table_name,
                     foreign_key["referred_table"],
                     foreign_key["constrained_columns"],
                     foreign_key["referred_columns"],

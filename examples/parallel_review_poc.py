@@ -8,7 +8,7 @@ This is a non-interactive companion to ``examples/conditional_approval_poc.py``
 that exercises BPMN shapes the conditional-approval POC does not cover:
 
 * a parallel gateway (AND-split followed by AND-join),
-* two script tasks — one before the split, one after the join,
+* two script tasks ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â one before the split, one after the join,
 * an exclusive gateway driven by a value computed by a script.
 
 The walkthrough uses an in-memory SQLite database so it has no external
@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -107,8 +108,8 @@ def main() -> None:
                     "flow": "parallel_review",
                     "lane_owners": LANE_OWNERS,
                 },
-                created_at=90,
-                updated_at=90,
+                created_at=datetime.fromtimestamp(90, UTC),
+                updated_at=datetime.fromtimestamp(90, UTC),
             ),
         )
         process_instance = api.execute_command(
@@ -117,9 +118,9 @@ def main() -> None:
                 tenant_id=TENANT_ID,
                 bpmn_process_definition_id=definition.id,
                 process_initiator_id=users["requester"].id,
-                summary="Purchase order — parallel review walkthrough",
+                summary="Purchase order ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â parallel review walkthrough",
                 process_version=1,
-                started_at=100,
+                started_at=datetime.fromtimestamp(100, UTC),
                 bpmn_process_id=PROCESS_ID,
             ),
         )
@@ -137,7 +138,7 @@ def main() -> None:
             session,
             api.ClaimTaskCommand(
                 tenant_id=TENANT_ID,
-                human_task_id=submit_task.id,
+                work_item_id=submit_task.id,
                 user_id=users["requester"].id,
             ),
         )
@@ -145,9 +146,9 @@ def main() -> None:
             session,
             api.CompleteTaskCommand(
                 tenant_id=TENANT_ID,
-                human_task_id=submit_task.id,
+                work_item_id=submit_task.id,
                 user_id=users["requester"].id,
-                completed_at=110,
+                completed_at=datetime.fromtimestamp(110, UTC),
                 task_payload={
                     "order_amount": ORDER_AMOUNT,
                     "vendor": ORDER_VENDOR,
@@ -170,7 +171,7 @@ def main() -> None:
             session,
             api.ClaimTaskCommand(
                 tenant_id=TENANT_ID,
-                human_task_id=finance_task.id,
+                work_item_id=finance_task.id,
                 user_id=users["finance_user"].id,
             ),
         )
@@ -178,9 +179,9 @@ def main() -> None:
             session,
             api.CompleteTaskCommand(
                 tenant_id=TENANT_ID,
-                human_task_id=finance_task.id,
+                work_item_id=finance_task.id,
                 user_id=users["finance_user"].id,
-                completed_at=120,
+                completed_at=datetime.fromtimestamp(120, UTC),
                 task_payload={"finance_decision": SCENARIO.finance_decision},
             ),
         )
@@ -199,7 +200,7 @@ def main() -> None:
             session,
             api.ClaimTaskCommand(
                 tenant_id=TENANT_ID,
-                human_task_id=compliance_task.id,
+                work_item_id=compliance_task.id,
                 user_id=users["compliance_user"].id,
             ),
         )
@@ -207,9 +208,9 @@ def main() -> None:
             session,
             api.CompleteTaskCommand(
                 tenant_id=TENANT_ID,
-                human_task_id=compliance_task.id,
+                work_item_id=compliance_task.id,
                 user_id=users["compliance_user"].id,
-                completed_at=130,
+                completed_at=datetime.fromtimestamp(130, UTC),
                 task_payload={
                     "compliance_decision": SCENARIO.compliance_decision,
                 },
@@ -229,7 +230,7 @@ def main() -> None:
             session,
             api.ClaimTaskCommand(
                 tenant_id=TENANT_ID,
-                human_task_id=notify_task.id,
+                work_item_id=notify_task.id,
                 user_id=users["requester"].id,
             ),
         )
@@ -237,9 +238,9 @@ def main() -> None:
             session,
             api.CompleteTaskCommand(
                 tenant_id=TENANT_ID,
-                human_task_id=notify_task.id,
+                work_item_id=notify_task.id,
                 user_id=users["requester"].id,
-                completed_at=140,
+                completed_at=datetime.fromtimestamp(140, UTC),
             ),
         )
         _show_instance("Final", session, process_instance.id)
@@ -325,8 +326,8 @@ def _seed(session: Session) -> dict[str, UserModel]:
             service=SERVICE_URL,
             service_id="requester-keycloak",
             display_name="Requester",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "finance_user": UserModel(
             username="finance_user",
@@ -334,8 +335,8 @@ def _seed(session: Session) -> dict[str, UserModel]:
             service=SERVICE_URL,
             service_id="finance-keycloak",
             display_name="Finance User",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "admin": UserModel(
             username="admin",
@@ -343,8 +344,8 @@ def _seed(session: Session) -> dict[str, UserModel]:
             service=SERVICE_URL,
             service_id="admin-keycloak",
             display_name="Admin",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "compliance_user": UserModel(
             username="compliance_user",
@@ -352,8 +353,8 @@ def _seed(session: Session) -> dict[str, UserModel]:
             service=SERVICE_URL,
             service_id="compliance-keycloak",
             display_name="Compliance User",
-            created_at=1,
-            updated_at=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
     }
     session.add(tenant)

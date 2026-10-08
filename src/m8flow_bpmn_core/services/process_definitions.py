@@ -39,8 +39,7 @@ def import_bpmn_process_definition(
     properties_json: Mapping[str, Any] | None = None,
     bpmn_version_control_type: str | None = None,
     bpmn_version_control_identifier: str | None = None,
-    single_process_hash: str | None = None,
-    full_process_model_hash: str | None = None,
+    process_xml_digest: str | None = None,
     created_at: datetime | None = None,
     updated_at: datetime | None = None,
 ) -> BpmnProcessDefinitionModel:
@@ -54,7 +53,8 @@ def import_bpmn_process_definition(
         tenant_id=tenant_id,
         actor_user_id=user_id,
         command_key=PROCESS_DEFINITION_IMPORT_COMMAND,
-        target_uri=f"/process-definitions/{bpmn_identifier}",
+        resource_type="process_definition",
+        resource_id=bpmn_identifier,
     )
     source_bpmn_xml_text = _coerce_xml_text(source_bpmn_xml)
     source_dmn_xml_text = (
@@ -64,15 +64,10 @@ def import_bpmn_process_definition(
         bpmn_xml_text=source_bpmn_xml_text,
         dmn_xml_text=source_dmn_xml_text,
     )
-    resolved_full_process_model_hash = (
-        full_process_model_hash
-        if full_process_model_hash is not None
+    resolved_process_xml_digest = (
+        process_xml_digest
+        if process_xml_digest is not None
         else _hash_text(source_bpmn_xml_text)
-    )
-    resolved_single_process_hash = (
-        single_process_hash
-        if single_process_hash is not None
-        else _hash_text(f"single::{source_bpmn_xml_text}")
     )
     resolved_process_definition_identifier = _extract_process_identifier(
         source_bpmn_xml_text
@@ -81,8 +76,8 @@ def import_bpmn_process_definition(
     definition = session.scalar(
         select(BpmnProcessDefinitionModel).where(
             BpmnProcessDefinitionModel.m8f_tenant_id == tenant_id,
-            BpmnProcessDefinitionModel.full_process_model_hash
-            == resolved_full_process_model_hash,
+            BpmnProcessDefinitionModel.process_xml_digest
+            == resolved_process_xml_digest,
         )
     )
     resolved_properties_json = dict(properties_json or {})
@@ -90,8 +85,7 @@ def import_bpmn_process_definition(
     if definition is None:
         definition = BpmnProcessDefinitionModel(
             m8f_tenant_id=tenant_id,
-            single_process_hash=resolved_single_process_hash,
-            full_process_model_hash=resolved_full_process_model_hash,
+            process_xml_digest=resolved_process_xml_digest,
             bpmn_identifier=resolved_process_definition_identifier,
             bpmn_name=bpmn_name,
             properties_json=resolved_properties_json,
@@ -106,8 +100,7 @@ def import_bpmn_process_definition(
         )
         session.add(definition)
     else:
-        definition.single_process_hash = resolved_single_process_hash
-        definition.full_process_model_hash = resolved_full_process_model_hash
+        definition.process_xml_digest = resolved_process_xml_digest
         definition.bpmn_identifier = resolved_process_definition_identifier
         if bpmn_name is not None:
             definition.bpmn_name = bpmn_name

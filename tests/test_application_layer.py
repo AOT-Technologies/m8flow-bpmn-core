@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -33,15 +34,15 @@ from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
 from m8flow_bpmn_core.models.future_task import FutureTaskModel
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventType
+from m8flow_bpmn_core.models.process_instance_event import ProcessLifecycleEventType
 from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
 from m8flow_bpmn_core.services.authorization import (
     ROLE_ADMIN,
     ensure_v1_role,
@@ -62,7 +63,7 @@ def test_application_layer_handles_tasks_events_and_metadata(
         session,
         ClaimTaskCommand(
             tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
         ),
     )
@@ -74,13 +75,13 @@ def test_application_layer_handles_tasks_events_and_metadata(
         RecordProcessInstanceEventCommand(
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
-            event_type=ProcessInstanceEventType.process_instance_created,
+        event_type=ProcessLifecycleEventType.process_instance_created,
             task_guid=task.guid,
             user_id=user.id,
-            occurred_at=100.25,
+            occurred_at=datetime.fromtimestamp(100.25, UTC),
         ),
     )
-    assert event.event_type == ProcessInstanceEventType.process_instance_created.value
+    assert event.event_type == ProcessLifecycleEventType.process_instance_created.value
     assert event.occurred_at.timestamp() == 100.25
 
     metadata = execute_command(
@@ -90,8 +91,8 @@ def test_application_layer_handles_tasks_events_and_metadata(
             process_instance_id=process_instance.id,
             key="approval_state",
             value="pending",
-            updated_at=101,
-            created_at=100,
+            updated_at=datetime.fromtimestamp(101, UTC),
+            created_at=datetime.fromtimestamp(100, UTC),
         ),
     )
     assert metadata.value == "pending"
@@ -104,7 +105,7 @@ def test_application_layer_handles_tasks_events_and_metadata(
             process_instance_id=process_instance.id,
             key="approval_state",
             value="approved",
-            updated_at=120,
+            updated_at=datetime.fromtimestamp(120, UTC),
         ),
     )
     assert metadata.value == "approved"
@@ -133,9 +134,9 @@ def test_application_layer_handles_tasks_events_and_metadata(
         session,
         CompleteTaskCommand(
             tenant_id=tenant.id,
-            human_task_id=human_task.id,
+                work_item_id=human_task.id,
             user_id=user.id,
-            completed_at=130,
+            completed_at=datetime.fromtimestamp(130, UTC),
             task_payload={"routing_hint": "manual"},
         ),
     )
@@ -201,7 +202,7 @@ def test_application_layer_supports_connection_transaction_control(
                 connection,
                 ClaimTaskCommand(
                     tenant_id=tenant.id,
-                    human_task_id=human_task.id,
+                    work_item_id=human_task.id,
                     user_id=user.id,
                 ),
             )
@@ -212,7 +213,7 @@ def test_application_layer_supports_connection_transaction_control(
                 connection,
                 CompleteTaskCommand(
                     tenant_id=tenant.id,
-                    human_task_id=human_task.id,
+                    work_item_id=human_task.id,
                     user_id=user.id,
                 ),
             )
@@ -244,7 +245,7 @@ def test_process_lifecycle_commands_and_queries(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            suspended_at=200,
+            suspended_at=datetime.fromtimestamp(200, UTC),
         ),
     )
     assert suspended_process_instance.status == "suspended"
@@ -282,7 +283,7 @@ def test_process_lifecycle_commands_and_queries(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            resumed_at=250,
+            resumed_at=datetime.fromtimestamp(250, UTC),
         ),
     )
     assert resumed_process_instance.status == "running"
@@ -294,7 +295,7 @@ def test_process_lifecycle_commands_and_queries(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            terminated_at=300,
+            terminated_at=datetime.fromtimestamp(300, UTC),
         ),
     )
     assert terminated_process_instance.status == "terminated"
@@ -308,8 +309,8 @@ def test_process_lifecycle_commands_and_queries(session: Session) -> None:
         .future_task.archived_for_process_instance_status
         is True
     )
-    assert terminated_process_instance.human_tasks[0].completed is True
-    assert terminated_process_instance.human_tasks[0].task_status == "TERMINATED"
+    assert terminated_process_instance.work_items[0].completed is True
+    assert terminated_process_instance.work_items[0].task_status == "TERMINATED"
     assert execute_query(
         session, GetPendingTasksQuery(tenant_id=tenant.id, user_id=user.id)
     ) == []
@@ -346,7 +347,7 @@ def test_error_and_retry_lifecycle_commands(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            errored_at=275,
+            errored_at=datetime.fromtimestamp(275, UTC),
         ),
     )
     assert errored_process_instance.status == "error"
@@ -360,8 +361,8 @@ def test_error_and_retry_lifecycle_commands(session: Session) -> None:
         .future_task.archived_for_process_instance_status
         is True
     )
-    assert errored_process_instance.human_tasks[0].completed is True
-    assert errored_process_instance.human_tasks[0].task_status == "TERMINATED"
+    assert errored_process_instance.work_items[0].completed is True
+    assert errored_process_instance.work_items[0].task_status == "TERMINATED"
     assert [
         item.id
         for item in execute_query(
@@ -385,7 +386,7 @@ def test_error_and_retry_lifecycle_commands(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            retried_at=290,
+            retried_at=datetime.fromtimestamp(290, UTC),
         ),
     )
     assert retried_process_instance.status == "running"
@@ -400,10 +401,10 @@ def test_error_and_retry_lifecycle_commands(session: Session) -> None:
         .future_task.archived_for_process_instance_status
         is False
     )
-    assert retried_process_instance.human_tasks[0].completed is False
-    assert retried_process_instance.human_tasks[0].task_status == "READY"
-    assert retried_process_instance.human_tasks[0].actual_owner_id is None
-    assert retried_process_instance.human_tasks[0].completed_by_user_id is None
+    assert retried_process_instance.work_items[0].completed is False
+    assert retried_process_instance.work_items[0].task_status == "READY"
+    assert retried_process_instance.work_items[0].actual_owner_id is None
+    assert retried_process_instance.work_items[0].completed_by_user_id is None
     assert [
         item.id
         for item in execute_query(
@@ -434,7 +435,7 @@ def test_schedule_retry_command_persists_scheduler_job(session: Session) -> None
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            errored_at=275,
+            errored_at=datetime.fromtimestamp(275, UTC),
         ),
     )
 
@@ -444,8 +445,8 @@ def test_schedule_retry_command_persists_scheduler_job(session: Session) -> None
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            retry_at=325,
-            scheduled_at=300,
+            retry_at=datetime.fromtimestamp(325, UTC),
+            scheduled_at=datetime.fromtimestamp(300, UTC),
         ),
     )
     assert scheduler_job.job_type == "process_retry"
@@ -453,7 +454,7 @@ def test_schedule_retry_command_persists_scheduler_job(session: Session) -> None
     assert scheduler_job.run_at.timestamp() == 325
     assert scheduler_job.payload_json == {
         "requested_by_user_id": user.id,
-        "scheduled_at_in_seconds": 300,
+        "scheduled_at": "1970-01-01T00:05:00+00:00",
     }
 
     execute_command(
@@ -462,7 +463,7 @@ def test_schedule_retry_command_persists_scheduler_job(session: Session) -> None
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            retried_at=310,
+            retried_at=datetime.fromtimestamp(310, UTC),
         ),
     )
 
@@ -486,8 +487,8 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
         service="http://localhost:7002/realms/tenant-definition",
         service_id="definition-admin-keycloak",
         display_name="Definition Admin",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()
@@ -521,8 +522,8 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
             properties_json={"source": "application-layer-test", "version": 1},
             bpmn_version_control_type="git",
             bpmn_version_control_identifier="main",
-            created_at=10,
-            updated_at=20,
+            created_at=datetime.fromtimestamp(10, UTC),
+            updated_at=datetime.fromtimestamp(20, UTC),
         ),
     )
     assert definition.id is not None
@@ -531,11 +532,8 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
     assert definition.bpmn_name == "Imported Process"
     assert definition.source_bpmn_xml == bpmn_xml
     assert definition.source_dmn_xml == dmn_xml
-    assert definition.full_process_model_hash == hashlib.sha256(
+    assert definition.process_xml_digest == hashlib.sha256(
         bpmn_xml.encode("utf-8")
-    ).hexdigest()
-    assert definition.single_process_hash == hashlib.sha256(
-        f"single::{bpmn_xml}".encode()
     ).hexdigest()
     public_properties = {
         key: value
@@ -559,8 +557,8 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
             properties_json={"source": "application-layer-test", "version": 1},
             bpmn_version_control_type="git",
             bpmn_version_control_identifier="main",
-            created_at=10,
-            updated_at=20,
+            created_at=datetime.fromtimestamp(10, UTC),
+            updated_at=datetime.fromtimestamp(20, UTC),
         ),
     )
     assert imported_definition.id == definition.id
@@ -573,7 +571,7 @@ def _seed_process_instance(
     UserModel,
     ProcessInstanceModel,
     TaskModel,
-    HumanTaskModel,
+    WorkItemModel,
 ]:
     tenant = M8flowTenantModel(id="tenant-a", name="Tenant A", slug="tenant-a")
     service_url = f"http://localhost:7002/realms/{tenant.slug}"
@@ -583,8 +581,8 @@ def _seed_process_instance(
         service=service_url,
         service_id="alice-keycloak",
         display_name="Alice",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()
@@ -597,15 +595,14 @@ def _seed_process_instance(
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash="def-single",
-        full_process_model_hash="def-full",
+        process_xml_digest="def-full",
         bpmn_identifier="invoice-approval",
         bpmn_name="Invoice Approval",
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at=900,
-        updated_at=900,
+        created_at=datetime.fromtimestamp(900, UTC),
+        updated_at=datetime.fromtimestamp(900, UTC),
     )
     session.add(definition)
     session.flush()
@@ -629,8 +626,8 @@ def _seed_process_instance(
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at=950,
-        updated_at=950,
+        created_at=datetime.fromtimestamp(950, UTC),
+        updated_at=datetime.fromtimestamp(950, UTC),
     )
     session.add(task_definition)
     session.flush()
@@ -638,13 +635,13 @@ def _seed_process_instance(
     process_instance = ProcessInstanceModel(
         m8f_tenant_id=tenant.id,
         process_model_identifier="invoice-approval",
-        process_model_display_name="Invoice Approval",
+        process_model_display_name="invoice-approval",
         process_initiator_id=user.id,
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at=1_000,
-        updated_at=1_000,
+        created_at=datetime.fromtimestamp(1_000, UTC),
+        updated_at=datetime.fromtimestamp(1_000, UTC),
     )
     session.add(process_instance)
     session.flush()
@@ -666,37 +663,30 @@ def _seed_process_instance(
     future_task = FutureTaskModel(
         m8f_tenant_id=tenant.id,
         guid=task.guid,
-        run_at=1_050,
-        queued_to_run_at=1_025,
-        updated_at=1_050,
+        run_at=datetime.fromtimestamp(1_050, UTC),
+        queued_to_run_at=datetime.fromtimestamp(1_025, UTC),
+        updated_at=datetime.fromtimestamp(1_050, UTC),
     )
     session.add(future_task)
     session.flush()
 
-    human_task = HumanTaskModel(
+    human_task = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
         task_guid=task.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
-        task_name="approve_invoice",
-        task_title="Approve Invoice",
-        task_type="User Task",
         task_status="READY",
-        process_model_display_name=process_instance.process_model_display_name,
-        bpmn_process_identifier=process_instance.process_model_identifier,
-        lane_name="finance",
-        json_metadata={"priority": "high"},
         completed=False,
     )
     session.add(human_task)
     session.flush()
 
     session.add(
-        HumanTaskUserModel(
+        WorkItemUserModel(
             m8f_tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
             added_by="manual",
         )

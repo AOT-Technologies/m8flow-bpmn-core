@@ -32,9 +32,13 @@ def upgrade() -> None:
     if OLD_NAME not in names or NEW_NAME in names:
         return
 
-    with op.batch_alter_table("principal", recreate="always") as batch_op:
-        batch_op.drop_constraint(OLD_NAME, type_="check")
-        batch_op.create_check_constraint(NEW_NAME, CHECK_SQL)
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table("principal", recreate="always") as batch_op:
+            batch_op.drop_constraint(OLD_NAME, type_="check")
+            batch_op.create_check_constraint(NEW_NAME, CHECK_SQL)
+    else:
+        op.drop_constraint(OLD_NAME, "principal", type_="check")
+        op.create_check_constraint(NEW_NAME, "principal", CHECK_SQL)
 
 
 def downgrade() -> None:
@@ -42,6 +46,10 @@ def downgrade() -> None:
     if NEW_NAME not in names or OLD_NAME in names:
         return
 
-    with op.batch_alter_table("principal", recreate="always") as batch_op:
-        batch_op.drop_constraint(NEW_NAME, type_="check")
-        batch_op.create_check_constraint(OLD_NAME, CHECK_SQL)
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table("principal", recreate="always") as batch_op:
+            batch_op.drop_constraint(NEW_NAME, type_="check")
+            batch_op.create_check_constraint(OLD_NAME, CHECK_SQL)
+    else:
+        op.drop_constraint(NEW_NAME, "principal", type_="check")
+        op.create_check_constraint(OLD_NAME, "principal", CHECK_SQL)

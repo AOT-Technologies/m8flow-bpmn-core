@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -14,13 +15,13 @@ from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
 from m8flow_bpmn_core.models.future_task import FutureTaskModel
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
 from m8flow_bpmn_core.services.authorization import (
     ROLE_ADMIN,
     ensure_v1_role,
@@ -104,10 +105,10 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
         api.RecordProcessInstanceEventCommand(
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
-            event_type=api.ProcessInstanceEventType.process_instance_created,
+            event_type=api.ProcessLifecycleEventType.process_instance_created,
             task_guid=task.guid,
             user_id=user.id,
-            occurred_at=100.0,
+            occurred_at=datetime.fromtimestamp(100.0, UTC),
         ),
     )
     metadata = api.execute_command(
@@ -117,8 +118,8 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
             process_instance_id=process_instance.id,
             key="approval_state",
             value="submitted",
-            updated_at=101,
-            created_at=100,
+            updated_at=datetime.fromtimestamp(101, UTC),
+            created_at=datetime.fromtimestamp(100, UTC),
         ),
     )
     assert metadata.value == "submitted"
@@ -128,15 +129,12 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
         session,
         api.ClaimTaskCommand(
             tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
         ),
     )
     assert claimed_task.actual_owner_id == user.id
     assert claimed_task.task_status == "CLAIMED"
-    assert claimed_task.work_item is not None
-    assert claimed_task.work_item.actual_owner_id == user.id
-    assert claimed_task.work_item.task_status == "CLAIMED"
 
     suspended_process_instance = api.execute_command(
         session,
@@ -144,7 +142,7 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            suspended_at=110,
+            suspended_at=datetime.fromtimestamp(110, UTC),
         ),
     )
     assert suspended_process_instance.status == "suspended"
@@ -162,7 +160,7 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            resumed_at=120,
+            resumed_at=datetime.fromtimestamp(120, UTC),
         ),
     )
     assert resumed_process_instance.status == "running"
@@ -183,7 +181,7 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            errored_at=130,
+            errored_at=datetime.fromtimestamp(130, UTC),
         ),
     )
     assert errored_process_instance.status == "error"
@@ -191,8 +189,8 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
     assert errored_process_instance.tasks[0].state == "TERMINATED"
     assert errored_process_instance.tasks[0].future_task is not None
     assert errored_process_instance.tasks[0].future_task.completed is True
-    assert errored_process_instance.human_tasks[0].completed is True
-    assert errored_process_instance.human_tasks[0].task_status == "TERMINATED"
+    assert errored_process_instance.work_items[0].completed is True
+    assert errored_process_instance.work_items[0].task_status == "TERMINATED"
     assert [
         item.id
         for item in api.execute_query(
@@ -213,10 +211,10 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
         api.RecordProcessInstanceEventCommand(
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
-            event_type=api.ProcessInstanceEventType.task_failed,
+            event_type=api.TaskEventType.task_failed,
             task_guid=task.guid,
             user_id=user.id,
-            occurred_at=131.0,
+            occurred_at=datetime.fromtimestamp(131.0, UTC),
         ),
     )
 
@@ -226,7 +224,7 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            retried_at=140,
+            retried_at=datetime.fromtimestamp(140, UTC),
         ),
     )
     assert retried_process_instance.status == "running"
@@ -241,10 +239,10 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
         .future_task.archived_for_process_instance_status
         is False
     )
-    assert retried_process_instance.human_tasks[0].completed is False
-    assert retried_process_instance.human_tasks[0].task_status == "READY"
-    assert retried_process_instance.human_tasks[0].actual_owner_id is None
-    assert retried_process_instance.human_tasks[0].completed_by_user_id is None
+    assert retried_process_instance.work_items[0].completed is False
+    assert retried_process_instance.work_items[0].task_status == "READY"
+    assert retried_process_instance.work_items[0].actual_owner_id is None
+    assert retried_process_instance.work_items[0].completed_by_user_id is None
     assert [
         item.id
         for item in api.execute_query(
@@ -264,7 +262,7 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
         session,
         api.ClaimTaskCommand(
             tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
         ),
     )
@@ -275,9 +273,9 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
         session,
         api.CompleteTaskCommand(
             tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
-            completed_at=150,
+            completed_at=datetime.fromtimestamp(150, UTC),
         ),
     )
     assert completed_task.completed is True
@@ -294,7 +292,7 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
             process_instance_id=process_instance.id,
             key="approval_state",
             value="approved",
-            updated_at=151,
+            updated_at=datetime.fromtimestamp(151, UTC),
         ),
     )
     assert updated_metadata.value == "approved"
@@ -305,10 +303,10 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
         api.RecordProcessInstanceEventCommand(
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
-            event_type=api.ProcessInstanceEventType.task_completed,
+            event_type=api.TaskEventType.task_completed,
             task_guid=task.guid,
             user_id=user.id,
-            occurred_at=152.0,
+            occurred_at=datetime.fromtimestamp(152.0, UTC),
         ),
     )
 
@@ -318,7 +316,7 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
             user_id=user.id,
-            terminated_at=160,
+            terminated_at=datetime.fromtimestamp(160, UTC),
         ),
     )
     assert terminated_process_instance.status == "terminated"
@@ -332,10 +330,10 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
         .future_task.archived_for_process_instance_status
         is True
     )
-    assert terminated_process_instance.human_tasks[0].completed is True
-    assert terminated_process_instance.human_tasks[0].task_status == "COMPLETED"
-    assert terminated_process_instance.human_tasks[0].actual_owner_id == user.id
-    assert terminated_process_instance.human_tasks[0].completed_by_user_id == user.id
+    assert terminated_process_instance.work_items[0].completed is True
+    assert terminated_process_instance.work_items[0].task_status == "COMPLETED"
+    assert terminated_process_instance.work_items[0].actual_owner_id == user.id
+    assert terminated_process_instance.work_items[0].completed_by_user_id == user.id
 
     assert [
         item.id
@@ -417,10 +415,10 @@ def test_invoice_approval_workflow_scenarios(
         api.RecordProcessInstanceEventCommand(
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
-            event_type=api.ProcessInstanceEventType.process_instance_created,
+            event_type=api.ProcessLifecycleEventType.process_instance_created,
             task_guid=task.guid,
             user_id=user.id,
-            occurred_at=100.0,
+            occurred_at=datetime.fromtimestamp(100.0, UTC),
         ),
     )
 
@@ -430,7 +428,7 @@ def test_invoice_approval_workflow_scenarios(
         "decision_note": scenario.decision_note,
         "decision_path": scenario.decision_path,
     }
-    updated_at = 101
+    updated_at = datetime.fromtimestamp(101, UTC)
     for key, value in variable_values.items():
         api.execute_command(
             session,
@@ -442,7 +440,7 @@ def test_invoice_approval_workflow_scenarios(
                 updated_at=updated_at,
             ),
         )
-        updated_at += 1
+        updated_at += timedelta(seconds=1)
 
     pending_tasks = api.execute_query(
         session,
@@ -457,19 +455,22 @@ def test_invoice_approval_workflow_scenarios(
         session,
         api.ClaimTaskCommand(
             tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
         ),
     )
     assert claimed_task.actual_owner_id == user.id
     assert claimed_task.task_status == "CLAIMED"
 
-    completed_at = 150 if scenario.approval_state == "approved" else 175
+    completed_at = datetime.fromtimestamp(
+        150 if scenario.approval_state == "approved" else 175,
+        UTC,
+    )
     completed_task = api.execute_command(
         session,
         api.CompleteTaskCommand(
             tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
             completed_at=completed_at,
         ),
@@ -477,24 +478,21 @@ def test_invoice_approval_workflow_scenarios(
     assert completed_task.completed is True
     assert completed_task.task_status == "COMPLETED"
     assert completed_task.task_model.state == "COMPLETED"
-    assert completed_task.task_model.ended_at.timestamp() == completed_at
-    assert completed_task.work_item is not None
-    assert completed_task.work_item.completed is True
-    assert completed_task.work_item.task_status == "COMPLETED"
+    assert completed_task.task_model.ended_at == completed_at
 
     api.execute_command(
         session,
         api.RecordProcessInstanceEventCommand(
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
-            event_type=api.ProcessInstanceEventType.task_completed,
+            event_type=api.TaskEventType.task_completed,
             task_guid=task.guid,
             user_id=user.id,
-            occurred_at=float(completed_at),
+            occurred_at=completed_at,
         ),
     )
 
-    terminated_at = completed_at + 10
+    terminated_at = completed_at + timedelta(seconds=10)
     terminated_process_instance = api.execute_command(
         session,
         api.TerminateProcessInstanceCommand(
@@ -505,7 +503,7 @@ def test_invoice_approval_workflow_scenarios(
         ),
     )
     assert terminated_process_instance.status == "terminated"
-    assert terminated_process_instance.ended_at.timestamp() == terminated_at
+    assert terminated_process_instance.ended_at == terminated_at
 
     metadata_rows = api.execute_query(
         session,
@@ -555,14 +553,10 @@ def _seed_example_workflow(
     UserModel,
     ProcessInstanceModel,
     TaskModel,
-    HumanTaskModel,
+    WorkItemModel,
 ]:
     bpmn_xml = EXAMPLE_BPMN_PATH.read_text(encoding="utf-8")
     full_process_model_hash = hashlib.sha256(bpmn_xml.encode("utf-8")).hexdigest()
-    single_process_hash = hashlib.sha256(
-        f"single::{bpmn_xml}".encode()
-    ).hexdigest()
-
     tenant = M8flowTenantModel(
         id="tenant-poc",
         name="Tenant POC",
@@ -575,8 +569,8 @@ def _seed_example_workflow(
         service=service_url,
         service_id="alice-keycloak",
         display_name="Alice",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()
@@ -589,8 +583,7 @@ def _seed_example_workflow(
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash=single_process_hash,
-        full_process_model_hash=full_process_model_hash,
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="invoice-approval-poc",
         bpmn_name="Invoice Approval POC",
         properties_json={
@@ -608,8 +601,8 @@ def _seed_example_workflow(
         },
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at=900,
-        updated_at=900,
+        created_at=datetime.fromtimestamp(900, UTC),
+        updated_at=datetime.fromtimestamp(900, UTC),
     )
     session.add(definition)
     session.flush()
@@ -633,8 +626,8 @@ def _seed_example_workflow(
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False, "slaHours": 24},
-        created_at=950,
-        updated_at=950,
+        created_at=datetime.fromtimestamp(950, UTC),
+        updated_at=datetime.fromtimestamp(950, UTC),
     )
     session.add(task_definition)
     session.flush()
@@ -652,8 +645,8 @@ def _seed_example_workflow(
             if scenario is not None
             else "Invoice approval POC"
         ),
-        created_at=1_000,
-        updated_at=1_000,
+        created_at=datetime.fromtimestamp(1_000, UTC),
+        updated_at=datetime.fromtimestamp(1_000, UTC),
     )
     session.add(process_instance)
     session.flush()
@@ -675,38 +668,36 @@ def _seed_example_workflow(
     future_task = FutureTaskModel(
         m8f_tenant_id=tenant.id,
         guid=task.guid,
-        run_at=1_050,
-        queued_to_run_at=1_025,
-        updated_at=1_050,
+        run_at=datetime.fromtimestamp(1_050, UTC),
+        queued_to_run_at=datetime.fromtimestamp(1_025, UTC),
+        updated_at=datetime.fromtimestamp(1_050, UTC),
     )
     session.add(future_task)
     session.flush()
 
-    human_task = HumanTaskModel(
+    human_task = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
         task_guid=task.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
-        task_name="approve_invoice",
-        task_title="Approve Invoice",
-        task_type="User Task",
         task_status="READY",
-        process_model_display_name=process_instance.process_model_display_name,
-        bpmn_process_identifier=process_instance.process_model_identifier,
-        lane_name="finance",
-        json_metadata={"priority": "high"},
         completed=False,
     )
     session.add(human_task)
     session.flush()
-    ensure_work_item(session, human_task)
+    ensure_work_item(
+        session,
+        tenant_id=tenant.id,
+        process_instance_id=process_instance.id,
+        task_guid=task.guid,
+    )
 
     session.add(
-        HumanTaskUserModel(
+        WorkItemUserModel(
             m8f_tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
             added_by="manual",
         )

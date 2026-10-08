@@ -63,9 +63,9 @@ def user_tenant_identifiers(user: UserModel) -> set[str]:
         identifiers.add(service_realm_value)
 
     for attribute_name in (
-        "tenant_specific_field_1",
-        "tenant_specific_field_2",
-        "tenant_specific_field_3",
+        "realm_identifier",
+        "external_org_id",
+        "external_user_id",
     ):
         raw_value = getattr(user, attribute_name, None)
         if not isinstance(raw_value, str):

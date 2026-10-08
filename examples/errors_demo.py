@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -34,16 +35,16 @@ from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel  # noqa: E402
 from m8flow_bpmn_core.models.bpmn_process_definition import (  # noqa: E402
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.human_task import HumanTaskModel  # noqa: E402
-from m8flow_bpmn_core.models.human_task_user import (  # noqa: E402
-    HumanTaskUserModel,
-)
 from m8flow_bpmn_core.models.process_instance import (  # noqa: E402
     ProcessInstanceModel,
     ProcessInstanceStatus,
 )
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel  # noqa: E402
 from m8flow_bpmn_core.models.user import UserModel  # noqa: E402
+from m8flow_bpmn_core.models.work_item import WorkItemModel  # noqa: E402
+from m8flow_bpmn_core.models.work_item_user import (  # noqa: E402
+    WorkItemUserModel,
+)
 from m8flow_bpmn_core.services.authorization import (  # noqa: E402
     ROLE_ADMIN,
     ensure_v1_role,
@@ -106,7 +107,7 @@ def main() -> None:
                 session,
                 api.CompleteTaskCommand(
                     tenant_id=TENANT_ID,
-                    human_task_id=context["unassigned_task_id"],
+                    work_item_id=context["unassigned_task_id"],
                     user_id=context["other_user_id"],
                 ),
             ),
@@ -136,7 +137,7 @@ def main() -> None:
                 session,
                 api.ClaimTaskCommand(
                     tenant_id=TENANT_ID,
-                    human_task_id=context["completed_task_id"],
+                    work_item_id=context["completed_task_id"],
                     user_id=context["primary_user_id"],
                 ),
             ),
@@ -226,8 +227,8 @@ def _seed(session: Session) -> dict[str, int]:
         service=f"http://localhost/realms/{TENANT_SLUG}",
         service_id="primary-keycloak",
         display_name="Primary User",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     other_user = UserModel(
         username="other",
@@ -235,8 +236,8 @@ def _seed(session: Session) -> dict[str, int]:
         service=f"http://localhost/realms/{TENANT_SLUG}",
         service_id="other-keycloak",
         display_name="Other User",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     foreign_user = UserModel(
         username="foreigner",
@@ -244,8 +245,8 @@ def _seed(session: Session) -> dict[str, int]:
         service=f"http://localhost/realms/{FOREIGN_TENANT_SLUG}",
         service_id="foreigner-keycloak",
         display_name="Foreign User",
-        created_at=1,
-        updated_at=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, foreign_tenant, primary_user, other_user, foreign_user])
     session.flush()
@@ -258,15 +259,14 @@ def _seed(session: Session) -> dict[str, int]:
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash="demo-single",
-        full_process_model_hash="demo-full",
+        process_xml_digest="test-definition-digest",
         bpmn_identifier="demo-process",
         bpmn_name="Demo Process",
         source_bpmn_xml="<bpmn />",
         source_dmn_xml=None,
         properties_json={},
-        created_at=10,
-        updated_at=10,
+        created_at=datetime.fromtimestamp(10, UTC),
+        updated_at=datetime.fromtimestamp(10, UTC),
     )
     session.add(definition)
     session.flush()
@@ -287,13 +287,13 @@ def _seed(session: Session) -> dict[str, int]:
         instance = ProcessInstanceModel(
             m8f_tenant_id=tenant.id,
             process_model_identifier="demo-process",
-            process_model_display_name="Demo Process",
+            process_model_display_name="demo-process",
             process_initiator_id=primary_user.id,
             bpmn_process_definition_id=definition.id,
             bpmn_process_id=bpmn_process.id,
             status=status,
-            created_at=20,
-            updated_at=20,
+            created_at=datetime.fromtimestamp(20, UTC),
+            updated_at=datetime.fromtimestamp(20, UTC),
         )
         session.add(instance)
         session.flush()
@@ -306,47 +306,33 @@ def _seed(session: Session) -> dict[str, int]:
         status=ProcessInstanceStatus.terminated.value,
     )
 
-    completed_task = HumanTaskModel(
+    completed_task = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=running_instance.id,
         task_guid="task-completed",
         lane_assignment_id=None,
         completed_by_user_id=primary_user.id,
         actual_owner_id=primary_user.id,
-        task_name="completed-task",
-        task_title="Completed Task",
-        task_type="UserTask",
         task_status=WorkItemState.COMPLETED.value,
-        process_model_display_name="Demo Process",
-        bpmn_process_identifier="demo-process",
-        lane_name=None,
-        json_metadata={},
         completed=True,
     )
-    unassigned_task = HumanTaskModel(
+    unassigned_task = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=running_instance.id,
         task_guid="task-unassigned",
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
-        task_name="unassigned-task",
-        task_title="Unassigned Task",
-        task_type="UserTask",
         task_status=WorkItemState.READY.value,
-        process_model_display_name="Demo Process",
-        bpmn_process_identifier="demo-process",
-        lane_name=None,
-        json_metadata={},
         completed=False,
     )
     session.add_all([completed_task, unassigned_task])
     session.flush()
 
     session.add(
-        HumanTaskUserModel(
+        WorkItemUserModel(
             m8f_tenant_id=tenant.id,
-            human_task_id=unassigned_task.id,
+            work_item_id=unassigned_task.id,
             user_id=primary_user.id,
             added_by="manual",
         )

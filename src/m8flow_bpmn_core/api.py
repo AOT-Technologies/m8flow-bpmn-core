@@ -52,7 +52,6 @@ from m8flow_bpmn_core.errors import (
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceStatus
 from m8flow_bpmn_core.models.process_instance_event import (
     ProcessInstanceEventCategory,
-    ProcessInstanceEventType,
     ProcessLifecycleEventType,
     TaskEventType,
 )
@@ -175,7 +174,6 @@ __all__ = [
     "PROCESS_START_COMMAND",
     "PROCESS_SUSPEND_COMMAND",
     "PROCESS_TERMINATE_COMMAND",
-    "ProcessInstanceEventType",
     "ProcessInstanceEventCategory",
     "ProcessLifecycleEventType",
     "ProcessInstanceStatus",

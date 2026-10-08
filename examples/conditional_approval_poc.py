@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, is_dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from pprint import pformat
 from typing import Any
@@ -26,8 +27,6 @@ from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
 from m8flow_bpmn_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.human_task import HumanTaskModel
-from m8flow_bpmn_core.models.human_task_user import HumanTaskUserModel
 from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
 from m8flow_bpmn_core.models.process_instance_event import (
     ProcessInstanceEventModel,
@@ -42,6 +41,8 @@ from m8flow_bpmn_core.models.task import TaskModel
 from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
 from m8flow_bpmn_core.models.tenant import M8flowTenantModel
 from m8flow_bpmn_core.models.user import UserModel
+from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
 from m8flow_bpmn_core.services.authorization import (
     ROLE_ADMIN,
     ROLE_MANAGER,
@@ -298,18 +299,18 @@ def _resolve_database_url() -> tuple[str, str]:
     return _normalize_database_url(raw_url)
 
 
-def _current_timestamp() -> int:
-    return round(time.time())
+def _current_timestamp() -> datetime:
+    return datetime.now(UTC).replace(microsecond=0)
 
 
-def _offset_timestamp(occurred_at: int, offset_seconds: int) -> int:
-    return max(1, occurred_at + offset_seconds)
+def _offset_timestamp(occurred_at: datetime, offset_seconds: int) -> datetime:
+    return occurred_at + timedelta(seconds=offset_seconds)
 
 
 def _current_date_string() -> str:
     return time.strftime(
         "%Y-%m-%d",
-        time.localtime(_current_timestamp()),
+        _current_timestamp().timetuple(),
     )
 
 
@@ -1040,8 +1041,14 @@ def _align_shared_db_tenant_with_keycloak_organization(
 
     session.execute(
         UserModel.__table__.update()
-        .where(UserModel.__table__.c.tenant_specific_field_1 == original_tenant_id)
-        .values(tenant_specific_field_1=desired_tenant_id)
+        .where(
+            (UserModel.__table__.c.external_org_id == original_tenant_id)
+            | (
+                UserModel.__table__.c.service
+                == f"http://localhost:6842/realms/{tenant.slug}"
+            )
+        )
+        .values(external_org_id=desired_tenant_id)
     )
     session.flush()
     session.delete(tenant)
@@ -1401,9 +1408,9 @@ def _realign_existing_example_process_model_identifiers(
 
     human_task_count = 0
     for human_task in session.scalars(
-        select(HumanTaskModel).where(
-            HumanTaskModel.m8f_tenant_id == tenant_id,
-            HumanTaskModel.bpmn_process_identifier == legacy_identifier,
+        select(WorkItemModel).where(
+            WorkItemModel.m8f_tenant_id == tenant_id,
+            WorkItemModel.bpmn_process_identifier == legacy_identifier,
         )
     ).all():
         human_task.bpmn_process_identifier = desired_identifier
@@ -1573,17 +1580,17 @@ def _get_or_create_user(
             service=service,
             service_id=service_id,
             display_name=display_name,
-            tenant_specific_field_1=(
+            external_org_id=(
                 tenant_membership_identifiers[0]
                 if len(tenant_membership_identifiers) > 0
                 else None
             ),
-            tenant_specific_field_2=(
+            realm_identifier=(
                 tenant_membership_identifiers[1]
                 if len(tenant_membership_identifiers) > 1
                 else None
             ),
-            tenant_specific_field_3=(
+            external_user_id=(
                 tenant_membership_identifiers[2]
                 if len(tenant_membership_identifiers) > 2
                 else None
@@ -1605,17 +1612,17 @@ def _get_or_create_user(
     user.username = username
     user.email = email
     user.display_name = display_name
-    user.tenant_specific_field_1 = (
+    user.external_org_id = (
         tenant_membership_identifiers[0]
         if len(tenant_membership_identifiers) > 0
         else None
     )
-    user.tenant_specific_field_2 = (
+    user.realm_identifier = (
         tenant_membership_identifiers[1]
         if len(tenant_membership_identifiers) > 1
         else None
     )
-    user.tenant_specific_field_3 = (
+    user.external_user_id = (
         tenant_membership_identifiers[2]
         if len(tenant_membership_identifiers) > 2
         else None
@@ -1673,7 +1680,7 @@ def _seed_noise_work_item(
     lane_name: str,
     created_at: int,
     warnings: list[str],
-) -> tuple[ProcessInstanceModel, HumanTaskModel]:
+) -> tuple[ProcessInstanceModel, WorkItemModel]:
     task_guid = f"{label}-task"
     existing_task = session.get(TaskModel, task_guid)
     if existing_task is not None:
@@ -1687,27 +1694,20 @@ def _seed_noise_work_item(
             )
 
         human_task = session.scalar(
-            select(HumanTaskModel).where(
-                HumanTaskModel.m8f_tenant_id == tenant.id,
-                HumanTaskModel.task_guid == task_guid,
+            select(WorkItemModel).where(
+                WorkItemModel.m8f_tenant_id == tenant.id,
+                WorkItemModel.task_guid == task_guid,
             )
         )
         if human_task is None:
-            human_task = HumanTaskModel(
+            human_task = WorkItemModel(
                 m8f_tenant_id=tenant.id,
                 process_instance_id=process_instance.id,
                 task_guid=task_guid,
                 lane_assignment_id=None,
                 completed_by_user_id=None,
                 actual_owner_id=None,
-                task_name=f"{label.replace('-', '_')}_task",
-                task_title=task_title,
-                task_type="UserTask",
                 task_status="READY",
-                process_model_display_name=process_display_name,
-                bpmn_process_identifier=f"{label}-process",
-                lane_name=lane_name,
-                json_metadata={"noise": True, "label": label},
                 completed=False,
             )
             session.add(human_task)
@@ -1736,15 +1736,14 @@ def _seed_noise_work_item(
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash=f"{label}-single",
-        full_process_model_hash=f"{label}-full",
+        process_xml_digest="test-definition-digest",
         bpmn_identifier=bpmn_identifier,
         bpmn_name=process_display_name,
         properties_json={"version": 1, "noise": True, "label": label},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at=created_at - 10,
-        updated_at=created_at - 10,
+        created_at=created_at - timedelta(seconds=10),
+        updated_at=created_at - timedelta(seconds=10),
     )
     definition.source_bpmn_xml = source_bpmn_xml
     session.add(definition)
@@ -1769,8 +1768,8 @@ def _seed_noise_work_item(
         bpmn_name=task_title,
         typename="UserTask",
         properties_json={"allowGuest": False, "noise": True},
-        created_at=created_at - 5,
-        updated_at=created_at - 5,
+        created_at=created_at - timedelta(seconds=5),
+        updated_at=created_at - timedelta(seconds=5),
     )
     session.add(task_definition)
     session.flush()
@@ -1778,7 +1777,7 @@ def _seed_noise_work_item(
     process_instance = ProcessInstanceModel(
         m8f_tenant_id=tenant.id,
         process_model_identifier=bpmn_identifier,
-        process_model_display_name=process_display_name,
+        process_model_display_name=bpmn_identifier,
         process_initiator_id=user.id,
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
@@ -1803,30 +1802,23 @@ def _seed_noise_work_item(
     session.add(task)
     session.flush()
 
-    human_task = HumanTaskModel(
+    human_task = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
         task_guid=task.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
-        task_name=task_identifier,
-        task_title=task_title,
-        task_type="UserTask",
         task_status="READY",
-        process_model_display_name=process_display_name,
-        bpmn_process_identifier=bpmn_identifier,
-        lane_name=lane_name,
-        json_metadata={"noise": True, "label": label},
         completed=False,
     )
     session.add(human_task)
     session.flush()
 
     session.add(
-        HumanTaskUserModel(
+        WorkItemUserModel(
             m8f_tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
             added_by="manual",
         )
@@ -1842,7 +1834,7 @@ def _reset_noise_work_item(
     tenant_id: str,
     user_id: int,
     task: TaskModel,
-    human_task: HumanTaskModel,
+    human_task: WorkItemModel,
     process_instance: ProcessInstanceModel,
     label: str,
     process_display_name: str,
@@ -1863,27 +1855,28 @@ def _reset_noise_work_item(
     human_task.completed = False
     human_task.completed_by_user_id = None
     human_task.actual_owner_id = None
-    human_task.task_name = task_identifier
-    human_task.task_title = task_title
     human_task.task_status = WorkItemState.READY.value
-    human_task.task_type = "UserTask"
-    human_task.process_model_display_name = process_display_name
-    human_task.bpmn_process_identifier = f"{label}-process"
-    human_task.lane_name = lane_name
-    human_task.json_metadata = {"noise": True, "label": label}
+    task.task_definition.bpmn_identifier = task_identifier
+    task.task_definition.bpmn_name = task_title
+    task.task_definition.properties_json = {
+        "allowGuest": False,
+        "noise": True,
+        "lane": lane_name,
+        "label": label,
+    }
 
     assignment = session.scalar(
-        select(HumanTaskUserModel).where(
-            HumanTaskUserModel.m8f_tenant_id == tenant_id,
-            HumanTaskUserModel.human_task_id == human_task.id,
-            HumanTaskUserModel.user_id == user_id,
+        select(WorkItemUserModel).where(
+            WorkItemUserModel.m8f_tenant_id == tenant_id,
+            WorkItemUserModel.work_item_id == human_task.id,
+            WorkItemUserModel.user_id == user_id,
         )
     )
     if assignment is None:
         session.add(
-            HumanTaskUserModel(
+            WorkItemUserModel(
                 m8f_tenant_id=tenant_id,
-                human_task_id=human_task.id,
+                work_item_id=human_task.id,
                 user_id=user_id,
                 added_by="manual",
             )
@@ -1988,7 +1981,6 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         submit_tasks,
         "submit task",
         process_instance_id=process_instance.id,
-        task_name=CONDITIONAL_APPROVAL_TASK_IDS["submit"],
     )
 
     _run_command_step(
@@ -2000,7 +1992,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         ),
         command=api.ClaimTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=submit_task.id,
+            work_item_id=submit_task.id,
             user_id=context.user_ids["requester"],
         ),
     )
@@ -2018,7 +2010,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         ),
         command=api.CompleteTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=submit_task.id,
+            work_item_id=submit_task.id,
             user_id=context.user_ids["requester"],
             completed_at=submit_completed_at,
             task_payload=submission_payload,
@@ -2088,13 +2080,11 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         manager_tasks,
         "manager task",
         process_instance_id=process_instance.id,
-        task_name=CONDITIONAL_APPROVAL_TASK_IDS["manager_review"],
     )
     reviewer_task = _require_single_task(
         reviewer_tasks,
         "reviewer task",
         process_instance_id=process_instance.id,
-        task_name=CONDITIONAL_APPROVAL_TASK_IDS["manager_review"],
     )
     if manager_task.id != reviewer_task.id:
         raise RuntimeError(
@@ -2116,7 +2106,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         context_text="The manager claims the review task.",
         command=api.ClaimTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=manager_task.id,
+            work_item_id=manager_task.id,
             user_id=context.user_ids["manager"],
         ),
     )
@@ -2128,7 +2118,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         context_text=_manager_completion_context(),
         command=api.CompleteTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=manager_task.id,
+            work_item_id=manager_task.id,
             user_id=context.user_ids["manager"],
             completed_at=manager_completed_at,
             task_payload={"decision": MANAGER_DECISION},
@@ -2169,7 +2159,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         ),
     )
 
-    finance_task: HumanTaskModel | None = None
+    finance_task: WorkItemModel | None = None
     if MANAGER_DECISION == "Approved" and SCENARIO_AMOUNT > 500:
         finance_tasks = _run_command_step(
             engine,
@@ -2188,7 +2178,6 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             finance_tasks,
             "finance task",
             process_instance_id=process_instance.id,
-            task_name=CONDITIONAL_APPROVAL_TASK_IDS["finance_review"],
         )
 
         _print_payload_values(
@@ -2203,7 +2192,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             context_text="The finance reviewer claims the task.",
             command=api.ClaimTaskCommand(
                 tenant_id=context.tenant_id,
-                human_task_id=finance_task.id,
+                work_item_id=finance_task.id,
                 user_id=context.user_ids["finance"],
             ),
         )
@@ -2218,7 +2207,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             ),
             command=api.CompleteTaskCommand(
                 tenant_id=context.tenant_id,
-                human_task_id=finance_task.id,
+                work_item_id=finance_task.id,
                 user_id=context.user_ids["finance"],
                 completed_at=finance_completed_at,
                 task_payload={"finance_decision": FINANCE_DECISION},
@@ -2272,7 +2261,6 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
         matching_finance_tasks = _matching_tasks(
             finance_tasks,
             process_instance_id=process_instance.id,
-            task_name=CONDITIONAL_APPROVAL_TASK_IDS["finance_review"],
         )
         if matching_finance_tasks:
             raise RuntimeError(
@@ -2375,7 +2363,7 @@ def _run_rbac_checks(
         ),
         command=api.ClaimTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=context.noise_task_ids["observer"],
+            work_item_id=context.noise_task_ids["observer"],
             user_id=context.user_ids["observer"],
         ),
         prefix="RBAC",
@@ -2394,7 +2382,7 @@ def _run_rbac_checks(
         ),
         command=api.CompleteTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=context.noise_task_ids["observer"],
+            work_item_id=context.noise_task_ids["observer"],
             user_id=context.user_ids["observer"],
             completed_at=unauthorized_task_complete_at,
         ),
@@ -2639,10 +2627,10 @@ def _summarize(result: Any) -> Any:
             "definition_id": result.bpmn_process_definition_id,
             "start_in_seconds": result.started_at,
             "end_in_seconds": result.ended_at,
-            "workflow_state_json_present": bool(result.spiff_serializer_version),
+            "workflow_state_json_present": bool(result.workflow_engine_version),
             "workflow_state_json_length": "(stored in json_data)",
         }
-    if isinstance(result, HumanTaskModel):
+    if isinstance(result, WorkItemModel):
         return {
             "id": result.id,
             "task_name": result.task_name,
@@ -2692,18 +2680,17 @@ def _summarize(result: Any) -> Any:
 
 
 def _require_single_task(
-    tasks: list[HumanTaskModel],
+    tasks: list[WorkItemModel],
     label: str,
     *,
     task_id: int | None = None,
     process_instance_id: int | None = None,
     task_name: str | None = None,
-) -> HumanTaskModel:
+) -> WorkItemModel:
     matching_tasks = _matching_tasks(
         tasks,
         task_id=task_id,
         process_instance_id=process_instance_id,
-        task_name=task_name,
     )
     if len(matching_tasks) != 1:
         raise RuntimeError(
@@ -2719,13 +2706,13 @@ def _require_single_task(
 
 
 def _matching_tasks(
-    tasks: list[HumanTaskModel],
+    tasks: list[WorkItemModel],
     *,
     task_id: int | None = None,
     process_instance_id: int | None = None,
     task_name: str | None = None,
-) -> list[HumanTaskModel]:
-    matching_tasks: list[HumanTaskModel] = []
+) -> list[WorkItemModel]:
+    matching_tasks: list[WorkItemModel] = []
     for task in tasks:
         if task_id is not None and task.id != task_id:
             continue

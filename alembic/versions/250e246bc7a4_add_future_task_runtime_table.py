@@ -20,7 +20,7 @@ def upgrade() -> None:
         sa.Column(
             "archived_for_process_instance_status",
             sa.Boolean(),
-            server_default=sa.text("0"),
+            server_default=sa.false(),
             nullable=False,
         ),
         sa.Column("updated_at_in_seconds", sa.Integer(), nullable=False),

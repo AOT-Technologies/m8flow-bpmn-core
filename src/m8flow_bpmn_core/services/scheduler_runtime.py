@@ -498,9 +498,5 @@ def _parse_scheduler_job_due_at(value: str) -> datetime:
     return due_at
 
 
-def _resolve_timestamp(timestamp: datetime | int | float | None) -> datetime:
-    if isinstance(timestamp, datetime):
-        return timestamp
-    if timestamp is not None:
-        return datetime.fromtimestamp(float(timestamp), UTC)
-    return datetime.now(UTC)
+def _resolve_timestamp(timestamp: datetime | None) -> datetime:
+    return timestamp or datetime.now(UTC)

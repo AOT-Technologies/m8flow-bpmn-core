@@ -3,7 +3,6 @@ from __future__ import annotations
 # ruff: noqa: E402
 import os
 import sys
-import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -170,8 +169,6 @@ class RecordingDemoServiceTaskConnector:
                 process_definition_id=(
                     context.process_definition_id if context else None
                 ),
-                task_name=context.task_name if context else None,
-                task_type=context.task_type if context else None,
                 occurred_at=occurred_at,
             )
         )
@@ -481,8 +478,8 @@ def _run_failure_retry_poc(
             },
             bpmn_version_control_type="git",
             bpmn_version_control_identifier="service-task-failure-retry-poc",
-            created_at=round(time.time()),
-            updated_at=round(time.time()),
+            created_at=datetime.now(UTC).replace(microsecond=0),
+            updated_at=datetime.now(UTC).replace(microsecond=0),
         ),
         registry=working_registry,
     )
@@ -502,7 +499,7 @@ def _run_failure_retry_poc(
         "Service-task failure retry run "
         + datetime.now(UTC).replace(microsecond=0).isoformat()
     )
-    shell_created_at_in_seconds = round(time.time())
+    shell_created_at = datetime.now(UTC).replace(microsecond=0)
     process_instance_shell_id, selected_process_id = (
         _prepare_committed_process_instance_shell(
             engine,
@@ -512,7 +509,7 @@ def _run_failure_retry_poc(
             submission_metadata={"submission_message": SUBMISSION_MESSAGE},
             summary=run_summary,
             process_version=1,
-            created_at=shell_created_at_in_seconds,
+            created_at=shell_created_at,
         )
     )
 
@@ -532,7 +529,7 @@ def _run_failure_retry_poc(
                 "process_instance_id": process_instance_shell_id,
                 "selected_process_id": selected_process_id,
                 "summary": run_summary,
-                "shell_created_at_in_seconds": shell_created_at_in_seconds,
+                "shell_created_at": shell_created_at.isoformat(),
             },
             sort_dicts=False,
             width=100,
@@ -540,7 +537,7 @@ def _run_failure_retry_poc(
     )
     _pause("Press Enter to continue to workflow initialization.")
 
-    started_at = round(time.time())
+    started_at = datetime.now(UTC).replace(microsecond=0)
     _run_registry_step(
         engine,
         step_number=3,
@@ -641,7 +638,7 @@ def _run_failure_retry_poc(
             tenant_id=context.tenant_id,
             process_instance_id=failed_process_instance.id,
             user_id=context.admin_user_id,
-            retried_at=round(time.time()),
+            retried_at=datetime.now(UTC).replace(microsecond=0),
         ),
         registry=working_registry,
         use_session_scope=True,
@@ -686,7 +683,7 @@ def _run_failure_retry_poc(
         ),
         command=api.ClaimTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=operator_task.id,
+            work_item_id=operator_task.id,
             user_id=context.operator_user_id,
         ),
         registry=working_registry,
@@ -704,9 +701,9 @@ def _run_failure_retry_poc(
         ),
         command=api.CompleteTaskCommand(
             tenant_id=context.tenant_id,
-            human_task_id=operator_task.id,
+            work_item_id=operator_task.id,
             user_id=context.operator_user_id,
-            completed_at=round(time.time()),
+            completed_at=datetime.now(UTC).replace(microsecond=0),
             task_payload={
                 "decision": "approved",
                 "completed_by": context.operator_username,
