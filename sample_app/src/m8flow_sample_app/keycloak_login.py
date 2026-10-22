@@ -10,9 +10,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-from m8flow_bpmn_core.utils.keycloak import shared_realm_service_issuer
-from m8flow_bpmn_core.utils.keycloak.config import keycloak_url, shared_realm_name
-from m8flow_bpmn_core.utils.keycloak.service import (
+from m8flow_core.utils.keycloak import shared_realm_service_issuer
+from m8flow_core.utils.keycloak.config import keycloak_url, shared_realm_name
+from m8flow_core.utils.keycloak.service import (
     KeycloakProvisioningError,
     get_master_admin_token,
 )
@@ -166,9 +166,9 @@ def ensure_shared_realm_browser_client(
     )
     desired_payload = {
         "clientId": normalized_client_id,
-        "name": "m8flow-bpmn-core Sample App",
+        "name": "m8flow-core Sample App",
         "description": (
-            "Browser login client provisioned for the m8flow-bpmn-core "
+            "Browser login client provisioned for the m8flow-core "
             "sample app."
         ),
         "enabled": True,

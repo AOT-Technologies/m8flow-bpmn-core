@@ -6,10 +6,10 @@ from flask import session as flask_session
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core.errors import AuthorizationError
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.services.tenant_users import (
+from m8flow_core.errors import AuthorizationError
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.services.tenant_users import (
     ensure_user_belongs_to_tenant,
     tenant_identifiers_for,
     user_belongs_to_tenant,

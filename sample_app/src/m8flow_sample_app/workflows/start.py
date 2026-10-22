@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
+from m8flow_core import api
+from m8flow_core.models.process_instance import ProcessInstanceModel
 from m8flow_sample_app import service_tasks as sample_app_service_tasks
 
 

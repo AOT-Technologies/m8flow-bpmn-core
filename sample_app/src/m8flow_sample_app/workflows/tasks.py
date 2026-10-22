@@ -5,10 +5,10 @@ import json
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.errors import NotFoundError
-from m8flow_bpmn_core.models.work_item import WorkItemModel
-from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
+from m8flow_core import api
+from m8flow_core.errors import NotFoundError
+from m8flow_core.models.work_item import WorkItemModel
+from m8flow_core.models.work_item_user import WorkItemUserModel
 from m8flow_sample_app import service_tasks as sample_app_service_tasks
 
 

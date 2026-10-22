@@ -9,16 +9,16 @@ from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.db import session_scope
-from m8flow_bpmn_core.models.group import GroupModel
-from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
-from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
-from m8flow_bpmn_core.services.authorization import ROLE_ADMIN, ensure_v1_role
-from m8flow_bpmn_core.services.workflow_runtime import (
+from m8flow_core import api
+from m8flow_core.db import session_scope
+from m8flow_core.models.group import GroupModel
+from m8flow_core.models.scheduler_job import SchedulerJobModel
+from m8flow_core.models.task_definition import TaskDefinitionModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.user_group_assignment import UserGroupAssignmentModel
+from m8flow_core.services.authorization import ROLE_ADMIN, ensure_v1_role
+from m8flow_core.services.workflow_runtime import (
     _build_workflow,
     _lane_group,
     _persist_service_task_failure_state_in_independent_session,

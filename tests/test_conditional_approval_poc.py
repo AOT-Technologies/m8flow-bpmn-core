@@ -13,22 +13,22 @@ from SpiffWorkflow.spiff.serializer.config import SPIFF_CONFIG
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.models.json_data import JsonDataModel
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.process_instance_event import (
+from m8flow_core import api
+from m8flow_core.models.json_data import JsonDataModel
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.process_instance_event import (
     ProcessLifecycleEventType,
     TaskEventType,
 )
-from m8flow_bpmn_core.models.task import TaskModel
-from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.work_item import WorkItemModel
-from m8flow_bpmn_core.models.work_item_user import (
+from m8flow_core.models.task import TaskModel
+from m8flow_core.models.task_definition import TaskDefinitionModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.work_item import WorkItemModel
+from m8flow_core.models.work_item_user import (
     WorkItemUserAddedBy as WorkItemUserAddedBy,
 )
-from m8flow_bpmn_core.services.authorization import (
+from m8flow_core.services.authorization import (
     ROLE_ADMIN,
     ROLE_MANAGER,
     ROLE_USER,
@@ -40,7 +40,7 @@ EXAMPLE_DMN_PATH = Path(__file__).with_name("fixtures") / "check_eligibility.dmn
 
 CONDITIONAL_APPROVAL_PROCESS_ID = "Process_conditional_approval_8qpy9gh"
 CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER = (
-    "m8flow-bpmn-core-examples/conditional-approval-poc"
+    "m8flow-core-examples/conditional-approval-poc"
 )
 CONDITIONAL_APPROVAL_TASK_IDS = {
     "script": "Activity_09regp6",

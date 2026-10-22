@@ -3,11 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
+# The upgrade guide is excluded on purpose: it names the removed fields to
+# explain how to migrate from them.
 PUBLIC_DOCUMENTATION = (
-    ROOT / "doc" / "api.md",
-    ROOT / "doc" / "usage.md",
-    ROOT / "doc" / "package.md",
-    ROOT / "doc" / "scheduling.md",
+    ROOT / "docs" / "reference" / "api.md",
+    ROOT / "docs" / "reference" / "database-schema.md",
+    ROOT / "docs" / "tutorials" / "quick-start.md",
+    ROOT / "docs" / "how-to" / "embed-in-your-application.md",
+    ROOT / "docs" / "how-to" / "build-and-install-the-package.md",
+    ROOT / "docs" / "how-to" / "run-timers-and-retries.md",
+    ROOT / "docs" / "explanation" / "scheduling.md",
 )
 REMOVED_TIMESTAMP_NAMES = (
     "run_at_in_seconds",

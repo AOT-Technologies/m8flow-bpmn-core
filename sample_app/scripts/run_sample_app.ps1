@@ -25,12 +25,12 @@ function Invoke-CapturedNativeCommand {
     )
 
     $stdoutPath = Join-Path $env:TEMP (
-        "m8flow-bpmn-core-sample-app-" +
+        "m8flow-core-sample-app-" +
         [Guid]::NewGuid().ToString("N") +
         ".stdout.log"
     )
     $stderrPath = Join-Path $env:TEMP (
-        "m8flow-bpmn-core-sample-app-" +
+        "m8flow-core-sample-app-" +
         [Guid]::NewGuid().ToString("N") +
         ".stderr.log"
     )

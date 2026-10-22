@@ -6,11 +6,11 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.services.authorization import ROLE_ADMIN, ensure_v1_role
+from m8flow_core import api
+from m8flow_core.models.scheduler_job import SchedulerJobModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.services.authorization import ROLE_ADMIN, ensure_v1_role
 
 INTERMEDIATE_TIMER_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions

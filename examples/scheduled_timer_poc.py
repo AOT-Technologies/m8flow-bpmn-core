@@ -34,18 +34,18 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.db import build_engine, create_schema
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.services.authorization import (
+from m8flow_core import api
+from m8flow_core.db import build_engine, create_schema
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.scheduler_job import SchedulerJobModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.services.authorization import (
     ROLE_ADMIN,
     ROLE_MANAGER,
     ensure_v1_role,
 )
-from m8flow_bpmn_core.utils.keycloak import (
+from m8flow_core.utils.keycloak import (
     KeycloakOrganizationSpec,
     KeycloakProvisioningError,
     KeycloakUserSpec,
@@ -59,10 +59,10 @@ INLINE_SCHEDULER_EXECUTION_MODE = "inline"
 EXTERNAL_SCHEDULER_EXECUTION_MODE = "external"
 EXTERNAL_SCHEDULER_MAX_WAIT_SECONDS = 180
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PROCESS_GROUP_ID = "m8flow-bpmn-core-examples"
-PROCESS_GROUP_DISPLAY_NAME = "m8flow-bpmn-core Examples"
+PROCESS_GROUP_ID = "m8flow-core-examples"
+PROCESS_GROUP_DISPLAY_NAME = "m8flow-core Examples"
 PROCESS_GROUP_DESCRIPTION = (
-    "Process models published by the m8flow-bpmn-core examples."
+    "Process models published by the m8flow-core examples."
 )
 PROCESS_MODEL_ID = "scheduled-timer-poc"
 PROCESS_MODEL_IDENTIFIER = f"{PROCESS_GROUP_ID}/{PROCESS_MODEL_ID}"
@@ -114,14 +114,14 @@ def main() -> None:
     scheduler_execution_mode = _resolve_scheduler_execution_mode()
 
     if scheduler_execution_mode == INLINE_SCHEDULER_EXECUTION_MODE:
-        print("m8flow-bpmn-core scheduled timer POC")
+        print("m8flow-core scheduled timer POC")
         print(
             "This example imports a timer-start workflow, persists the "
             "scheduler job, runs an inline poller loop, and shows the "
             "timer-created process instance that can be audited in m8flow."
         )
     else:
-        print("m8flow-bpmn-core Celery timer POC")
+        print("m8flow-core Celery timer POC")
         print(
             "This example imports the same timer-start workflow, persists the "
             "scheduler job, waits for an external scheduler worker such as "
@@ -772,7 +772,7 @@ def _backend_process_group_payload() -> dict[str, Any]:
 def _backend_process_model_payload() -> dict[str, Any]:
     return {
         "description": (
-            "Published by the m8flow-bpmn-core scheduled timer example."
+            "Published by the m8flow-core scheduled timer example."
         ),
         "display_name": PROCESS_MODEL_DISPLAY_NAME,
         "exception_notification_addresses": [],

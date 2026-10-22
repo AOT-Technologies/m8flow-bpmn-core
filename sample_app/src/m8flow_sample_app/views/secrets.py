@@ -4,7 +4,7 @@ from html import escape
 
 from flask import Flask, flash, redirect, request, url_for
 
-from m8flow_bpmn_core.errors import BpmnCoreError
+from m8flow_core.errors import BpmnCoreError
 from m8flow_sample_app.auth import get_active_identity
 from m8flow_sample_app.db import session_scope
 from m8flow_sample_app.secrets import (

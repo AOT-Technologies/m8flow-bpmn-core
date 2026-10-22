@@ -7,7 +7,7 @@
   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
   id="Definitions_Scheduled_Timer_POC"
   targetNamespace="http://bpmn.io/schema/bpmn"
-  exporter="m8flow-bpmn-core"
+  exporter="m8flow-core"
   exporterVersion="1.0">
   <bpmn:collaboration id="Collaboration_scheduled_timer_poc">
     <bpmn:participant

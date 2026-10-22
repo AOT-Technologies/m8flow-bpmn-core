@@ -6,7 +6,7 @@
   id="Definitions_sample_app_demo_threshold"
   name="Sample App Demo Finance Threshold"
   namespace="http://camunda.org/schema/1.0/dmn"
-  exporter="m8flow-bpmn-core"
+  exporter="m8flow-core"
   exporterVersion="1.0">
   <decision
     id="demo_finance_review_threshold"

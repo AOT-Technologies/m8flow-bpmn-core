@@ -6,15 +6,15 @@ from pathlib import Path
 
 from sqlalchemy import func, select
 
-from m8flow_bpmn_core.db import build_engine, build_session_factory, create_schema
-from m8flow_bpmn_core.models import Base
-from m8flow_bpmn_core.models.group import GroupModel
-from m8flow_bpmn_core.models.permission_assignment import PermissionAssignmentModel
-from m8flow_bpmn_core.models.permission_target import PermissionTargetModel
-from m8flow_bpmn_core.models.principal import PrincipalModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
-from m8flow_bpmn_core.services.authorization import (
+from m8flow_core.db import build_engine, build_session_factory, create_schema
+from m8flow_core.models import Base
+from m8flow_core.models.group import GroupModel
+from m8flow_core.models.permission_assignment import PermissionAssignmentModel
+from m8flow_core.models.permission_target import PermissionTargetModel
+from m8flow_core.models.principal import PrincipalModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.user_group_assignment import UserGroupAssignmentModel
+from m8flow_core.services.authorization import (
     ROLE_MANAGER,
     TASK_CLAIM_COMMAND,
     ensure_v1_role,

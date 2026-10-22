@@ -9,12 +9,12 @@ import pytest
 from flask.testing import FlaskClient
 from sqlalchemy import select
 
-from m8flow_bpmn_core.models.bpmn_process_definition import (
+from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.utils.keycloak import (
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.utils.keycloak import (
     ProvisionedKeycloakOrganization,
     ProvisionedKeycloakSharedRealmContext,
     ProvisionedKeycloakUser,
@@ -175,7 +175,7 @@ def test_shared_login_callback_authenticates_selected_user(
 
     assert response.status_code == 200
     assert "Shared Keycloak login succeeded for alpha-admin." in response_text
-    assert "m8flow-bpmn-core Sample App" in response_text
+    assert "m8flow-core Sample App" in response_text
 
 
 def test_shared_login_callback_rejects_mismatched_user(

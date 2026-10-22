@@ -181,8 +181,8 @@ cleanup() {
 start_celery_scheduler_worker() {
   local worker_script="$1"
   local database_url="$2"
-  WORKER_STDOUT_PATH="$(mktemp "${TMPDIR:-/tmp}/m8flow-bpmn-core-celery-worker.XXXXXX.out.log")"
-  WORKER_STDERR_PATH="$(mktemp "${TMPDIR:-/tmp}/m8flow-bpmn-core-celery-worker.XXXXXX.err.log")"
+  WORKER_STDOUT_PATH="$(mktemp "${TMPDIR:-/tmp}/m8flow-core-celery-worker.XXXXXX.out.log")"
+  WORKER_STDERR_PATH="$(mktemp "${TMPDIR:-/tmp}/m8flow-core-celery-worker.XXXXXX.err.log")"
 
   local args=(
     "$worker_script"

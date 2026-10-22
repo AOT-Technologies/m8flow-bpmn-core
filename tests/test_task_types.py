@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
-from m8flow_bpmn_core.models.task_types import USER_TASK_TYPENAMES
+from m8flow_core.models.task_definition import TaskDefinitionModel
+from m8flow_core.models.task_types import USER_TASK_TYPENAMES
 
 
 def test_user_task_typenames_are_immutable_and_domain_scoped() -> None:

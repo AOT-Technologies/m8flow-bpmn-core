@@ -2,20 +2,20 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
-from m8flow_bpmn_core.models.bpmn_process_definition import (
+from m8flow_core.models.bpmn_process import BpmnProcessModel
+from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.future_task import FutureTaskModel
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.task import TaskModel
-from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.work_item import WorkItemModel
-from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
-from m8flow_bpmn_core.services.authorization import ROLE_USER, ensure_v1_role
-from m8flow_bpmn_core.services.tasks import claim_task, complete_task, get_pending_tasks
+from m8flow_core.models.future_task import FutureTaskModel
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.task import TaskModel
+from m8flow_core.models.task_definition import TaskDefinitionModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.work_item import WorkItemModel
+from m8flow_core.models.work_item_user import WorkItemUserModel
+from m8flow_core.services.authorization import ROLE_USER, ensure_v1_role
+from m8flow_core.services.tasks import claim_task, complete_task, get_pending_tasks
 
 
 def test_task_claim_complete_and_future_task_upsert(session) -> None:

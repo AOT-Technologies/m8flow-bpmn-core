@@ -145,19 +145,19 @@ m8f_start_temporary_postgres_container() {
 
   local container_suffix
   container_suffix="$(dd if=/dev/urandom bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')"
-  STARTED_CONTAINER_NAME="m8flow-bpmn-core-example-${container_suffix}"
+  STARTED_CONTAINER_NAME="m8flow-core-example-${container_suffix}"
   printf 'Status: starting temporary Docker Postgres container %s...\n' "$STARTED_CONTAINER_NAME" >&2
   docker run -d --rm \
     --name "$STARTED_CONTAINER_NAME" \
     -e "POSTGRES_USER=postgres" \
     -e "POSTGRES_HOST_AUTH_METHOD=trust" \
-    -e "POSTGRES_DB=m8flow_bpmn_core_example" \
+    -e "POSTGRES_DB=m8flow_core_example" \
     -P "$POSTGRES_IMAGE" >/dev/null
 
   local mapped_port
   mapped_port="$(m8f_get_container_host_port "$STARTED_CONTAINER_NAME")"
   printf 'Status: temporary container is available on host port %s.\n' "$mapped_port" >&2
-  printf 'postgresql+psycopg://postgres@127.0.0.1:%s/m8flow_bpmn_core_example\n' "$mapped_port"
+  printf 'postgresql+psycopg://postgres@127.0.0.1:%s/m8flow_core_example\n' "$mapped_port"
 }
 
 m8f_get_container_host_port() {

@@ -127,20 +127,20 @@ function Start-TemporaryPostgresContainer {
         throw "Docker is not available, so the example cannot start a fallback Postgres container."
     }
 
-    $containerName = "m8flow-bpmn-core-example-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
+    $containerName = "m8flow-core-example-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
     Write-Host "Status: starting temporary Docker Postgres container $containerName..."
     & docker run -d --rm `
         --name $containerName `
         -e "POSTGRES_USER=postgres" `
         -e "POSTGRES_HOST_AUTH_METHOD=trust" `
-        -e "POSTGRES_DB=m8flow_bpmn_core_example" `
+        -e "POSTGRES_DB=m8flow_core_example" `
         -P $PostgresImage | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to start the temporary Docker Postgres container."
     }
 
     $mappedPort = Get-ContainerHostPort -ContainerName $containerName
-    $databaseUrl = "postgresql+psycopg://postgres@127.0.0.1:$mappedPort/m8flow_bpmn_core_example"
+    $databaseUrl = "postgresql+psycopg://postgres@127.0.0.1:$mappedPort/m8flow_core_example"
     Write-Host "Status: temporary container is available on host port $mappedPort."
     return [pscustomobject]@{
         DatabaseUrl   = $databaseUrl

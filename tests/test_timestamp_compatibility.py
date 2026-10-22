@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from m8flow_bpmn_core.models.base import Base
-from m8flow_bpmn_core.models.user import UserModel
+from m8flow_core.models.base import Base
+from m8flow_core.models.user import UserModel
 
 POST_2038 = datetime(2040, 1, 1, 12, 30, tzinfo=UTC)
 

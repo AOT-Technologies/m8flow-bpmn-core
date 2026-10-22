@@ -12,7 +12,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Update sample_app pyproject and uv.lock to point at a staged "
-            "local m8flow-bpmn-core wheel."
+            "local m8flow-core wheel."
         )
     )
     parser.add_argument("--pyproject-path", required=True)
@@ -56,8 +56,8 @@ def main() -> int:
 def _update_pyproject(*, pyproject_path: Path, relative_wheel_path: str) -> None:
     original_text = pyproject_path.read_text(encoding="utf-8")
     updated_text, substitutions = re.subn(
-        r'm8flow-bpmn-core = \{ path = "vendor/[^"]+" \}',
-        f'm8flow-bpmn-core = {{ path = "{relative_wheel_path}" }}',
+        r'm8flow-core = \{ path = "vendor/[^"]+" \}',
+        f'm8flow-core = {{ path = "{relative_wheel_path}" }}',
         original_text,
         count=1,
     )
@@ -79,7 +79,7 @@ def _update_uv_lock(
     original_text = uv_lock_path.read_text(encoding="utf-8")
 
     package_pattern = re.compile(
-        r'(\[\[package\]\]\r?\nname = "m8flow-bpmn-core"\r?\nversion = ")[^"]+("'
+        r'(\[\[package\]\]\r?\nname = "m8flow-core"\r?\nversion = ")[^"]+("'
         r'\r?\nsource = \{ path = ")vendor/[^"]+(".*?filename = ")[^"]+("'
         r', hash = "sha256:)[^"]+(")',
         re.DOTALL,
@@ -101,11 +101,11 @@ def _update_uv_lock(
     )
     if substitutions != 1:
         raise RuntimeError(
-            f"Could not update the locked m8flow-bpmn-core wheel entry in '{uv_lock_path}'."
+            f"Could not update the locked m8flow-core wheel entry in '{uv_lock_path}'."
         )
 
     requires_dist_pattern = re.compile(
-        r'(\{ name = "m8flow-bpmn-core", path = ")vendor/[^"]+(" \})'
+        r'(\{ name = "m8flow-core", path = ")vendor/[^"]+(" \})'
     )
     updated_text, substitutions = requires_dist_pattern.subn(
         r"\g<1>" + relative_wheel_path + r"\g<2>",
@@ -115,7 +115,7 @@ def _update_uv_lock(
     if substitutions != 1:
         raise RuntimeError(
             "Could not update the sample-app lockfile dependency path for "
-            "m8flow-bpmn-core."
+            "m8flow-core."
         )
 
     uv_lock_path.write_text(updated_text, encoding="utf-8")
@@ -176,7 +176,7 @@ def _refresh_uv_lock(
         pyproject_path=pyproject_path,
         uv_lock_path=uv_lock_path,
         uv_executable=uv_executable,
-        arguments=("lock", "--refresh-package", "m8flow-bpmn-core"),
+        arguments=("lock", "--refresh-package", "m8flow-core"),
     )
 
 
@@ -245,7 +245,7 @@ def _sha256_for_file(path: Path) -> str:
 
 def _wheel_version_from_filename(filename: str) -> str:
     match = re.match(
-        r"^m8flow_bpmn_core-(?P<version>.+?)-[^-]+-[^-]+-[^-]+\.whl$",
+        r"^m8flow_core-(?P<version>.+?)-[^-]+-[^-]+-[^-]+\.whl$",
         filename,
     )
     if match is None:

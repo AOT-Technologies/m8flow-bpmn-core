@@ -32,11 +32,11 @@ if str(REPO_ROOT) not in sys.path:
 
 from sqlalchemy.orm import Session  # noqa: E402
 
-from m8flow_bpmn_core import api  # noqa: E402
-from m8flow_bpmn_core.db import build_engine, create_schema  # noqa: E402
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel  # noqa: E402
-from m8flow_bpmn_core.models.user import UserModel  # noqa: E402
-from m8flow_bpmn_core.services.authorization import (  # noqa: E402
+from m8flow_core import api  # noqa: E402
+from m8flow_core.db import build_engine, create_schema  # noqa: E402
+from m8flow_core.models.tenant import M8flowTenantModel  # noqa: E402
+from m8flow_core.models.user import UserModel  # noqa: E402
+from m8flow_core.services.authorization import (  # noqa: E402
     ROLE_ADMIN,
     ROLE_MANAGER,
     ROLE_USER,
@@ -76,7 +76,7 @@ SCENARIO = Scenario(
 
 
 def main() -> None:
-    print("m8flow-bpmn-core parallel-review purchase-order POC")
+    print("m8flow-core parallel-review purchase-order POC")
     print()
     print(f"Scenario: {SCENARIO.name}")
     print(f"  finance_decision    = {SCENARIO.finance_decision!r}")

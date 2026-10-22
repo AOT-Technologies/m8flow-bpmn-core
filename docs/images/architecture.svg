@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 316" width="960" height="316" role="img" aria-labelledby="t d">
+  <title id="t">How m8flow-core fits into your application</title>
+  <desc id="d">Four columns, left to right. Your application owns HTTP routes, UI, sign-in, users and tenants; runs the scheduler loop inline or from Celery; and supplies connectors and authorization policies. It calls the public API: commands and queries as frozen dataclasses, the scheduler through run_due_scheduler_jobs, and extension hooks that install registries and policies. The library services check tenant membership and command permissions, then the workflow runtime restores, advances, and saves the workflow, and service tasks run connectors in-process. Underneath, SpiffWorkflow executes BPMN, DMN, and scripts; your database stores workflow state, tasks, events, and scheduler jobs; and the connector proxy runs HTTP, SMTP, and SQL commands. A blue dot follows one call from your application through the API, authorization, and the workflow runtime into your database. The caption notes that your application owns the transaction.</desc>
+  <style>
+    text { font-family: Inter, 'SF Pro Text', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #111827; }
+    .t { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+    .b { font-size: 11.5px; fill: #6b7280; }
+    .k { font-size: 10px; font-weight: 600; fill: #9ca3af; letter-spacing: 0.08em; }
+    .m { font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 11px; fill: #6b7280; }
+    .mi { font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 11px; fill: #111827; }
+    .ln { fill: none; stroke: #d1d5db; stroke-width: 1; }
+    .er { fill: none; stroke: #e01d5a; stroke-width: 1; stroke-opacity: .45; }
+    .route { offset-rotate: 0deg; opacity: 0; }
+    .hl { opacity: 0; animation: hl var(--d, 6s) ease-in-out infinite; animation-delay: var(--w, 0s); }
+    .in { opacity: 0; animation: fadein var(--d, 8s) ease-out infinite; animation-delay: var(--w, 0s); }
+    @keyframes hl { 0%, 22%, 100% { opacity: 0; } 4%, 16% { opacity: 1; } }
+    @keyframes fadein { 0% { opacity: 0; transform: translateY(4px); } 8%, 82% { opacity: 1; transform: none; }
+                        92%, 100% { opacity: 0; } }
+    .bar { transform-box: fill-box; transform-origin: left; animation: grow 8s ease-in-out infinite; }
+    @keyframes grow { 0% { transform: scaleX(0); } 70%, 90% { transform: scaleX(1); } 100% { transform: scaleX(0); } }
+    @media (prefers-reduced-motion: reduce) {
+      .hl, .route { animation: none !important; opacity: 0; }
+      .in, .bar { animation: none; opacity: 1; }
+    }
+  </style>
+  <rect width="960" height="316" rx="12" fill="#ffffff"/>
+  <rect x=".5" y=".5" width="959" height="315" rx="12" fill="none" stroke="#e5e7eb"/>
+  <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 z" fill="#d1d5db"/></marker></defs>
+  <rect x="24" y="24" width="210" height="240" rx="10" fill="#f9fafb" stroke="#e5e7eb"/>
+  <text x="38" y="46" class="k" text-anchor="start">YOUR APPLICATION</text>
+  <rect x="258" y="24" width="210" height="240" rx="10" fill="#f9fafb" stroke="#e5e7eb"/>
+  <text x="272" y="46" class="k" text-anchor="start">PUBLIC API</text>
+  <rect x="492" y="24" width="210" height="240" rx="10" fill="#f9fafb" stroke="#e5e7eb"/>
+  <text x="506" y="46" class="k" text-anchor="start">LIBRARY SERVICES</text>
+  <rect x="726" y="24" width="210" height="240" rx="10" fill="#f9fafb" stroke="#e5e7eb"/>
+  <text x="740" y="46" class="k" text-anchor="start">ENGINE AND STORAGE</text>
+  <path class="ln" d="M220 85.0 L 272 85.0"/>
+  <path class="ln" d="M454 85.0 L 506 85.0"/>
+  <path class="ln" d="M597.0 110 L 597.0 124"/>
+  <path class="ln" d="M688 149.0 L 740 149.0"/>
+  <style>@keyframes r12 { 0% { offset-distance: 0%; opacity: 0; } 1% { opacity: 1; } 44.60% { opacity: 1; } 45.60% { offset-distance: 100%; opacity: 0; } 100% { offset-distance: 100%; opacity: 0; } }</style>
+  <circle class="route" r="3" fill="#1a9fc8" style="offset-path: path('M129.0 85.0 L 597.0 85.0 L 597.0 149.0 L 831.0 149.0'); animation: r12 7.0s linear 0.0s infinite"/>
+  <rect x="38" y="60" width="182" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="38" y="60" width="182" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="52" y="82.0" class="t" text-anchor="start">HTTP routes and UI</text>
+  <text x="52" y="98.0" class="b" text-anchor="start">sign-in · users · tenants</text>
+  <rect x="38" y="124" width="182" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="38" y="124" width="182" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="52" y="146.0" class="t" text-anchor="start">Scheduler loop</text>
+  <text x="52" y="162.0" class="b" text-anchor="start">inline or Celery</text>
+  <rect x="38" y="188" width="182" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="38" y="188" width="182" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="52" y="210.0" class="t" text-anchor="start">Connectors, policies</text>
+  <text x="52" y="226.0" class="b" text-anchor="start">your own or m8flow&#x27;s</text>
+  <rect x="272" y="60" width="182" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 7.0s; --w: 0.625s"><rect x="272" y="60" width="182" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="272" y="60" width="182" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="286" y="82.0" class="t" text-anchor="start">Commands and queries</text>
+  <text x="286" y="98.0" class="b" text-anchor="start">frozen dataclasses</text>
+  <rect x="272" y="124" width="182" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="272" y="124" width="182" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="286" y="146.0" class="t" text-anchor="start">Scheduler</text>
+  <text x="286" y="162.0" class="m" text-anchor="start">run_due_scheduler_jobs</text>
+  <rect x="272" y="188" width="182" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="272" y="188" width="182" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="286" y="210.0" class="t" text-anchor="start">Extension hooks</text>
+  <text x="286" y="226.0" class="b" text-anchor="start">registries · policy scopes</text>
+  <rect x="506" y="60" width="182" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 7.0s; --w: 1.6s"><rect x="506" y="60" width="182" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="506" y="60" width="182" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="520" y="82.0" class="t" text-anchor="start">Authorization</text>
+  <text x="520" y="98.0" class="b" text-anchor="start">tenant · command keys</text>
+  <rect x="506" y="124" width="182" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 7.0s; --w: 1.8666666666666667s"><rect x="506" y="124" width="182" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="506" y="124" width="182" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="520" y="146.0" class="t" text-anchor="start">Workflow runtime</text>
+  <text x="520" y="162.0" class="b" text-anchor="start">restore · advance · save</text>
+  <rect x="506" y="188" width="182" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="506" y="188" width="182" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="520" y="210.0" class="t" text-anchor="start">Service tasks</text>
+  <text x="520" y="226.0" class="b" text-anchor="start">run connectors in-process</text>
+  <rect x="740" y="60" width="182" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="740" y="60" width="182" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="754" y="82.0" class="t" text-anchor="start">SpiffWorkflow</text>
+  <text x="754" y="98.0" class="b" text-anchor="start">BPMN · DMN · scripts</text>
+  <rect x="740" y="124" width="182" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 7.0s; --w: 2.841666666666667s"><rect x="740" y="124" width="182" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="740" y="124" width="182" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="754" y="146.0" class="t" text-anchor="start">Your database</text>
+  <text x="754" y="162.0" class="b" text-anchor="start">state · tasks · jobs</text>
+  <rect x="740" y="188" width="182" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="740" y="188" width="182" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="754" y="210.0" class="t" text-anchor="start">Connector proxy</text>
+  <text x="754" y="226.0" class="b" text-anchor="start">HTTP · SMTP · SQL · …</text>
+  <path class="ln" d="M260 85.0 L 272 85.0" marker-end="url(#a)"/>
+  <path class="ln" d="M494 85.0 L 506 85.0" marker-end="url(#a)"/>
+  <path class="ln" d="M597.0 112 L 597.0 124" marker-end="url(#a)"/>
+  <path class="ln" d="M728 149.0 L 740 149.0" marker-end="url(#a)"/>
+  <path class="ln" d="M220 149.0 L 272 149.0" marker-end="url(#a)"/>
+  <path class="ln" d="M454 149.0 L 506 149.0" marker-end="url(#a)"/>
+  <path class="ln" d="M220 213.0 L 272 213.0" marker-end="url(#a)"/>
+  <path class="ln" d="M454 213.0 L 506 213.0" marker-end="url(#a)"/>
+  <path class="ln" d="M688 213.0 L 740 213.0" marker-end="url(#a)"/>
+  <path class="ln" d="M714.0 149.0 L 714.0 85.0 L 740 85.0" marker-end="url(#a)"/>
+  <text x="480" y="290" class="b" text-anchor="middle">Your application owns the transaction: the library never commits or rolls back for you.</text>
+</svg>

@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a problem so it can be fixed
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Don't report security vulnerabilities here.** Follow the [security policy](https://github.com/AOT-Technologies/m8flow-core/blob/main/SECURITY.md) instead.
+        Remove passwords, tokens, connection strings, and personal data from anything you paste.
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The smallest script or BPMN file that shows the problem helps most.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: m8flow-core version
+      description: Package version or commit SHA.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - SQLite
+        - PostgreSQL
+        - MySQL
+        - Not applicable
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Python version, operating system, and SpiffWorkflow version if you pinned it.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Traceback or logs
+      render: text

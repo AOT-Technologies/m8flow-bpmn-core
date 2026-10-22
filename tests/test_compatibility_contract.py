@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import pytest
 from SpiffWorkflow.util.task import TaskState
 
-from m8flow_bpmn_core.application.commands import (
+from m8flow_core.application.commands import (
     ClaimTaskCommand,
     CompleteTaskCommand,
     CreateProcessInstanceCommand,
@@ -16,27 +16,27 @@ from m8flow_bpmn_core.application.commands import (
     RecordProcessInstanceEventCommand,
     UpsertProcessInstanceMetadataCommand,
 )
-from m8flow_bpmn_core.application.queries import (
+from m8flow_core.application.queries import (
     GetPendingTasksQuery,
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
     ListProcessInstancesQuery,
 )
-from m8flow_bpmn_core.models.base import Base
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.process_instance_event import (
+from m8flow_core.models.base import Base
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.process_instance_event import (
     ProcessInstanceEventCategory,
     ProcessInstanceEventModel,
     ProcessLifecycleEventType,
     TaskEventType,
 )
-from m8flow_bpmn_core.models.task import (
+from m8flow_core.models.task import (
     M8F_TERMINATED_TASK_STATE,
     TaskModel,
 )
-from m8flow_bpmn_core.models.work_item import WorkItemModel
-from m8flow_bpmn_core.services.work_items import WorkItemState
+from m8flow_core.models.work_item import WorkItemModel
+from m8flow_core.services.work_items import WorkItemState
 
 EXPECTED_COMMAND_FIELDS = {
     ClaimTaskCommand: ["tenant_id", "work_item_id", "user_id", "added_by"],

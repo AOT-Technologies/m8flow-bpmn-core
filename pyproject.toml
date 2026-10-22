@@ -1,13 +1,25 @@
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "m8flow-bpmn-core"
-version = "0.2.1"
-description = "Core BPMN engine scaffolding for M8Flow."
+name = "m8flow-core"
+version = "1.0.0"
+description = "An embeddable BPMN and DMN workflow engine for Python applications, the workflow core of m8flow."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "AOT Technologies Inc.", email = "opensource@aot-technologies.com" }]
 requires-python = ">=3.12,<4.0"
+keywords = ["bpmn", "dmn", "workflow", "workflow-engine", "spiffworkflow", "m8flow"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries",
+]
 dependencies = [
   "alembic>=1.16,<2.0",
   "defusedxml>=0.7,<1.0",
@@ -32,8 +44,32 @@ dev = [
   "ruff>=0.6,<1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/AOT-Technologies/m8flow-core"
+Documentation = "https://github.com/AOT-Technologies/m8flow-core/tree/main/docs"
+Issues = "https://github.com/AOT-Technologies/m8flow-core/issues"
+Changelog = "https://github.com/AOT-Technologies/m8flow-core/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+  "src",
+  "tests",
+  "integration",
+  "alembic",
+  "alembic.ini",
+  "docs",
+  "examples",
+  "sample.env",
+  "Makefile",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE",
+  "NOTICE",
+]
+exclude = ["__pycache__"]
+
 [tool.hatch.build.targets.wheel]
-packages = ["src/m8flow_bpmn_core"]
+packages = ["src/m8flow_core"]
 
 [tool.ruff]
 line-length = 88
@@ -59,19 +95,19 @@ disallow_incomplete_defs = true
 no_implicit_optional = true
 show_error_codes = true
 ignore_missing_imports = true
-files = ["src/m8flow_bpmn_core"]
+files = ["src/m8flow_core"]
 plugins = ["sqlalchemy.ext.mypy.plugin"]
 
 [[tool.mypy.overrides]]
 module = [
-  "m8flow_bpmn_core.models.future_task",
-  "m8flow_bpmn_core.models.json_data",
-  "m8flow_bpmn_core.services.connector_proxy_service_tasks",
-  "m8flow_bpmn_core.services.process_definitions",
-  "m8flow_bpmn_core.services.scheduler_jobs",
-  "m8flow_bpmn_core.services.scheduler_runtime",
-  "m8flow_bpmn_core.services.workflow_runtime",
-  "m8flow_bpmn_core.utils.keycloak.service",
+  "m8flow_core.models.future_task",
+  "m8flow_core.models.json_data",
+  "m8flow_core.services.connector_proxy_service_tasks",
+  "m8flow_core.services.process_definitions",
+  "m8flow_core.services.scheduler_jobs",
+  "m8flow_core.services.scheduler_runtime",
+  "m8flow_core.services.workflow_runtime",
+  "m8flow_core.utils.keycloak.service",
 ]
 ignore_errors = true
 

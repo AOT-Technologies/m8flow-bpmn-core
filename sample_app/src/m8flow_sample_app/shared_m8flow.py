@@ -350,7 +350,7 @@ def load_process_model_from_m8flow_backend(
     process_model_identifier: str,
     settings: Settings | None = None,
 ) -> BackendCatalogDefinitionSource:
-    from m8flow_bpmn_core.errors import NotFoundError, ValidationError
+    from m8flow_core.errors import NotFoundError, ValidationError
 
     if audit_context is None or not audit_context.uses_shared_m8flow:
         raise ValidationError(
@@ -583,7 +583,7 @@ def _backend_process_group_payload(process_group_id: str) -> dict[str, Any]:
         "correlation_properties": None,
         "data_store_specifications": {},
         "description": (
-            "Process models published by the m8flow-bpmn-core sample app."
+            "Process models published by the m8flow-core sample app."
         ),
         "display_name": _humanize_identifier(process_group_id),
         "messages": None,
@@ -600,7 +600,7 @@ def _backend_process_model_payload(
     return {
         "description": (
             model_description
-            or "Published by the m8flow-bpmn-core sample app."
+            or "Published by the m8flow-core sample app."
         ),
         "display_name": bpmn_name,
         "exception_notification_addresses": [],
@@ -684,7 +684,7 @@ def _load_optional_dmn_xml_from_backend_model_dir(
     if len(dmn_paths) == 1:
         return dmn_paths[0].read_text(encoding="utf-8")
 
-    from m8flow_bpmn_core.errors import ValidationError
+    from m8flow_core.errors import ValidationError
 
     raise ValidationError(
         "The local m8flow catalog model "

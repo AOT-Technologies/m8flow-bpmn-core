@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core.models import (
+from m8flow_core.models import (
     GroupModel,
     PermissionAction,
     PermissionAssignmentModel,
