@@ -16,7 +16,7 @@ The repository root holds the following:
 | `examples/` | Runnable example scripts and their launchers. See [Run the examples](../how-to/run-the-examples.md). |
 | `sample_app/` | A Flask host application that uses the library as a wheel dependency. See the [sample app README](../../sample_app/README.md). |
 | `docs/` | This documentation |
-| `.github/` | CI, CodeQL, dependency review, and secret-scan workflows; Dependabot settings; issue and pull request templates |
+| `.github/` | CI, CodeQL, dependency review, secret-scan, and PyPI publish workflows; Dependabot settings; issue and pull request templates |
 | `.pre-commit-config.yaml` | Local hooks: Ruff, mypy, and Bandit |
 | `.gitleaks.toml` | Secret-scan settings |
 | `Makefile` | Development commands. Run `make help` to list them. |

@@ -48,8 +48,10 @@ your change before you open a pull request:
 | Unit tests, on SQLite and PostgreSQL | `make test` |
 | Sample app lint and tests | See [Run the sample app tests](docs/how-to/develop-and-test.md#run-the-sample-app-tests) |
 
-CI also runs CodeQL, a Gitleaks secret scan, and dependency review. Before a release, also run `make test-integration` (needs Docker) and
-`make package`.
+CI also runs CodeQL, a Gitleaks secret scan, and dependency review. Before a
+release, also run `make test-integration` (needs Docker) and `make package`.
+Maintainers publish releases as described in
+[Publish a release](docs/how-to/publish-a-release.md).
 
 ## Rules for changes
 

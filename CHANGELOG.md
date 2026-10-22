@@ -50,6 +50,8 @@ and m8flow together.
 - Contributing guide, code of conduct, security policy,
   support page, issue and pull request templates, and CI for lint, type, and
   security checks, CodeQL, secret scanning, and dependency review.
+- A manual workflow that publishes betas and releases to PyPI through trusted
+  publishing, with build attestations and a vulnerability scan.
 - Documentation organized as tutorials, how-to guides, reference, and
   explanation, with a quick start, an upgrade guide, a database schema
   reference, and diagrams.
