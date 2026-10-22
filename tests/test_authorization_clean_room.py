@@ -4,12 +4,12 @@ from pathlib import Path
 
 from sqlalchemy import ForeignKeyConstraint, PrimaryKeyConstraint
 
-from m8flow_bpmn_core.models.group import GroupModel
-from m8flow_bpmn_core.models.permission_assignment import PermissionAssignmentModel
-from m8flow_bpmn_core.models.permission_target import PermissionTargetModel
-from m8flow_bpmn_core.models.principal import PrincipalModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
+from m8flow_core.models.group import GroupModel
+from m8flow_core.models.permission_assignment import PermissionAssignmentModel
+from m8flow_core.models.permission_target import PermissionTargetModel
+from m8flow_core.models.principal import PrincipalModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.user_group_assignment import UserGroupAssignmentModel
 
 AUTHORIZATION_MODELS = (
     GroupModel,
@@ -50,13 +50,13 @@ def test_authorization_relationships_use_current_explicit_topology() -> None:
 def test_legacy_constraint_names_are_absent_from_current_authorization_source() -> None:
     repository_root = Path(__file__).resolve().parents[1]
     source_paths = (
-        repository_root / "src/m8flow_bpmn_core/services/authorization.py",
-        repository_root / "src/m8flow_bpmn_core/models/group.py",
-        repository_root / "src/m8flow_bpmn_core/models/user.py",
-        repository_root / "src/m8flow_bpmn_core/models/user_group_assignment.py",
-        repository_root / "src/m8flow_bpmn_core/models/principal.py",
-        repository_root / "src/m8flow_bpmn_core/models/permission_target.py",
-        repository_root / "src/m8flow_bpmn_core/models/permission_assignment.py",
+        repository_root / "src/m8flow_core/services/authorization.py",
+        repository_root / "src/m8flow_core/models/group.py",
+        repository_root / "src/m8flow_core/models/user.py",
+        repository_root / "src/m8flow_core/models/user_group_assignment.py",
+        repository_root / "src/m8flow_core/models/principal.py",
+        repository_root / "src/m8flow_core/models/permission_target.py",
+        repository_root / "src/m8flow_core/models/permission_assignment.py",
     )
     source = "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
     for legacy_name in (

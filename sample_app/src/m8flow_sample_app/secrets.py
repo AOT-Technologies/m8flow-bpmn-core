@@ -7,8 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core.errors import NotFoundError, ValidationError
-from m8flow_bpmn_core.models.user import UserModel
+from m8flow_core.errors import NotFoundError, ValidationError
+from m8flow_core.models.user import UserModel
 from m8flow_sample_app.models import SecretModel
 
 

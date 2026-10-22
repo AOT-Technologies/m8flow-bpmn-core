@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 
 from sqlalchemy import Engine
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.errors import BpmnCoreError
+from m8flow_core import api
+from m8flow_core.errors import BpmnCoreError
 from m8flow_sample_app import service_tasks as sample_app_service_tasks
 from m8flow_sample_app.db import build_engine, session_scope
 
@@ -51,7 +51,7 @@ class SampleAppSchedulerPoller:
                     )
                 except BpmnCoreError:
                     LOGGER.exception(
-                        "Sample app scheduler cycle failed with a BPMN-core error."
+                        "Sample app scheduler cycle failed with an m8flow-core error."
                     )
                 except Exception:
                     LOGGER.exception("Sample app scheduler cycle failed.")

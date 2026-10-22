@@ -72,7 +72,7 @@ def register_web_routes(app: Flask) -> None:
 <p>This app now uses the library for definition import, process start, task
 claim and completion, metadata persistence, and event listing.</p>
 """
-            return render_page("m8flow-bpmn-core Sample App", body, identity=identity)
+            return render_page("m8flow-core Sample App", body, identity=identity)
 
     @app.route("/session/select", methods=["GET", "POST"])
     def select_identity():

@@ -7,8 +7,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.application import (
+from m8flow_core import api
+from m8flow_core.application import (
     ClaimTaskCommand,
     CompleteTaskCommand,
     GetPendingTasksQuery,
@@ -16,7 +16,7 @@ from m8flow_bpmn_core.application import (
     execute_command,
     execute_query,
 )
-from m8flow_bpmn_core.models import (
+from m8flow_core.models import (
     BpmnProcessDefinitionModel,
     BpmnProcessModel,
     FutureTaskModel,
@@ -28,7 +28,7 @@ from m8flow_bpmn_core.models import (
     TaskModel,
     UserModel,
 )
-from m8flow_bpmn_core.services.authorization import (
+from m8flow_core.services.authorization import (
     ROLE_ADMIN,
     ROLE_MANAGER,
     ROLE_USER,

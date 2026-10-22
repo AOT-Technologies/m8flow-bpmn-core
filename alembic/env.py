@@ -3,8 +3,8 @@ from __future__ import annotations
 from alembic import context
 from sqlalchemy import create_engine, pool
 
-from m8flow_bpmn_core.models import Base
-from m8flow_bpmn_core.settings import get_settings
+from m8flow_core.models import Base
+from m8flow_core.settings import get_settings
 
 target_metadata = Base.metadata
 

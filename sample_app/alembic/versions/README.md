@@ -1,7 +1,5 @@
-# Alembic Revisions
+# Sample app migrations
 
-This directory will store the host application's migration history.
-
-The sample app owns these revisions even when they create or update tables that
-come from `m8flow-bpmn-core` ORM metadata. That is the agreed integration model
-for this ticket.
+This folder holds the sample app's Alembic revisions. The app owns them, even
+the ones that create tables from the `m8flow-core` ORM models, because
+the library wheel doesn't ship migrations.

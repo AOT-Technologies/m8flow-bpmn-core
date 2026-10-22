@@ -6,10 +6,10 @@ from datetime import UTC, datetime
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core.models import Base
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel, TenantStatus
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.utils.keycloak import (
+from m8flow_core.models import Base
+from m8flow_core.models.tenant import M8flowTenantModel, TenantStatus
+from m8flow_core.models.user import UserModel
+from m8flow_core.utils.keycloak import (
     KeycloakOrganizationSpec,
     KeycloakUserSpec,
     ProvisionedKeycloakSharedRealmContext,
@@ -157,7 +157,7 @@ def seed_static_reference_data(
     *,
     audit_context: SharedM8flowAuditContext | None = None,
 ) -> None:
-    from m8flow_bpmn_core.services.authorization import (
+    from m8flow_core.services.authorization import (
         ensure_v1_role,
         find_or_create_principal_for_user,
     )

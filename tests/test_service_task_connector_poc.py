@@ -7,7 +7,7 @@ from urllib.request import urlopen
 
 import pytest
 
-from m8flow_bpmn_core import api
+from m8flow_core import api
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"
 if str(EXAMPLES_DIR) not in sys.path:

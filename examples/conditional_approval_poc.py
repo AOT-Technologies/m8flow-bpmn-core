@@ -20,41 +20,41 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.db import build_engine, create_schema
-from m8flow_bpmn_core.models import Base
-from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
-from m8flow_bpmn_core.models.bpmn_process_definition import (
+from m8flow_core import api
+from m8flow_core.db import build_engine, create_schema
+from m8flow_core.models import Base
+from m8flow_core.models.bpmn_process import BpmnProcessModel
+from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.process_instance_event import (
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.process_instance_event import (
     ProcessInstanceEventModel,
 )
-from m8flow_bpmn_core.models.process_instance_metadata import (
+from m8flow_core.models.process_instance_metadata import (
     ProcessInstanceMetadataModel,
 )
-from m8flow_bpmn_core.models.process_model_bpmn_version import (
+from m8flow_core.models.process_model_bpmn_version import (
     ProcessModelBpmnVersionModel,
 )
-from m8flow_bpmn_core.models.task import TaskModel
-from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.work_item import WorkItemModel
-from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
-from m8flow_bpmn_core.services.authorization import (
+from m8flow_core.models.task import TaskModel
+from m8flow_core.models.task_definition import TaskDefinitionModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.work_item import WorkItemModel
+from m8flow_core.models.work_item_user import WorkItemUserModel
+from m8flow_core.services.authorization import (
     ROLE_ADMIN,
     ROLE_MANAGER,
     ROLE_USER,
     ensure_v1_role,
 )
-from m8flow_bpmn_core.services.tenant_users import user_belongs_to_tenant
-from m8flow_bpmn_core.services.work_items import WorkItemState
-from m8flow_bpmn_core.services.workflow_runtime import (
+from m8flow_core.services.tenant_users import user_belongs_to_tenant
+from m8flow_core.services.work_items import WorkItemState
+from m8flow_core.services.workflow_runtime import (
     repair_process_instance_runtime_representation,
 )
-from m8flow_bpmn_core.utils.keycloak import (
+from m8flow_core.utils.keycloak import (
     KeycloakOrganizationSpec,
     KeycloakProvisioningError,
     KeycloakUserSpec,
@@ -82,10 +82,10 @@ DEFAULT_LOCAL_DATABASE_URL = (
     "postgresql+psycopg://postgres:postgres@localhost:6843/postgres"
 )
 SHARED_POSTGRES_DATABASE_NAME = "postgres"
-M8FLOW_BACKEND_PROCESS_GROUP_ID = "m8flow-bpmn-core-examples"
-M8FLOW_BACKEND_PROCESS_GROUP_DISPLAY_NAME = "m8flow-bpmn-core Examples"
+M8FLOW_BACKEND_PROCESS_GROUP_ID = "m8flow-core-examples"
+M8FLOW_BACKEND_PROCESS_GROUP_DISPLAY_NAME = "m8flow-core Examples"
 M8FLOW_BACKEND_PROCESS_GROUP_DESCRIPTION = (
-    "Process models published by the m8flow-bpmn-core examples."
+    "Process models published by the m8flow-core examples."
 )
 M8FLOW_BACKEND_PROCESS_MODEL_ID = "conditional-approval-poc"
 CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER = (
@@ -99,7 +99,7 @@ M8FLOW_BACKEND_DEFAULT_CONTAINER_NAMES = (
     "m8flow-backend-1",
 )
 EXAMPLE_KEYCLOAK_DEFAULT_PASSWORD = "poc-demo-password"
-FALLBACK_POSTGRES_DATABASE_NAME = "m8flow_bpmn_core_example"
+FALLBACK_POSTGRES_DATABASE_NAME = "m8flow_core_example"
 FALLBACK_POSTGRES_IMAGE = "postgres:16"
 
 DEMO_TENANT = {
@@ -205,7 +205,7 @@ def main() -> None:
     temporary_container_name: str | None = None
     engine: Engine | None = None
 
-    print("m8flow-bpmn-core conditional-approval usage example")
+    print("m8flow-core conditional-approval usage example")
     print(
         "This script creates the schema if needed, seeds demo data, and then "
         "drives the workflow through the public API."
@@ -406,7 +406,7 @@ def _start_temporary_postgres_container() -> tuple[str, str, str]:
         os.getenv("M8FLOW_EXAMPLE_POSTGRES_IMAGE", "").strip()
         or FALLBACK_POSTGRES_IMAGE
     )
-    container_name = f"m8flow-bpmn-core-example-{uuid4().hex[:8]}"
+    container_name = f"m8flow-core-example-{uuid4().hex[:8]}"
     print(
         "Status: starting temporary Docker Postgres container "
         f"{container_name}..."
@@ -770,7 +770,7 @@ def _backend_process_group_payload() -> dict[str, Any]:
 def _backend_process_model_payload() -> dict[str, Any]:
     return {
         "description": (
-            "Published by the m8flow-bpmn-core conditional-approval example."
+            "Published by the m8flow-core conditional-approval example."
         ),
         "display_name": M8FLOW_BACKEND_PROCESS_MODEL_DISPLAY_NAME,
         "exception_notification_addresses": [],

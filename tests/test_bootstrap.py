@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from m8flow_bpmn_core.db import build_engine
-from m8flow_bpmn_core.models import Base
-from m8flow_bpmn_core.settings import Settings
+from m8flow_core.db import build_engine
+from m8flow_core.models import Base
+from m8flow_core.settings import Settings
 
 
 def test_settings_default_to_sqlite() -> None:

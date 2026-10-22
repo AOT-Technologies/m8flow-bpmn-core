@@ -1,4 +1,4 @@
-"""Demonstrate every public error class raised by m8flow_bpmn_core.
+"""Demonstrate every public error class raised by m8flow_core.
 
 Run with:
 
@@ -13,7 +13,7 @@ For each case it prints:
 * the builtin exception that the domain class also subclasses, and
 * the message produced by the service layer.
 
-This is the runnable counterpart of the "Errors" section in doc/api.md.
+This is the runnable counterpart of the "Errors" section in docs/reference/api.md.
 """
 
 from __future__ import annotations
@@ -29,27 +29,27 @@ if str(REPO_ROOT) not in sys.path:
 
 from sqlalchemy.orm import Session  # noqa: E402
 
-from m8flow_bpmn_core import api  # noqa: E402
-from m8flow_bpmn_core.db import build_engine, create_schema  # noqa: E402
-from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel  # noqa: E402
-from m8flow_bpmn_core.models.bpmn_process_definition import (  # noqa: E402
+from m8flow_core import api  # noqa: E402
+from m8flow_core.db import build_engine, create_schema  # noqa: E402
+from m8flow_core.models.bpmn_process import BpmnProcessModel  # noqa: E402
+from m8flow_core.models.bpmn_process_definition import (  # noqa: E402
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.process_instance import (  # noqa: E402
+from m8flow_core.models.process_instance import (  # noqa: E402
     ProcessInstanceModel,
     ProcessInstanceStatus,
 )
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel  # noqa: E402
-from m8flow_bpmn_core.models.user import UserModel  # noqa: E402
-from m8flow_bpmn_core.models.work_item import WorkItemModel  # noqa: E402
-from m8flow_bpmn_core.models.work_item_user import (  # noqa: E402
+from m8flow_core.models.tenant import M8flowTenantModel  # noqa: E402
+from m8flow_core.models.user import UserModel  # noqa: E402
+from m8flow_core.models.work_item import WorkItemModel  # noqa: E402
+from m8flow_core.models.work_item_user import (  # noqa: E402
     WorkItemUserModel,
 )
-from m8flow_bpmn_core.services.authorization import (  # noqa: E402
+from m8flow_core.services.authorization import (  # noqa: E402
     ROLE_ADMIN,
     ensure_v1_role,
 )
-from m8flow_bpmn_core.services.work_items import WorkItemState  # noqa: E402
+from m8flow_core.services.work_items import WorkItemState  # noqa: E402
 
 TENANT_ID = "tenant-errors-demo"
 TENANT_SLUG = "tenant-errors-demo"
@@ -58,9 +58,9 @@ FOREIGN_TENANT_SLUG = "tenant-errors-demo-foreign"
 
 
 def main() -> None:
-    print("m8flow-bpmn-core public-error demo")
+    print("m8flow-core public-error demo")
     print()
-    print("This walks every error class re-exported from m8flow_bpmn_core.api,")
+    print("This walks every error class re-exported from m8flow_core.api,")
     print("triggers it through a public service call, and shows that each one")
     print("can be caught by either the domain class or the matching builtin.")
     print()

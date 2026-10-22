@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core.application import (
+from m8flow_core.application import (
     ClaimTaskCommand,
     CompleteTaskCommand,
     ErrorProcessInstanceCommand,
@@ -29,21 +29,21 @@ from m8flow_bpmn_core.application import (
     execute_command,
     execute_query,
 )
-from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
-from m8flow_bpmn_core.models.bpmn_process_definition import (
+from m8flow_core.models.bpmn_process import BpmnProcessModel
+from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.future_task import FutureTaskModel
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.process_instance_event import ProcessLifecycleEventType
-from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
-from m8flow_bpmn_core.models.task import TaskModel
-from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.work_item import WorkItemModel
-from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
-from m8flow_bpmn_core.services.authorization import (
+from m8flow_core.models.future_task import FutureTaskModel
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.process_instance_event import ProcessLifecycleEventType
+from m8flow_core.models.scheduler_job import SchedulerJobModel
+from m8flow_core.models.task import TaskModel
+from m8flow_core.models.task_definition import TaskDefinitionModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.work_item import WorkItemModel
+from m8flow_core.models.work_item_user import WorkItemUserModel
+from m8flow_core.services.authorization import (
     ROLE_ADMIN,
     ensure_v1_role,
 )

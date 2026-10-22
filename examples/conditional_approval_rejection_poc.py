@@ -14,7 +14,7 @@ approval_poc.MANAGER_DECISION = "Rejected"
 
 
 def main() -> None:
-    print("m8flow-bpmn-core conditional-approval rejection example")
+    print("m8flow-core conditional-approval rejection example")
     print(
         "This variant follows the manager rejection path, so the workflow "
         "should stop before the Finance lane."

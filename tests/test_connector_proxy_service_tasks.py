@@ -9,8 +9,8 @@ from threading import Thread
 
 import pytest
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.services.service_tasks import CONNECTOR_PROXY_COMMANDS_PATH
+from m8flow_core import api
+from m8flow_core.services.service_tasks import CONNECTOR_PROXY_COMMANDS_PATH
 
 
 @dataclass

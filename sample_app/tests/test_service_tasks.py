@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import pytest
 
-from m8flow_bpmn_core import api
+from m8flow_core import api
 from m8flow_sample_app import service_tasks
 
 

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from m8flow_bpmn_core import api
+from m8flow_core import api
 
 # Snapshot of the public surface. Any change here is a deliberate
-# contract change and should be paired with an entry in ``doc/api.md``.
+# contract change and should be paired with an entry in ``docs/reference/api.md``.
 EXPECTED_PUBLIC_API = frozenset(
     {
         # Errors

@@ -31,10 +31,10 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.services.authorization import (
+from m8flow_core import api
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.services.authorization import (
     ROLE_ADMIN,
     ROLE_MANAGER,
     ROLE_USER,

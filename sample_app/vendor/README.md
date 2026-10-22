@@ -1,16 +1,18 @@
-# Vendor Wheel Staging
+# Staged library wheel
 
-This directory is reserved for the locally built `m8flow-bpmn-core` wheel that
-the sample app depends on.
+This folder holds the locally built `m8flow-core` wheel that the sample
+app installs. The wheel isn't committed.
 
-The wheel itself is not committed. Stage it with:
+To copy the newest wheel from `dist/` into this folder, run the staging script
+from the repository root:
 
-- `.\sample_app\scripts\stage_local_wheel.ps1`
-- `bash sample_app/scripts/stage_local_wheel.sh`
+```bash
+bash sample_app/scripts/stage_local_wheel.sh
+```
 
-The staged filename keeps the original wheel version, for example:
+On Windows, run `.\sample_app\scripts\stage_local_wheel.ps1`.
 
-`sample_app/vendor/m8flow_bpmn_core-0.2.1-py3-none-any.whl`
-
-The staging helper also updates `sample_app/pyproject.toml` so
-`tool.uv.sources.m8flow-bpmn-core` points at the currently staged wheel.
+The staged file keeps its versioned name, such as
+`m8flow_core-1.0.0-py3-none-any.whl`, because uv rejects wheels without a
+version in the name. The script also points `tool.uv.sources.m8flow-core`
+in `sample_app/pyproject.toml` at the staged file.

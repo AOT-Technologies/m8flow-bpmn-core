@@ -4,9 +4,9 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.errors import NotFoundError, ValidationError
-from m8flow_bpmn_core.services.service_tasks import (
+from m8flow_core import api
+from m8flow_core.errors import NotFoundError, ValidationError
+from m8flow_core.services.service_tasks import (
     build_connector_proxy_execute_path,
     resolve_service_task_registry,
 )

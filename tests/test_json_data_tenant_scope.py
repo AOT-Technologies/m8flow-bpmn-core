@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from sqlalchemy import func, select
 
-from m8flow_bpmn_core.models.json_data import JsonDataModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.json_data import JsonDataModel
+from m8flow_core.models.tenant import M8flowTenantModel
 
 
 def _add_tenant(session, tenant_id: str) -> None:

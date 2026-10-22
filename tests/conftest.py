@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core.db import build_engine, build_session_factory, create_schema
-from m8flow_bpmn_core.models import Base
+from m8flow_core.db import build_engine, build_session_factory, create_schema
+from m8flow_core.models import Base
 
 
 @pytest.fixture()

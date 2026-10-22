@@ -7,8 +7,8 @@ from dataclasses import replace
 
 from sqlalchemy import select
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.errors import ServiceTaskExecutionError
+from m8flow_core import api
+from m8flow_core.errors import ServiceTaskExecutionError
 from m8flow_sample_app.db import session_scope
 from m8flow_sample_app.models import SecretModel
 from m8flow_sample_app.settings import get_settings

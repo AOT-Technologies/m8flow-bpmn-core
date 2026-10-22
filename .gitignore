@@ -15,7 +15,7 @@ dist/
 *.sqlite3
 *.db
 *.sqlite
-reference/
+/reference/
 .*
 !.gitleaks.toml
 !.pre-commit-config.yaml

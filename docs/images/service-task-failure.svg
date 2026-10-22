@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 392" width="960" height="392" role="img" aria-labelledby="t d">
+  <title id="t">A service task failure, saved for retry</title>
+  <desc id="d">Three lanes, top to bottom. Your transaction: you start a process, the service task runs and its connector raises, the library raises ServiceTaskExecutionError to you, and you roll back your own writes. Recovery transaction: before raising, the library saves the failed state in a separate commit, so the instance is in error with its workflow snapshot and a task_failed event, and it survives your rollback. Later: you retry with RetryProcessInstanceCommand, the library reruns the service task from the saved snapshot, and the workflow continues to its next task or to completion. Pink lines and the pink key dot mark the failure. A blue dot follows the whole sequence.</desc>
+  <style>
+    text { font-family: Inter, 'SF Pro Text', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #111827; }
+    .t { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+    .b { font-size: 11.5px; fill: #6b7280; }
+    .k { font-size: 10px; font-weight: 600; fill: #9ca3af; letter-spacing: 0.08em; }
+    .m { font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 11px; fill: #6b7280; }
+    .mi { font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 11px; fill: #111827; }
+    .ln { fill: none; stroke: #d1d5db; stroke-width: 1; }
+    .er { fill: none; stroke: #e01d5a; stroke-width: 1; stroke-opacity: .45; }
+    .route { offset-rotate: 0deg; opacity: 0; }
+    .hl { opacity: 0; animation: hl var(--d, 6s) ease-in-out infinite; animation-delay: var(--w, 0s); }
+    .in { opacity: 0; animation: fadein var(--d, 8s) ease-out infinite; animation-delay: var(--w, 0s); }
+    @keyframes hl { 0%, 22%, 100% { opacity: 0; } 4%, 16% { opacity: 1; } }
+    @keyframes fadein { 0% { opacity: 0; transform: translateY(4px); } 8%, 82% { opacity: 1; transform: none; }
+                        92%, 100% { opacity: 0; } }
+    .bar { transform-box: fill-box; transform-origin: left; animation: grow 8s ease-in-out infinite; }
+    @keyframes grow { 0% { transform: scaleX(0); } 70%, 90% { transform: scaleX(1); } 100% { transform: scaleX(0); } }
+    @media (prefers-reduced-motion: reduce) {
+      .hl, .route { animation: none !important; opacity: 0; }
+      .in, .bar { animation: none; opacity: 1; }
+    }
+  </style>
+  <rect width="960" height="392" rx="12" fill="#ffffff"/>
+  <rect x=".5" y=".5" width="959" height="391" rx="12" fill="none" stroke="#e5e7eb"/>
+  <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 z" fill="#d1d5db"/></marker></defs>
+  <rect x="24" y="24" width="912" height="100" rx="10" fill="#f9fafb" stroke="#e5e7eb"/>
+  <text x="38" y="46" class="k" text-anchor="start">YOUR TRANSACTION</text>
+  <rect x="24" y="140" width="912" height="100" rx="10" fill="#f9fafb" stroke="#e5e7eb"/>
+  <text x="38" y="162" class="k" text-anchor="start">RECOVERY TRANSACTION</text>
+  <rect x="24" y="256" width="912" height="100" rx="10" fill="#f9fafb" stroke="#e5e7eb"/>
+  <text x="38" y="278" class="k" text-anchor="start">LATER</text>
+  <path class="ln" d="M241 83.0 L 265 83.0"/>
+  <path class="er" d="M366.5 108 L 366.5 174"/>
+  <path class="ln" d="M468 199.0 L 492 199.0"/>
+  <path class="er" d="M593.5 174 L 593.5 108"/>
+  <path class="ln" d="M695 83.0 L 719 83.0"/>
+  <path class="ln" d="M820.5 108 L 820.5 174"/>
+  <path class="ln" d="M820.5 224 L 820.5 290"/>
+  <path class="ln" d="M719 315.0 L 695 315.0"/>
+  <path class="ln" d="M492 315.0 L 468 315.0"/>
+  <style>@keyframes r15 { 0% { offset-distance: 0%; opacity: 0; } 1% { opacity: 1; } 82.28% { opacity: 1; } 83.28% { offset-distance: 100%; opacity: 0; } 100% { offset-distance: 100%; opacity: 0; } }</style>
+  <circle class="route" r="3" fill="#1a9fc8" style="offset-path: path('M139.5 83.0 L 366.5 83.0 L 366.5 199.0 L 593.5 199.0 L 593.5 83.0 L 820.5 83.0 L 820.5 199.0 L 820.5 315.0 L 593.5 315.0 L 366.5 315.0'); animation: r15 8.0s linear 0.0s infinite"/>
+  <rect x="38" y="58" width="203" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="38" y="58" width="203" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="52" y="80.0" class="t" text-anchor="start">Start process</text>
+  <text x="52" y="96.0" class="b" text-anchor="start">your transaction is open</text>
+  <rect x="265" y="58" width="203" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 8.0s; --w: 0.5958333333333333s"><rect x="265" y="58" width="203" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="265" y="58" width="203" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="279" y="80.0" class="t" text-anchor="start">Service task runs</text>
+  <text x="279" y="96.0" class="b" text-anchor="start">its connector raises</text>
+  <rect x="492" y="58" width="203" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 8.0s; --w: 2.5083333333333333s"><rect x="492" y="58" width="203" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="492" y="58" width="203" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="506" y="80.0" class="t" text-anchor="start">Error raised to you</text>
+  <text x="506" y="96.0" class="m" text-anchor="start">ServiceTaskExecutionError</text>
+  <rect x="719" y="58" width="203" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 8.0s; --w: 3.4541666666666666s"><rect x="719" y="58" width="203" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="719" y="58" width="203" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="733" y="80.0" class="t" text-anchor="start">You roll back</text>
+  <text x="733" y="96.0" class="b" text-anchor="start">your own writes are undone</text>
+  <rect x="265" y="174" width="203" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 8.0s; --w: 1.0791666666666666s"><rect x="265" y="174" width="203" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="265" y="174" width="203" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="279" y="196.0" class="t" text-anchor="start">Save failed state</text>
+  <text x="279" y="212.0" class="b" text-anchor="start">separate commit</text>
+  <rect x="492" y="174" width="203" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 8.0s; --w: 2.025s"><rect x="492" y="174" width="203" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="492" y="174" width="203" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="506" y="196.0" class="t" text-anchor="start">Instance in error</text>
+  <text x="506" y="212.0" class="b" text-anchor="start">snapshot · task_failed event</text>
+  <rect x="719" y="174" width="203" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 8.0s; --w: 3.9374999999999996s"><rect x="719" y="174" width="203" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="719" y="174" width="203" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="733" y="196.0" class="t" text-anchor="start">Survives the rollback</text>
+  <text x="733" y="212.0" class="b" text-anchor="start">ready to retry</text>
+  <rect x="719" y="290" width="203" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 8.0s; --w: 4.420833333333333s"><rect x="719" y="290" width="203" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="719" y="290" width="203" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="733" y="312.0" class="t" text-anchor="start">Retry</text>
+  <text x="733" y="328.0" class="m" text-anchor="start">RetryProcessInstanceCommand</text>
+  <rect x="492" y="290" width="203" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 8.0s; --w: 5.366666666666667s"><rect x="492" y="290" width="203" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="492" y="290" width="203" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="506" y="312.0" class="t" text-anchor="start">Rerun service task</text>
+  <text x="506" y="328.0" class="b" text-anchor="start">from the saved snapshot</text>
+  <rect x="265" y="290" width="203" height="50" rx="7" fill="#ffffff" stroke="#e5e7eb"/>
+  <g class="hl" style="--d: 8.0s; --w: 6.3125s"><rect x="265" y="290" width="203" height="50" rx="7" fill="#e8f6fb" stroke="#1a9fc8" stroke-opacity=".5"/></g>
+  <rect x="265" y="290" width="203" height="50" rx="7" fill="none" stroke="none"/>
+  <text x="279" y="312.0" class="t" text-anchor="start">Continue</text>
+  <text x="279" y="328.0" class="b" text-anchor="start">next task or completion</text>
+  <circle cx="454" cy="74" r="3" fill="#e01d5a"/>
+  <path class="ln" d="M253 83.0 L 265 83.0" marker-end="url(#a)"/>
+  <path class="er" d="M366.5 162 L 366.5 174" marker-end="url(#a)"/>
+  <path class="ln" d="M480 199.0 L 492 199.0" marker-end="url(#a)"/>
+  <path class="er" d="M593.5 120 L 593.5 108" marker-end="url(#a)"/>
+  <path class="ln" d="M707 83.0 L 719 83.0" marker-end="url(#a)"/>
+  <path class="ln" d="M820.5 162 L 820.5 174" marker-end="url(#a)"/>
+  <path class="ln" d="M820.5 278 L 820.5 290" marker-end="url(#a)"/>
+  <path class="ln" d="M707 315.0 L 695 315.0" marker-end="url(#a)"/>
+  <path class="ln" d="M480 315.0 L 468 315.0" marker-end="url(#a)"/>
+</svg>

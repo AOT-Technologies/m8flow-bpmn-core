@@ -1,4 +1,4 @@
-name: "m8flow-bpmn-core CodeQL Config"
+name: "m8flow-core CodeQL Config"
 
 queries:
   - uses: security-and-quality
