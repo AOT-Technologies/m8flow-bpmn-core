@@ -38,6 +38,7 @@ Steps for one task, for readers who already know the basics:
 - [Customize authorization](how-to/customize-authorization.md)
 - [Build and install the package](how-to/build-and-install-the-package.md)
 - [Upgrade to 1.0](how-to/upgrade-to-1.0.md)
+- [Publish a release](how-to/publish-a-release.md)
 - [Run the examples](how-to/run-the-examples.md)
 - [Run the sample app](../sample_app/README.md)
 - [Develop and test](how-to/develop-and-test.md)
