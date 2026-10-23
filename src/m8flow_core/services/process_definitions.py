@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+from defusedxml import ElementTree
 from SpiffWorkflow.spiff.parser.process import SpiffBpmnParser
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,9 +21,12 @@ from m8flow_core.services.authorization import (
     PROCESS_DEFINITION_IMPORT_COMMAND,
     require_command_authorization,
 )
+from m8flow_core.services.lane_assignment import (
+    enroll_definition_lane_owners,
+    validate_initiator_lanes,
+)
 from m8flow_core.services.tenant_users import ensure_user_belongs_to_tenant
 from m8flow_core.services.workflow_runtime import (
-    _sync_lane_owner_group_assignments,
     _sync_timer_start_scheduler_jobs_for_definition,
 )
 
@@ -81,6 +85,15 @@ def import_bpmn_process_definition(
         )
     )
     resolved_properties_json = dict(properties_json or {})
+    effective_properties_json = (
+        resolved_properties_json
+        if properties_json is not None or definition is None
+        else dict(definition.properties_json or {})
+    )
+    validate_initiator_lanes(
+        effective_properties_json,
+        bpmn_lane_names=_bpmn_lane_names(source_bpmn_xml_text),
+    )
 
     if definition is None:
         definition = BpmnProcessDefinitionModel(
@@ -146,10 +159,10 @@ def import_bpmn_process_definition(
         process_definition=definition,
         occurred_at=snapshot_timestamp,
     )
-    _sync_lane_owner_group_assignments(
+    enroll_definition_lane_owners(
         session,
         tenant_id=tenant_id,
-        lane_owners=resolved_properties_json.get("lane_owners"),
+        properties_json=effective_properties_json,
     )
     return definition
 
@@ -162,6 +175,17 @@ def _coerce_xml_text(xml: str | bytes) -> str:
     if isinstance(xml, bytes):
         return xml.decode("utf-8")
     return xml
+
+
+def _bpmn_lane_names(bpmn_xml_text: str) -> list[str]:
+    """Return the ``name`` of every lane element in the BPMN source."""
+    root = ElementTree.fromstring(bpmn_xml_text.encode("utf-8"))
+    return [
+        element.get("name") or ""
+        for element in root.iter()
+        if isinstance(element.tag, str)
+        and element.tag.rsplit("}", 1)[-1] == "lane"
+    ]
 
 
 def _ensure_bpmn_version_snapshot(

@@ -363,19 +363,19 @@ def _seed_validation_context(session: Session) -> TenantValidationContext:
                 m8f_tenant_id=tenant.id,
                 work_item_id=human_task.id,
                 user_id=tenant_user.id,
-                added_by="manual",
+                added_by=None,
             ),
             WorkItemUserModel(
                 m8f_tenant_id=tenant.id,
                 work_item_id=human_task.id,
                 user_id=foreign_user.id,
-                added_by="manual",
+                added_by=None,
             ),
             WorkItemUserModel(
                 m8f_tenant_id=foreign_tenant.id,
                 work_item_id=foreign_human_task.id,
                 user_id=foreign_user.id,
-                added_by="manual",
+                added_by=None,
             ),
         ]
     )

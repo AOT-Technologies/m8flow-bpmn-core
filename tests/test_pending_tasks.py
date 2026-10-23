@@ -204,19 +204,19 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
                 m8f_tenant_id=tenant_a.id,
                 work_item_id=pending_human_task.id,
                 user_id=user.id,
-                added_by="manual",
+                added_by=None,
             ),
             WorkItemUserModel(
                 m8f_tenant_id=tenant_a.id,
                 work_item_id=completed_human_task.id,
                 user_id=user.id,
-                added_by="manual",
+                added_by=None,
             ),
             WorkItemUserModel(
                 m8f_tenant_id=tenant_b.id,
                 work_item_id=other_tenant_human_task.id,
                 user_id=user.id,
-                added_by="manual",
+                added_by=None,
             ),
         ]
     )

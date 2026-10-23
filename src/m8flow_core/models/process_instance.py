@@ -21,14 +21,31 @@ WORKFLOW_STATE_JSON_DATA_KEY = "__m8f_workflow_state_json"
 
 
 class ProcessInstanceStatus(StrEnum):
-    complete = "complete"
-    error = "error"
+    """Lifecycle states stored in ``process_instance.status``."""
+
     not_started = "not_started"
     running = "running"
-    suspended = "suspended"
-    terminated = "terminated"
     user_input_required = "user_input_required"
     waiting = "waiting"
+    suspended = "suspended"
+    complete = "complete"
+    error = "error"
+    terminated = "terminated"
+
+
+_TERMINAL_STATUSES: frozenset[str] = frozenset(
+    {
+        ProcessInstanceStatus.complete.value,
+        ProcessInstanceStatus.error.value,
+        ProcessInstanceStatus.terminated.value,
+    }
+)
+_ACTIVE_STATUSES: tuple[str, ...] = (
+    ProcessInstanceStatus.not_started.value,
+    ProcessInstanceStatus.running.value,
+    ProcessInstanceStatus.user_input_required.value,
+    ProcessInstanceStatus.waiting.value,
+)
 
 
 class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
@@ -116,41 +133,14 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
         cascade="all, delete-orphan",
     )
 
-    def can_submit_task(self) -> bool:
-        return not self.has_terminal_status() and self.status != "suspended"
-
-    def allowed_to_run(self) -> bool:
-        return not self.has_terminal_status() and self.status != "suspended"
-
-    def can_receive_message(self) -> bool:
-        return not self.has_terminal_status() and self.status != "suspended"
-
     def has_terminal_status(self) -> bool:
-        return self.status in self.terminal_statuses()
-
-    def is_immediately_runnable(self) -> bool:
-        return self.status in self.immediately_runnable_statuses()
-
-    @classmethod
-    def terminal_statuses(cls) -> list[str]:
-        return ["complete", "error", "terminated"]
-
-    @classmethod
-    def non_terminal_statuses(cls) -> list[str]:
-        terminal_status_values = cls.terminal_statuses()
-        return [
-            status.value
-            for status in ProcessInstanceStatus
-            if status.value not in terminal_status_values
-        ]
+        """Return whether the instance is complete, errored or terminated."""
+        return self.status in _TERMINAL_STATUSES
 
     @classmethod
     def active_statuses(cls) -> list[str]:
-        return cls.immediately_runnable_statuses() + ["user_input_required", "waiting"]
-
-    @classmethod
-    def immediately_runnable_statuses(cls) -> list[str]:
-        return ["not_started", "running"]
+        """Return the status values of live instances, excluding suspended."""
+        return list(_ACTIVE_STATUSES)
 
     @validates("status")
     def validate_status(self, key: str, value: Any) -> Any:

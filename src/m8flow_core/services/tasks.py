@@ -20,7 +20,10 @@ from m8flow_core.models.process_instance_event import (
 )
 from m8flow_core.models.user_group_assignment import UserGroupAssignmentModel
 from m8flow_core.models.work_item import WorkItemModel
-from m8flow_core.models.work_item_user import WorkItemUserModel
+from m8flow_core.models.work_item_user import (
+    WorkItemUserAddedBy,
+    WorkItemUserModel,
+)
 from m8flow_core.services.authorization import (
     TASK_CLAIM_COMMAND,
     TASK_COMPLETE_COMMAND,
@@ -60,39 +63,50 @@ def get_pending_tasks(
 def assign_pending_tasks_for_user(
     session: Session, *, tenant_id: str, user_id: int
 ) -> list[WorkItemModel]:
+    """Add ``user_id`` to open lane work items of the groups they belong to.
+
+    Covers every open work item in the tenant whose lane group currently
+    includes the user and that the user is not yet a potential owner of. Each
+    gets a ``lane_assignment`` row. Returns the newly assigned work items in
+    ID order; work items without a lane group are never touched.
+    """
     ensure_user_belongs_to_tenant(session, tenant_id=tenant_id, user_id=user_id)
-    group_ids = select(UserGroupAssignmentModel.group_id).where(
-        UserGroupAssignmentModel.user_id == user_id
+    member_of_lane_group = exists(
+        select(1).where(
+            UserGroupAssignmentModel.group_id == WorkItemModel.lane_assignment_id,
+            UserGroupAssignmentModel.user_id == user_id,
+        )
     )
-    assignment_exists = exists(
+    already_potential_owner = exists(
         select(1).where(
             WorkItemUserModel.work_item_id == WorkItemModel.id,
             WorkItemUserModel.user_id == user_id,
         )
     )
-    items = list(
+    newly_assigned = list(
         session.scalars(
             select(WorkItemModel)
             .where(
                 WorkItemModel.m8f_tenant_id == tenant_id,
                 WorkItemModel.completed.is_(False),
-                WorkItemModel.lane_assignment_id.in_(group_ids),
-                ~assignment_exists,
+                WorkItemModel.lane_assignment_id.is_not(None),
+                member_of_lane_group,
+                ~already_potential_owner,
             )
             .order_by(WorkItemModel.id)
         ).all()
     )
-    for item in items:
-        session.add(
-            WorkItemUserModel(
-                m8f_tenant_id=tenant_id,
-                work_item_id=item.id,
-                user_id=user_id,
-                added_by="lane_assignment",
-            )
+    session.add_all(
+        WorkItemUserModel(
+            m8f_tenant_id=tenant_id,
+            work_item_id=work_item.id,
+            user_id=user_id,
+            added_by=WorkItemUserAddedBy.lane_assignment,
         )
+        for work_item in newly_assigned
+    )
     session.flush()
-    return items
+    return newly_assigned
 
 
 def claim_task(
@@ -101,7 +115,6 @@ def claim_task(
     tenant_id: str,
     work_item_id: int,
     user_id: int,
-    added_by: str = "manual",
 ) -> WorkItemModel:
     ensure_user_belongs_to_tenant(session, tenant_id=tenant_id, user_id=user_id)
     item = _load_work_item(session, tenant_id=tenant_id, work_item_id=work_item_id)

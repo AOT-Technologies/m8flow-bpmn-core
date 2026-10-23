@@ -11,52 +11,66 @@ from m8flow_core.models.base import Base
 from m8flow_core.models.tenant_scoped import M8fTenantScopedMixin, TenantScoped
 
 
-class ProcessLifecycleEventType(StrEnum):
-    process_instance_created = "process_instance_created"
-    process_instance_completed = "process_instance_completed"
-    process_instance_error = "process_instance_error"
-    process_instance_force_run = "process_instance_force_run"
-    process_instance_migrated = "process_instance_migrated"
-    process_instance_resumed = "process_instance_resumed"
-    process_instance_retried = "process_instance_retried"
-    process_instance_rewound_to_task = "process_instance_rewound_to_task"
-    process_instance_suspended = "process_instance_suspended"
-    process_instance_suspended_for_error = "process_instance_suspended_for_error"
-    process_instance_terminated = "process_instance_terminated"
-
-
-class TaskEventType(StrEnum):
-    task_cancelled = "task_cancelled"
-    task_completed = "task_completed"
-    task_data_edited = "task_data_edited"
-    task_executed_manually = "task_executed_manually"
-    task_failed = "task_failed"
-    task_skipped = "task_skipped"
-
-
 class ProcessInstanceEventCategory(StrEnum):
+    """Whether an event concerns the whole instance or a single task."""
+
     process = "process"
     task = "task"
 
 
-def event_category_for_type(
-    event_type: (
-        ProcessLifecycleEventType
-        | TaskEventType
-        | str
-    ),
-) -> ProcessInstanceEventCategory:
-    """Return the persisted category for any supported event enum/value."""
-    value = event_type.value if isinstance(event_type, StrEnum) else event_type
-    try:
-        ProcessLifecycleEventType(value)
-    except ValueError:
-        try:
-            TaskEventType(value)
-        except ValueError as exc:
-            raise ValueError(f"Unknown process instance event type: {value!r}") from exc
-        return ProcessInstanceEventCategory.task
-    return ProcessInstanceEventCategory.process
+class ProcessLifecycleEventType(StrEnum):
+    """Events that describe the process instance as a whole.
+
+    Member order is not part of the public contract.
+    """
+
+    process_instance_created = "process_instance_created"
+    process_instance_suspended = "process_instance_suspended"
+    process_instance_resumed = "process_instance_resumed"
+    process_instance_error = "process_instance_error"
+    process_instance_retried = "process_instance_retried"
+    process_instance_completed = "process_instance_completed"
+    process_instance_terminated = "process_instance_terminated"
+
+
+class TaskEventType(StrEnum):
+    """Outcomes of a single task; rows of these types carry a ``task_guid``.
+
+    Member order is not part of the public contract.
+    """
+
+    task_completed = "task_completed"
+    task_failed = "task_failed"
+    task_cancelled = "task_cancelled"
+
+
+_CATEGORY_BY_EVENT_TYPE: dict[str, ProcessInstanceEventCategory] = {
+    **{
+        member.value: ProcessInstanceEventCategory.process
+        for member in ProcessLifecycleEventType
+    },
+    **{member.value: ProcessInstanceEventCategory.task for member in TaskEventType},
+}
+
+
+def _accepted_event_types() -> str:
+    return ", ".join(sorted(_CATEGORY_BY_EVENT_TYPE))
+
+
+def event_category_for_type(event_type: object) -> ProcessInstanceEventCategory:
+    """Return the category of a recordable event type.
+
+    Accepts an enum member or its exact string value. Matching is exact and
+    case-sensitive. Anything else raises ``ValueError``.
+    """
+    key = event_type.value if isinstance(event_type, StrEnum) else event_type
+    category = _CATEGORY_BY_EVENT_TYPE.get(key) if isinstance(key, str) else None
+    if category is None:
+        raise ValueError(
+            f"Unknown process instance event type: {event_type!r}. "
+            f"Expected one of: {_accepted_event_types()}"
+        )
+    return category
 
 
 class ProcessInstanceEventModel(M8fTenantScopedMixin, TenantScoped, Base):
@@ -88,47 +102,44 @@ class ProcessInstanceEventModel(M8fTenantScopedMixin, TenantScoped, Base):
     user = relationship("UserModel")
 
     @validates("event_type")
-    def validate_event_type(self, key: str, value: Any) -> Any:
+    def validate_event_type(self, key: str, value: Any) -> str:
         from m8flow_core.errors import ValidationError
 
         try:
-            normalized = (
-                value.value
-                if isinstance(value, StrEnum)
-                else value
-            )
-            self.category = event_category_for_type(normalized).value
-            return normalized
-        except ValueError as exc:  # pragma: no cover - defensive guard
-            allowed_values = ", ".join(
-                [
-                    *(event_type.value for event_type in ProcessLifecycleEventType),
-                    *(event_type.value for event_type in TaskEventType),
-                ]
-            )
+            category = event_category_for_type(value)
+        except ValueError as exc:
             raise ValidationError(
                 f"Invalid process instance event type: {value!r}. "
-                f"Expected one of: {allowed_values}"
+                f"Expected one of: {_accepted_event_types()}"
             ) from exc
+        self.category = category.value
+        return str(value.value if isinstance(value, StrEnum) else value)
 
     @validates("category")
     def validate_category(self, key: str, value: Any) -> str:
         from m8flow_core.errors import ValidationError
 
         try:
-            normalized = ProcessInstanceEventCategory(value).value
+            category = ProcessInstanceEventCategory(value)
         except ValueError as exc:
             raise ValidationError(
                 f"Invalid process instance event category: {value!r}. "
                 "Expected 'process' or 'task'."
             ) from exc
 
-        event_type = self.__dict__.get("event_type")
-        if event_type is not None:
-            expected = event_category_for_type(event_type).value
-            if normalized != expected:
-                raise ValidationError(
-                    f"Event category {normalized!r} does not match event type "
-                    f"{event_type!r}; expected {expected!r}."
-                )
-        return normalized
+        current_type = self.__dict__.get("event_type")
+        if current_type is None:
+            return category.value
+        try:
+            expected = event_category_for_type(current_type)
+        except ValueError as exc:
+            raise ValidationError(
+                f"Cannot assign category {category.value!r} to an event of "
+                f"unrecognised type {current_type!r}."
+            ) from exc
+        if category is not expected:
+            raise ValidationError(
+                f"Event category {category.value!r} does not match event type "
+                f"{current_type!r}; expected {expected.value!r}."
+            )
+        return category.value

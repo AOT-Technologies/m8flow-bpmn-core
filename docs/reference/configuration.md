@@ -33,7 +33,7 @@ The test suites read the following variables:
 | `M8FLOW_TEST_POSTGRES_USER` | `postgres` | User for the integration test container |
 | `M8FLOW_TEST_POSTGRES_PASSWORD` | `postgres` | Password for the integration test container |
 | `M8FLOW_TEST_POSTGRES_DB` | `m8flow_core_test` | Database name for the integration test container |
-| `M8FLOW_POSTGRES_UPGRADE_DATABASE_URL` | Unset | A dedicated PostgreSQL database for the migration test of post-2038 timestamps. The test is skipped when this isn't set. |
+| `M8FLOW_POSTGRES_UPGRADE_DATABASE_URL` | Unset | A dedicated, empty PostgreSQL database for the baseline migration tests, which also check post-2038 timestamps. The PostgreSQL cases are skipped when this isn't set. |
 
 ## Examples
 

@@ -334,7 +334,7 @@ def _seed(session: Session) -> dict[str, int]:
             m8f_tenant_id=tenant.id,
             work_item_id=unassigned_task.id,
             user_id=primary_user.id,
-            added_by="manual",
+            added_by=None,
         )
     )
     session.flush()

@@ -33,16 +33,32 @@ the other gets `InvalidStateError`.
 
 ## Who can work on a task
 
-A work item belongs to a lane. Its potential owners come from the definition's
-`lane_owners` mapping, or from a script task that sets it, matched against
-users in the tenant. Lane groups are qualified by tenant, so two tenants with
-a lane named `Finance` never share an owner list.
+A work item's potential owners are the users who may claim it. Each one is a
+`work_item_user` row with an `added_by` label that says why the user is there:
+
+- `process_initiator`: the task has no lane, or its lane is listed in the
+  definition's `initiator_lanes`, so it goes to the user who started the
+  instance. Nobody else is added.
+- `lane_owner`: the user is named for the task's lane in `lane_owners`, from
+  the definition or from a script task that sets it in task data.
+- `lane_assignment`: the user belongs to the tenant's lane group for the
+  task's lane.
+
+Lane groups are qualified by tenant, so two tenants with a lane named
+`Finance` never share an owner list, and only users who belong to the tenant
+are ever assigned. Named lane owners are added to the lane group, which keeps
+the group as the tenant-wide record of who works a lane.
+
+The label is informational. Claiming and completing depend only on whether a
+row exists, so rows with older labels keep working.
 
 `lane_owners` is optional. With no owners, the process still starts and the
 work item waits as `READY`. A host application that syncs group membership
 from a directory can then call `assign_pending_tasks_for_user` to make a user
 a potential owner of the waiting work in their lanes. That doesn't claim
-anything; the user still claims the work item themselves.
+anything; the user still claims the work item themselves. When a task is
+materialized again, for example after a resume or retry, users who now
+qualify are added and existing potential owners are kept.
 
 ## Events have a category
 
@@ -56,8 +72,13 @@ vocabularies:
 
 Every event stores a non-null `category`, `process` or `task`, derived from
 its type. A reader can filter one kind without knowing every event name, and
-the event string values are the same ones m8flow has always stored, so
-existing history stays readable.
+the string values of the kept event types are the same ones m8flow has always
+stored, so existing history stays readable.
+
+Older rows may hold an event type that is no longer part of the vocabulary.
+Such rows load and read back exactly as stored. Recording that type again is
+rejected, so for historical rows the stored `category` column, not the type,
+is the authoritative way to tell process events from task events.
 
 ## Timestamps are datetimes
 

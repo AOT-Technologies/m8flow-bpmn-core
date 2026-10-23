@@ -372,9 +372,18 @@ def resume_process_instance(
     if process_instance.status != ProcessInstanceStatus.suspended.value:
         raise InvalidStateError("Only suspended process instances can be resumed")
 
+    from m8flow_core.services.workflow_runtime import (
+        sync_open_work_item_potential_owners,
+    )
+
     occurred_at = _resolve_timestamp(resumed_at)
     process_instance.status = ProcessInstanceStatus.running.value
     process_instance.updated_at = occurred_at
+    sync_open_work_item_potential_owners(
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance.id,
+    )
     record_process_instance_event(
         session,
         tenant_id=tenant_id,
@@ -397,6 +406,7 @@ def retry_process_instance(
 ) -> ProcessInstanceModel:
     from m8flow_core.services.workflow_runtime import (
         retry_errored_service_task_workflow_if_needed,
+        sync_open_work_item_potential_owners,
     )
 
     ensure_user_belongs_to_tenant(
@@ -451,6 +461,11 @@ def retry_process_instance(
         tenant_id=tenant_id,
         process_instance_id=process_instance.id,
         occurred_at=occurred_at,
+    )
+    sync_open_work_item_potential_owners(
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance.id,
     )
     session.flush()
     return process_instance

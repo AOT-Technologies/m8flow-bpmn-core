@@ -126,14 +126,35 @@ To seed metadata when the process starts, use
 
 The library assigns a user task to the users who own its BPMN lane. Set the
 owners in `properties_json["lane_owners"]` when you import the definition, as
-a mapping from lane name to a list of usernames:
+a mapping from lane name to a list of user identifiers (username, email, or
+`service_id`):
 
 ```python
 properties_json={"lane_owners": {"Manager": ["manager1"], "Finance": ["finance1"]}}
 ```
 
+Import also adds each owner to the tenant's lane group for that lane, so later
+tasks in the same lane, from any definition in the tenant, reach them too.
+Owners that match no user in the tenant are skipped with a logged warning.
+
 A script task in the BPMN can also set `lane_owners` at run time, as the
-`conditional-approval.bpmn` and `parallel_review_poc.bpmn` fixtures do.
+`conditional-approval.bpmn` and `parallel_review_poc.bpmn` fixtures do. A
+`lane_owners` mapping in the task's data replaces the definition's mapping for
+that task.
+
+A task with no lane goes to the user who started the instance. To send a
+lane's tasks to that user too, list the lane in `initiator_lanes`:
+
+```python
+properties_json={
+    "initiator_lanes": ["Requester"],
+    "lane_owners": {"Manager": ["manager1"]},
+}
+```
+
+A lane is never treated as the initiator's because of its name. Import rejects
+an `initiator_lanes` entry that names no lane in the BPMN, or that also has a
+key in `lane_owners`, with `ValidationError`.
 
 `lane_owners` is optional. If a lane has no owners, the process still starts
 and the work item waits as `READY` with no potential owners. When your
@@ -188,6 +209,32 @@ in the m8flow UI then resolve to the deployed model.
 Users from a shared m8flow Keycloak realm can be scoped to one tenant by
 storing the realm issuer in `user.service` and the tenant ID and slug in
 `realm_identifier` and `external_org_id`.
+
+## Ship your application with its dependencies
+
+m8flow-core is licensed under the Apache License 2.0. Two of its
+dependencies are licensed under the GNU Lesser General Public License:
+SpiffWorkflow (LGPL-3.0-or-later) and, with the `postgresql` extra, psycopg
+(LGPL-3.0). Installing them with pip or uv from PyPI places no extra
+obligations on m8flow-core.
+
+If you redistribute them inside your own artifact, such as a container image,
+a frozen executable, or a vendored wheel directory, you take on the LGPL
+conditions for that artifact. In practice:
+
+- Include the GPL-3.0 and LGPL-3.0 license texts, and keep each package's own
+  license files.
+- Keep the libraries replaceable. Shipping them as ordinary installed Python
+  packages satisfies this.
+- Make the source of those libraries available, or include a written offer
+  to provide it.
+- If you modify SpiffWorkflow or psycopg, release your modifications under
+  the LGPL.
+
+The psycopg-binary wheels also bundle native libraries, such as libpq and
+OpenSSL, under their own licenses. The [NOTICE](../../NOTICE) file lists the
+dependencies with notable obligations. This section is guidance, not legal
+advice.
 
 ## Related pages
 
