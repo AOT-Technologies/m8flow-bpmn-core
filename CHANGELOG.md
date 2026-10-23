@@ -40,6 +40,10 @@ and m8flow together.
   `ProcessInstanceEventCategory`, with a non-null `category` on every event.
 - `assign_pending_tasks_for_user`, to add potential owners to waiting work
   items after a directory sync. `lane_owners` is now optional.
+- `properties_json["initiator_lanes"]`, a list of lanes whose tasks go to the
+  user who started the instance. Import validates it and raises
+  `ValidationError` for a non-list value, an empty or non-string entry, a lane
+  that isn't in the BPMN, or a lane that also has a `lane_owners` key.
 - Support for dates beyond 2038.
 - A sample host application in `sample_app/` that consumes the library as a
   wheel.
@@ -61,6 +65,12 @@ and m8flow together.
 - **Breaking:** renamed the distribution from `m8flow-bpmn-core` to
   `m8flow-core`, and the import package from `m8flow_bpmn_core` to
   `m8flow_core`.
+- **Breaking:** the Alembic history is a single baseline revision,
+  `k2l3m4n5o6p7`, that creates the 1.0 schema on an empty database. It
+  doesn't convert 0.x databases: bring them to the 0.x head with the 0.x
+  migrations, convert them to the 1.0 schema with your own migrations, then
+  run `alembic stamp k2l3m4n5o6p7`. See
+  [Upgrade to 1.0](docs/how-to/upgrade-to-1.0.md).
 - **Breaking:** every timestamp is a timezone-aware UTC `datetime`. Public
   parameters such as `started_at_in_seconds` are now `started_at`, persisted
   epoch columns are now `DateTime` columns such as `created_at`, `run_at`, and
@@ -81,12 +91,31 @@ and m8flow together.
 - **Breaking:** the Celery example reads `M8FLOW_CORE_CELERY_*` variables
   instead of `M8FLOW_BPMN_CORE_CELERY_*`, and the examples publish to the
   `m8flow-core-examples` process group.
+- **Breaking:** initiator lanes are declared with
+  `properties_json["initiator_lanes"]`. A lane is no longer routed to the
+  process initiator because its name looks like "process initiator"; tasks
+  with no lane, or in an unnamed lane, still go to the initiator.
+- **Breaking:** `WorkItemUserAddedBy` has three members, `process_initiator`,
+  `lane_owner`, and `lane_assignment`. Writing any other `added_by` value
+  raises `ValidationError`; `None` is allowed. Rows that already hold other
+  labels load and work unchanged.
+- Lane owners are matched by username, email, or `service_id`, with lane
+  names compared after trimming outer whitespace, ignoring case. Owners that
+  match no user in the tenant are skipped with a logged warning instead of
+  failing the process. Named owners are added to the tenant's lane group, a
+  user appears at most once per work item, and resuming or retrying an
+  instance adds users who now qualify without removing existing potential
+  owners.
 - `resolve_lane_assignment_id` takes an optional `tenant_id`, so equal lane
   names in different tenants never share a group.
 - Constraints and indexes use the `m8f_*` namespace.
-- The model and authorization code was redesigned independently of
-  spiff-arena. [About the clean-room review](docs/explanation/clean-room-review.md)
+- The model, authorization, event, and lane-assignment code was redesigned
+  independently of spiff-arena.
+  [About the clean-room review](docs/explanation/clean-room-review.md)
   records the review.
+- `NOTICE` states SpiffWorkflow's license as LGPL-3.0-or-later, notes the
+  native libraries bundled by psycopg-binary, and describes the obligations of
+  applications that redistribute m8flow-core with its dependencies.
 - The source distribution includes only the library, its tests, docs,
   examples, and migrations.
 
@@ -96,8 +125,25 @@ and m8flow together.
 - **Breaking:** the `human_task` and `human_task_user` tables and
   `HumanTaskModel`, replaced by `work_item` and `work_item_user`.
 - **Breaking:** URI permission targets and URI matching.
-- **Breaking:** legacy `*_in_seconds` columns, removed by migration
-  `f7a8b9c0d1e2`. Its downgrade recreates the columns empty.
+- **Breaking:** legacy `*_in_seconds` columns. The 1.0 schema has no epoch
+  columns.
+- **Breaking:** the `ProcessInstanceModel` status helpers `can_submit_task`,
+  `allowed_to_run`, `can_receive_message`, `is_immediately_runnable`,
+  `terminal_statuses`, `non_terminal_statuses` and
+  `immediately_runnable_statuses`. `has_terminal_status()` and
+  `active_statuses()` remain.
+- **Breaking:** `ClaimTaskCommand.added_by` and the `added_by` parameter of
+  `claim_task`. Claiming never adds or relabels potential owners.
+- **Breaking:** the `guest` and `manual` members of `WorkItemUserAddedBy`.
+- **Breaking:** `FutureTaskModel.insert_or_update`. Create or change
+  `future_task` rows with ordinary ORM operations.
+- **Breaking:** the event type values `process_instance_force_run`,
+  `process_instance_migrated`, `process_instance_rewound_to_task`,
+  `process_instance_suspended_for_error`, `task_data_edited`,
+  `task_executed_manually` and `task_skipped`, and their
+  `ProcessLifecycleEventType` and `TaskEventType` members. Recording one of
+  them raises `ValidationError`. Existing event rows that hold them are
+  unaffected and read back as stored.
 
 ### Fixed
 

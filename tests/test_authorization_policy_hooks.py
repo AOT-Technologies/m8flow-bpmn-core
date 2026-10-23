@@ -236,7 +236,7 @@ def _seed_authorization_hook_context(
             m8f_tenant_id=tenant.id,
             work_item_id=human_task.id,
             user_id=user.id,
-            added_by="manual",
+            added_by=None,
         )
     )
     session.flush()

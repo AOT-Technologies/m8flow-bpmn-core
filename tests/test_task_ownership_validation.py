@@ -229,13 +229,13 @@ def _seed_ownership_context(session: Session) -> OwnershipContext:
                 m8f_tenant_id=tenant.id,
                 work_item_id=human_task.id,
                 user_id=primary_user.id,
-                added_by="manual",
+                added_by=None,
             ),
             WorkItemUserModel(
                 m8f_tenant_id=tenant.id,
                 work_item_id=human_task.id,
                 user_id=secondary_user.id,
-                added_by="manual",
+                added_by=None,
             ),
         ]
     )

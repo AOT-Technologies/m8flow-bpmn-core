@@ -74,7 +74,7 @@ It takes the following fields:
 | `source_bpmn_xml` | `str \| bytes` | Yes | |
 | `source_dmn_xml` | `str \| bytes \| None` | No | |
 | `bpmn_name` | `str \| None` | No | |
-| `properties_json` | `dict[str, Any] \| None` | No | Arbitrary metadata, such as `lane_owners` |
+| `properties_json` | `dict[str, Any] \| None` | No | Arbitrary metadata. The keys `lane_owners` and `initiator_lanes` control task assignment (see below) |
 | `bpmn_version_control_type` | `str \| None` | No | For example, `"git"` |
 | `bpmn_version_control_identifier` | `str \| None` | No | For example, a branch or commit |
 | `process_xml_digest` | `str \| None` | No | SHA-256 digest of the BPMN source; computed if omitted |
@@ -84,10 +84,32 @@ It takes the following fields:
 Returns `BpmnProcessDefinitionModel`. Importing a definition with a timer start
 event also creates or refreshes its scheduler jobs.
 
+Two `properties_json` keys decide who can work on the definition's human
+tasks:
+
+- `lane_owners`: a mapping from lane name to a list of user identifiers, for
+  example `{"Manager": ["manager1", "reviewer"]}`. An identifier matches a
+  tenant user's `username`, `email`, or `service_id`, or, if it contains `@`
+  and matches nobody, the `username` before the `@`. Import adds every
+  resolved owner to the tenant's lane group for that lane. The value isn't
+  validated: malformed entries are ignored, and identifiers that match no
+  tenant user are skipped with a logged warning.
+- `initiator_lanes`: a list of lane names whose tasks go to the user who
+  started the instance. Absent, `null`, or empty means no lane is an
+  initiator lane. Lane names are compared after trimming outer whitespace,
+  ignoring case.
+
+When `properties_json` is `None` and the BPMN matches a stored definition, the
+stored properties are kept and validated against the imported BPMN.
+
 Raises:
 
 - `ValidationError` if the BPMN or DMN is malformed, or the BPMN doesn't
   contain exactly one executable process.
+- `ValidationError` if `initiator_lanes` is not a list, contains an entry
+  that isn't a non-empty string, names a lane that doesn't exist in the BPMN,
+  or names a lane that also has a key in `lane_owners`. The message lists the
+  offending lanes. Nothing is stored.
 - `NotFoundError` if the user doesn't exist.
 - `AuthorizationError` if the user is outside the tenant or lacks the
   permission.
@@ -184,9 +206,9 @@ It takes the following fields:
 | `tenant_id` | `str` | Yes |
 | `work_item_id` | `int` | Yes |
 | `user_id` | `int` | Yes |
-| `added_by` | `str` | No (default `"manual"`) |
 
-Returns `WorkItemModel`.
+Returns `WorkItemModel`. Claiming never adds or changes potential owners; only
+an existing potential owner can claim.
 
 Raises:
 
@@ -265,7 +287,9 @@ Raises:
 - `NotFoundError` if the process instance doesn't exist, or `user_id` is set
   and the user doesn't exist.
 - `AuthorizationError` if `user_id` is set and the user isn't in the tenant.
-- `ValidationError` if `event_type` isn't a valid event type.
+- `ValidationError` if `event_type` isn't one of the ten event types listed
+  under [Enums](#enums). This includes the retired event type strings, unknown
+  or wrongly cased strings, empty strings, and `None`. Nothing is persisted.
 
 ### Lifecycle commands
 
@@ -486,7 +510,7 @@ the workflow runtime:
 |---|---|
 | `advance_process_instance_workflow(session, *, tenant_id, process_instance_id, completed_task_guid, completed_at=None)` | Restores an initialized workflow, completes the given runtime task GUID, advances the process, and saves the new state |
 | `resolve_lane_assignment_id(lane_name, tenant_id=None)` | Converts a lane name into the stable positive integer that m8flow uses as a lane group ID. With `tenant_id`, the group is qualified as `<tenant_id>:<lane_name>`, so equal lane names in different tenants never share a group. |
-| `assign_pending_tasks_for_user(session, *, tenant_id, user_id)` | Adds the user as a potential owner of incomplete work items in their lanes, for example after you sync directory membership. It doesn't claim them. Returns `list[WorkItemModel]`. |
+| `assign_pending_tasks_for_user(session, *, tenant_id, user_id)` | Adds the user, labelled `lane_assignment`, as a potential owner of every incomplete work item in the tenant whose lane group they currently belong to and that they don't already own, for example after you sync directory membership. Returns only the newly assigned work items, ordered by ID, or `[]` when there is nothing to add. It doesn't claim, change task status, consult `lane_owners`, or touch work items without a lane group. Raises `NotFoundError` if the user doesn't exist and `AuthorizationError` if the user isn't in the tenant; nothing is written in either case. |
 
 ## Enums
 
@@ -494,26 +518,62 @@ the workflow runtime:
 `not_started`, `running`, `suspended`, `terminated`, `user_input_required`,
 and `waiting`.
 
-`ProcessLifecycleEventType` has the following values:
+The values fall into three groups. `complete`, `error`, and `terminated` are
+terminal: the instance doesn't advance on its own, although `error` instances
+can still be retried. `not_started`, `running`, `user_input_required`, and
+`waiting` are active. `suspended` is neither terminal nor active.
+`ProcessInstanceModel.has_terminal_status()` returns `True` when an instance is
+in a terminal status and `False` otherwise, including when `status` isn't set
+yet. `ProcessInstanceModel.active_statuses()` is a class method that returns
+the four active values as strings, in no guaranteed order, and can be passed
+directly to `ProcessInstanceModel.status.in_(...)`.
+
+`ProcessLifecycleEventType` covers events that concern the whole process
+instance. It has seven values:
 
 - `process_instance_created`
-- `process_instance_completed`
-- `process_instance_error`
-- `process_instance_force_run`
-- `process_instance_migrated`
-- `process_instance_resumed`
-- `process_instance_retried`
-- `process_instance_rewound_to_task`
 - `process_instance_suspended`
-- `process_instance_suspended_for_error`
+- `process_instance_resumed`
+- `process_instance_error`
+- `process_instance_retried`
+- `process_instance_completed`
 - `process_instance_terminated`
 
-`TaskEventType` has the following values: `task_cancelled`, `task_completed`,
-`task_data_edited`, `task_executed_manually`, `task_failed`, and
-`task_skipped`.
+`TaskEventType` covers the outcome of a single task. It has three values:
+`task_completed`, `task_failed`, and `task_cancelled`.
+
+The member order of either enum isn't part of the contract; compare values as
+a set. Each member equals its stored string value.
+
+The following event type strings aren't part of the vocabulary. Recording any
+of them raises `ValidationError`. Rows that already hold one of them are
+returned exactly as stored, with their stored `category`:
+
+- `process_instance_force_run`
+- `process_instance_migrated`
+- `process_instance_rewound_to_task`
+- `process_instance_suspended_for_error`
+- `task_data_edited`
+- `task_executed_manually`
+- `task_skipped`
 
 `ProcessInstanceEventCategory` has the values `process` and `task`. Every
 stored event has one, derived from its type.
+
+`WorkItemUserAddedBy` records why a user is a potential owner of a work item.
+It has three values:
+
+- `process_initiator`: the user started the instance, and the task has no
+  lane or is in one of the definition's `initiator_lanes`.
+- `lane_owner`: the user is named for the task's lane in `lane_owners`.
+- `lane_assignment`: the user is a member of the task's lane group and isn't
+  a named lane owner.
+
+Assigning `WorkItemUserModel.added_by` accepts one of these values, a
+`WorkItemUserAddedBy` member, or `None` ("origin not recorded"); anything else
+raises `ValidationError`. Rows that already hold another string, such as
+`guest` or `manual`, load and work as before and return the stored string.
+The label never affects who can claim or complete a work item.
 
 ## Errors
 
@@ -533,10 +593,10 @@ The following table shows when each error is raised:
 
 | Error | Raised when | Raised by |
 |---|---|---|
-| `ValidationError` | Input is malformed or contradictory, such as an ambiguous `bpmn_process_id`, an invalid event type, or invalid scheduler arguments | Import, initialize, event, and scheduler calls |
+| `ValidationError` | Input is malformed or contradictory, such as an ambiguous `bpmn_process_id`, an invalid `initiator_lanes` value, an invalid event type, an invalid `WorkItemUserModel.added_by` label, or invalid scheduler arguments | Import, initialize, event, and scheduler calls |
 | `InvalidStateError` | The entity's state doesn't allow the operation, such as claiming a completed work item or suspending a terminated instance | Task and lifecycle commands |
 | `AuthorizationError` | The user isn't in the tenant, lacks the command permission, isn't a potential owner, or doesn't own the claim | Any call that takes a `user_id` |
-| `NotFoundError` | The entity doesn't exist in the tenant | Any call that loads a user, work item, lane owner, instance, or definition |
+| `NotFoundError` | The entity doesn't exist in the tenant | Any call that loads a user, work item, instance, or definition |
 | `ServiceTaskExecutionError` | A BPMN service task failed in its connector | Initialize, complete-task, retry, and scheduler calls |
 
 `examples/errors_demo.py` raises each error for real. See

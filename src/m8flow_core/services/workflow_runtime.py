@@ -5,7 +5,6 @@ import hashlib
 import json
 import logging
 import math
-import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -20,7 +19,7 @@ from SpiffWorkflow.dmn.specs.model import DecisionTable
 from SpiffWorkflow.spiff.parser.process import SpiffBpmnParser
 from SpiffWorkflow.spiff.serializer.config import SPIFF_CONFIG
 from SpiffWorkflow.util.task import TaskState
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session
 
@@ -35,7 +34,6 @@ from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
 from m8flow_core.models.future_task import FutureTaskModel
-from m8flow_core.models.group import GroupModel
 from m8flow_core.models.json_data import JsonDataModel
 from m8flow_core.models.process_instance import (
     WORKFLOW_STATE_JSON_DATA_KEY,
@@ -55,16 +53,13 @@ from m8flow_core.models.scheduler_job import (
 )
 from m8flow_core.models.task import M8F_TERMINATED_TASK_STATE, TaskModel
 from m8flow_core.models.task_definition import TaskDefinitionModel
-from m8flow_core.models.user import UserModel
-from m8flow_core.models.user_group_assignment import UserGroupAssignmentModel
 from m8flow_core.models.work_item import WorkItemModel
-from m8flow_core.models.work_item_user import (
-    WorkItemUserAddedBy,
-    WorkItemUserModel,
-)
 from m8flow_core.services.authorization import (
     PROCESS_START_COMMAND,
     require_command_authorization,
+)
+from m8flow_core.services.lane_assignment import (
+    assign_work_item_potential_owners,
 )
 from m8flow_core.services.process_instances import (
     create_process_instance,
@@ -85,8 +80,6 @@ from m8flow_core.services.service_tasks import (
 )
 from m8flow_core.services.tenant_users import (
     ensure_user_belongs_to_tenant,
-    tenant_identifiers_for,
-    user_belongs_to_tenant,
 )
 from m8flow_core.services.work_items import (
     WorkItemState,
@@ -210,29 +203,6 @@ class _RuntimeServiceTaskScriptEngine(PythonScriptEngine):
                 f"{operation_name!r} failed for process instance "
                 f"{self._process_instance_id or 'unknown'}"
             ) from exc
-
-
-def resolve_lane_assignment_id(
-    lane_name: str,
-    tenant_id: str | None = None,
-) -> int:
-    """Return a stable identifier for a tenant-qualified lane group.
-
-    ``tenant_id`` is optional for compatibility with callers that only need a
-    deterministic legacy identifier.  Workflow runtime paths always provide
-    it so identically named lanes in different tenants cannot share a group.
-    The corresponding group identifier is ``{tenant_id}:{lane_name}``.
-    """
-    normalized_lane = lane_name.strip().lower()
-    normalized_tenant = tenant_id.strip().lower() if tenant_id else None
-    hash_input = (
-        f"{normalized_tenant}:{normalized_lane}"
-        if normalized_tenant
-        else normalized_lane
-    )
-    digest = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()
-    stable_int = int(digest[:8], 16) & 0x7FFFFFFF
-    return stable_int or 1
 
 
 def initialize_process_instance_workflow(
@@ -857,6 +827,62 @@ def retry_errored_service_task_workflow_if_needed(
 
     session.flush()
     return process_instance
+
+
+def sync_open_work_item_potential_owners(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_instance_id: int,
+) -> None:
+    """Re-apply lane assignment to the instance's open work items.
+
+    Users who now qualify are added; existing potential owners and the claim
+    state are left as they are.
+    """
+    process_instance = _load_process_instance(
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance_id,
+    )
+    if process_instance.workflow_state_json is None:
+        return
+    open_work_items = [
+        work_item
+        for work_item in process_instance.work_items
+        if not work_item.completed and work_item.task_guid is not None
+    ]
+    if not open_work_items:
+        return
+
+    workflow = _restore_workflow(
+        process_instance.workflow_state_json,
+        service_task_context=_service_task_execution_context(
+            tenant_id=tenant_id,
+            process_instance_id=process_instance.id,
+            process_definition_id=process_instance.bpmn_process_definition_id,
+        ),
+    )
+    ready_tasks = {
+        str(task.id): task
+        for task in workflow.get_tasks(state=TaskState.READY, manual=True)
+    }
+    definition = process_instance.bpmn_process_definition
+    for work_item in open_work_items:
+        task = ready_tasks.get(work_item.task_guid)
+        if task is None:
+            continue
+        assign_work_item_potential_owners(
+            session,
+            process_instance=process_instance,
+            work_item=work_item,
+            lane_name=getattr(task.task_spec, "lane", None),
+            task_data=getattr(task, "data", None),
+            definition_properties=(
+                definition.properties_json if definition is not None else None
+            ),
+        )
+    session.flush()
 
 
 def _refresh_waiting_process_instance_workflow(
@@ -1761,11 +1787,16 @@ def _materialize_single_manual_task(
         task_definition=task_definition,
         occurred_at=occurred_at,
     )
-    _sync_work_item_assignments(
+    definition = process_instance.bpmn_process_definition
+    assign_work_item_potential_owners(
         session,
         process_instance=process_instance,
         work_item=work_item,
-        task=task,
+        lane_name=getattr(task.task_spec, "lane", None),
+        task_data=getattr(task, "data", None),
+        definition_properties=(
+            definition.properties_json if definition is not None else None
+        ),
     )
     task_model.future_task = _upsert_future_task(
         session,
@@ -1926,18 +1957,11 @@ def _upsert_work_item(
             WorkItemModel.task_guid == task_model.guid,
         )
     )
-    lane_name = getattr(task.task_spec, "lane", None)
-    lane_group_id = _lane_group_id(
-        session,
-        lane_name,
-        tenant_id=process_instance.m8f_tenant_id,
-    )
     if work_item is None:
         work_item = WorkItemModel(
             m8f_tenant_id=process_instance.m8f_tenant_id,
             process_instance_id=process_instance.id,
             task_guid=task_model.guid,
-            lane_assignment_id=lane_group_id,
             completed_by_user_id=None,
             actual_owner_id=None,
             task_status=WorkItemState.READY.value,
@@ -1948,7 +1972,6 @@ def _upsert_work_item(
         session.add(work_item)
     else:
         work_item.task_guid = task_model.guid
-        work_item.lane_assignment_id = lane_group_id
         prepare_work_item_for_ready_state(
             work_item,
             occurred_at=occurred_at,
@@ -1957,384 +1980,6 @@ def _upsert_work_item(
     process_instance.task_updated_at = occurred_at
     session.flush()
     return work_item
-
-
-def _lane_group_id(
-    session: Session,
-    lane_name: str | None,
-    *,
-    tenant_id: str | None = None,
-) -> int | None:
-    lane_group = _lane_group(session, lane_name, tenant_id=tenant_id)
-    if lane_group is None:
-        return None
-    return lane_group.id
-
-
-def _lane_group(
-    session: Session,
-    lane_name: str | None,
-    *,
-    tenant_id: str | None = None,
-) -> GroupModel | None:
-    if lane_name is None:
-        return None
-    if re.match(r"(process.?)initiator", lane_name, re.IGNORECASE):
-        return None
-
-    lane_group_identifier = _lane_group_identifier(lane_name, tenant_id)
-    lane_group_id = resolve_lane_assignment_id(lane_name, tenant_id=tenant_id)
-    lane_group = session.get(GroupModel, lane_group_id)
-    reused_legacy_group = False
-    if lane_group is None and tenant_id:
-        legacy_lane_identifier = lane_name.strip().casefold()
-        legacy_groups = session.scalars(
-            select(GroupModel).where(GroupModel.identifier.is_not(None))
-        ).all()
-        lane_group = next(
-            (
-                group
-                for group in legacy_groups
-                if (group.identifier or "").strip().casefold()
-                == legacy_lane_identifier
-            ),
-            None,
-        )
-        if lane_group is not None:
-            reused_legacy_group = True
-            logger.info(
-                "Reusing legacy lane group %s for lane %r in tenant %r",
-                lane_group.id,
-                lane_name,
-                tenant_id,
-            )
-    if (
-        lane_group is not None
-        and lane_group.identifier != lane_group_identifier
-        and not reused_legacy_group
-    ):
-        existing_identifier = lane_group.identifier or ""
-        if (
-            existing_identifier.casefold() == lane_group_identifier.casefold()
-            or (
-                tenant_id
-                and existing_identifier.casefold() == lane_name.strip().casefold()
-            )
-        ):
-            # Canonicalize case-only differences and upgrade rows created by
-            # the short-lived tenant-column variant.
-            lane_group.name = lane_group_identifier
-            lane_group.identifier = lane_group_identifier
-            session.flush()
-        else:
-            # A deterministic hash collision or a legacy group with the same id
-            # must never be reused across tenant boundaries.
-            logger.warning(
-                "Lane group identifier mismatch for lane %r and tenant %r: "
-                "group id %s has identifier %r, expected %r",
-                lane_name,
-                tenant_id,
-                lane_group_id,
-                lane_group.identifier,
-                lane_group_identifier,
-            )
-            return None
-    if lane_group is None:
-        lane_group = GroupModel(
-            id=lane_group_id,
-            name=lane_group_identifier,
-            identifier=lane_group_identifier,
-        )
-        session.add(lane_group)
-        session.flush()
-    return lane_group
-
-
-def _lane_group_identifier(lane_name: str, tenant_id: str | None) -> str:
-    normalized_lane = lane_name.strip().lower()
-    if not tenant_id:
-        return normalized_lane
-    return f"{tenant_id.strip().lower()}:{normalized_lane}"
-
-
-def _sync_work_item_assignments(
-    session: Session,
-    *,
-    process_instance: ProcessInstanceModel,
-    work_item: WorkItemModel,
-    task: object,
-) -> None:
-    existing_assignments = {
-        assignment.user_id for assignment in work_item.work_item_users
-    }
-    for user, added_by in _resolve_work_item_assignments(
-        session,
-        process_instance=process_instance,
-        task=task,
-    ):
-        if user.id in existing_assignments:
-            continue
-        session.add(
-            WorkItemUserModel(
-                m8f_tenant_id=process_instance.m8f_tenant_id,
-                work_item_id=work_item.id,
-                user_id=user.id,
-                added_by=added_by.value,
-            )
-        )
-    session.flush()
-
-
-def _resolve_work_item_assignments(
-    session: Session,
-    *,
-    process_instance: ProcessInstanceModel,
-    task: object,
-) -> list[tuple[UserModel, WorkItemUserAddedBy]]:
-    lane_name = getattr(task.task_spec, "lane", None)
-    if not lane_name or re.match(r"(process.?)initiator", lane_name, re.IGNORECASE):
-        initiator = session.get(UserModel, process_instance.process_initiator_id)
-        if initiator is None:
-            raise NotFoundError(
-                "Process initiator was not found for process instance "
-                f"{process_instance.id}"
-        )
-        return [(initiator, WorkItemUserAddedBy.process_initiator)]
-
-    lane_owners = _task_lane_owners(
-        session,
-        process_instance=process_instance,
-        task=task,
-    )
-    _sync_lane_owner_group_assignments(
-        session,
-        tenant_id=process_instance.m8f_tenant_id,
-        lane_owners=lane_owners,
-    )
-    preferred_identifiers: tuple[Any, ...] = ()
-    if isinstance(lane_owners, Mapping):
-        configured_identifiers = lane_owners.get(lane_name, ())
-        if isinstance(configured_identifiers, (list, tuple, set, frozenset)):
-            preferred_identifiers = tuple(configured_identifiers)
-    resolved_users = _resolve_lane_group_users(
-        session,
-        tenant_id=process_instance.m8f_tenant_id,
-        lane_name=lane_name,
-        preferred_identifiers=preferred_identifiers,
-    )
-
-    # A lane may be empty when a process is started.  Keep the human task in
-    # READY state with no potential owners so the host can reconcile it after
-    # a matching directory user is provisioned or signs in.  In particular,
-    # ``lane_owners`` is optional configuration and must not be required just
-    # to start a process whose lane is backed by a directory group.
-    return resolved_users
-
-
-def _sync_lane_owner_group_assignments(
-    session: Session,
-    *,
-    tenant_id: str,
-    lane_owners: Mapping[str, Any] | None,
-) -> None:
-    if not isinstance(lane_owners, Mapping):
-        return
-
-    for lane_name, identifiers in lane_owners.items():
-        if not isinstance(lane_name, str):
-            continue
-        lane_group = _lane_group(session, lane_name, tenant_id=tenant_id)
-        if lane_group is None:
-            continue
-        for user in _resolved_lane_owner_users(
-            session,
-            tenant_id=tenant_id,
-            identifiers=identifiers,
-        ):
-            assignment = session.scalar(
-                select(UserGroupAssignmentModel).where(
-                    UserGroupAssignmentModel.user_id == user.id,
-                    UserGroupAssignmentModel.group_id == lane_group.id,
-                )
-            )
-            if assignment is None:
-                session.add(
-                    UserGroupAssignmentModel(
-                        user_id=user.id,
-                        group_id=lane_group.id,
-                    )
-                )
-    session.flush()
-
-
-def _resolve_lane_group_users(
-    session: Session,
-    *,
-    tenant_id: str,
-    lane_name: str,
-    preferred_identifiers: tuple[Any, ...] = (),
-) -> list[tuple[UserModel, WorkItemUserAddedBy]]:
-    lane_group = _lane_group(session, lane_name, tenant_id=tenant_id)
-    if lane_group is None:
-        return []
-
-    lane_group_users = _users_in_lane_group(
-        session,
-        tenant_id=tenant_id,
-        group_id=lane_group.id,
-    )
-    users_by_id = {user.id: user for user in lane_group_users}
-
-    resolved_users: list[tuple[UserModel, WorkItemUserAddedBy]] = []
-    seen_user_ids: set[int] = set()
-    for user in _resolved_lane_owner_users(
-        session,
-        tenant_id=tenant_id,
-        identifiers=preferred_identifiers,
-    ):
-        if user.id not in users_by_id or user.id in seen_user_ids:
-            continue
-        seen_user_ids.add(user.id)
-        resolved_users.append((user, WorkItemUserAddedBy.lane_owner))
-
-    for user in sorted(lane_group_users, key=lambda item: (item.username, item.id)):
-        if user.id in seen_user_ids:
-            continue
-        seen_user_ids.add(user.id)
-        resolved_users.append((user, WorkItemUserAddedBy.lane_assignment))
-
-    return resolved_users
-
-
-def _users_in_lane_group(
-    session: Session,
-    *,
-    tenant_id: str,
-    group_id: int,
-) -> list[UserModel]:
-    users = list(
-        session.scalars(
-            select(UserModel)
-            .join(
-                UserGroupAssignmentModel,
-                UserGroupAssignmentModel.user_id == UserModel.id,
-            )
-            .where(UserGroupAssignmentModel.group_id == group_id)
-        )
-    )
-    tenant_identifiers = tenant_identifiers_for(session, tenant_id)
-    if tenant_identifiers:
-        users = [
-            user for user in users if user_belongs_to_tenant(user, tenant_identifiers)
-        ]
-    return users
-
-
-def _resolved_lane_owner_users(
-    session: Session,
-    *,
-    tenant_id: str,
-    identifiers: Any,
-) -> list[UserModel]:
-    if not isinstance(identifiers, (list, tuple, set, frozenset)):
-        return []
-
-    resolved_users: list[UserModel] = []
-    seen_user_ids: set[int] = set()
-    for identifier in identifiers:
-        if not isinstance(identifier, str):
-            continue
-        for user in _find_users_by_identifier(
-            session,
-            tenant_id=tenant_id,
-            identifier=identifier,
-        ):
-            if user.id in seen_user_ids:
-                continue
-            seen_user_ids.add(user.id)
-            resolved_users.append(user)
-    return resolved_users
-
-
-def _find_users_by_identifier(
-    session: Session,
-    *,
-    tenant_id: str,
-    identifier: str,
-) -> list[UserModel]:
-    normalized = identifier.strip()
-    candidates: list[UserModel] = []
-    stmt = select(UserModel).where(
-        or_(
-            UserModel.username == normalized,
-            UserModel.email == normalized,
-            UserModel.service_id == normalized,
-        )
-    )
-    candidates.extend(session.scalars(stmt).all())
-
-    if "@" in normalized:
-        username, _tenant_suffix = normalized.split("@", 1)
-        stmt = select(UserModel).where(UserModel.username == username)
-        candidates.extend(session.scalars(stmt).all())
-
-    if tenant_id:
-        tenant_identifiers = tenant_identifiers_for(session, tenant_id)
-        if tenant_identifiers:
-            candidates = [
-                user
-                for user in candidates
-                if user_belongs_to_tenant(user, tenant_identifiers)
-            ]
-
-    return candidates
-
-
-def _work_item_payload(
-    task_definition: TaskDefinitionModel,
-    *,
-    lane_owners: Mapping[str, Any] | None,
-) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "task_definition_properties": task_definition.properties_json,
-    }
-    if lane_owners is not None:
-        payload["lane_owners"] = dict(lane_owners)
-    return payload
-
-
-def _task_lane_owners(
-    session: Session,
-    *,
-    process_instance: ProcessInstanceModel,
-    task: object,
-) -> Mapping[str, Any] | None:
-    task_data = getattr(task, "data", None)
-    if isinstance(task_data, Mapping):
-        lane_owners = task_data.get("lane_owners")
-        if isinstance(lane_owners, Mapping):
-            return lane_owners
-
-    process_definition = process_instance.bpmn_process_definition
-    if process_definition is None and process_instance.bpmn_process_definition_id:
-        process_definition = session.scalar(
-            select(BpmnProcessDefinitionModel).where(
-                BpmnProcessDefinitionModel.m8f_tenant_id
-                == process_instance.m8f_tenant_id,
-                BpmnProcessDefinitionModel.id
-                == process_instance.bpmn_process_definition_id,
-            )
-        )
-    if process_definition is None:
-        return None
-
-    definition_properties = process_definition.properties_json
-    if not isinstance(definition_properties, Mapping):
-        return None
-    lane_owners = definition_properties.get("lane_owners")
-    if not isinstance(lane_owners, Mapping):
-        return None
-    return lane_owners
 
 
 def _update_process_instance_status_from_workflow(

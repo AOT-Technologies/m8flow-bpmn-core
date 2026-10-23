@@ -15,7 +15,6 @@ class ClaimTaskCommand:
     tenant_id: str
     work_item_id: int
     user_id: int
-    added_by: str = "manual"
 
 
 @dataclass(frozen=True, slots=True)

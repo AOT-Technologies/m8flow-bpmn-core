@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -7,6 +7,7 @@ name = "m8flow-core-sample-app"
 version = "0.1.0"
 description = "Thin host application for validating m8flow-core integration."
 readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.12,<4.0"
 dependencies = [
   "alembic>=1.16,<2.0",

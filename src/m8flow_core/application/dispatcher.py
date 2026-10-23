@@ -94,7 +94,6 @@ def execute_command(
                 tenant_id=command.tenant_id,
             work_item_id=command.work_item_id,
                 user_id=command.user_id,
-                added_by=command.added_by,
             )
         if isinstance(command, CompleteTaskCommand):
             return complete_task(
