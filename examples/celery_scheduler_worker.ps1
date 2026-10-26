@@ -70,7 +70,7 @@ $beatStdOutPath = $null
 $beatStdErrPath = $null
 
 Write-Host "Status: starting the Celery scheduler worker helper..."
-Write-Host "Status: this script only runs the scheduler poller. Use celery_timer_poc.ps1 for the full workflow POC."
+Write-Host "Status: this script only runs the scheduler poller. Use celery_timer.ps1 for the full workflow example."
 Write-Host "Status: broker URL $($env:M8FLOW_CORE_CELERY_BROKER_URL)"
 Write-Host "Status: result backend $($env:M8FLOW_CORE_CELERY_RESULT_BACKEND)"
 if ($env:M8FLOW_CORE_CELERY_DATABASE_URL) {
@@ -98,7 +98,7 @@ try {
         )
         $beatArgs = @(
             "-A",
-            "examples.celery_scheduler_poc:celery_app",
+            "examples.celery_scheduler:celery_app",
             "beat",
             "--loglevel",
             $LogLevel,
@@ -135,7 +135,7 @@ try {
         Write-Host "Status: Celery beat stderr log $beatStdErrPath"
     }
 
-    & $celeryExe -A examples.celery_scheduler_poc:celery_app worker --pool solo --loglevel $LogLevel -Q $env:M8FLOW_CORE_CELERY_QUEUE
+    & $celeryExe -A examples.celery_scheduler:celery_app worker --pool solo --loglevel $LogLevel -Q $env:M8FLOW_CORE_CELERY_QUEUE
     $workerExitCode = $LASTEXITCODE
     if ($workerExitCode -ne 0) {
         exit $workerExitCode

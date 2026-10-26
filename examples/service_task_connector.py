@@ -11,7 +11,7 @@ from pprint import pformat
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from conditional_approval_poc import (
+from conditional_approval import (
     EXAMPLE_KEYCLOAK_DEFAULT_PASSWORD,
     BackendProcessModelDeployment,
     _align_shared_db_tenants_with_keycloak_organizations,
@@ -65,7 +65,7 @@ PROCESS_GROUP_DESCRIPTION = (
 )
 PROCESS_MODEL_ID = "service-task-connector-poc"
 PROCESS_MODEL_IDENTIFIER = f"{PROCESS_GROUP_ID}/{PROCESS_MODEL_ID}"
-PROCESS_MODEL_DISPLAY_NAME = "Service Task Connector POC"
+PROCESS_MODEL_DISPLAY_NAME = "Service Task Connector Example"
 PRIMARY_PROCESS_ID = "Process_service_task_connector_poc"
 PRIMARY_FILE_NAME = "service_task_connector_poc.bpmn"
 SERVICE_TASK_CONNECTOR_BPMN_PATH = (
@@ -96,14 +96,14 @@ DEMO_USERS = {
         "username": "connector-poc-admin",
         "email": "connector-poc-admin@example.com",
         "service_id": "connector-poc-admin-keycloak",
-        "display_name": "Connector POC Admin",
+        "display_name": "Connector Example Admin",
         "keycloak_groups": ("Approvers", "Viewers"),
     },
     "operator": {
         "username": "connector-poc-operator",
         "email": "connector-poc-operator@example.com",
         "service_id": "connector-poc-operator-keycloak",
-        "display_name": "Connector POC Operator",
+        "display_name": "Connector Example Operator",
         "keycloak_groups": ("Approvers", "Viewers"),
     },
 }
@@ -267,7 +267,7 @@ def main() -> None:
     temporary_container_name: str | None = None
     engine: Engine | None = None
 
-    print("m8flow-core service-task connector POC")
+    print("m8flow-core service-task connector example")
     print(
         "This example imports a BPMN model with real service tasks, registers "
         "the live m8flow connector-proxy catalog, calls a local demo HTTP "
@@ -297,13 +297,13 @@ def main() -> None:
         print()
         print(SECTION_SEPARATOR)
         print("Database setup")
-        print("Connecting to Postgres and creating the schema...")
+        print("Connecting to the database and creating the schema...")
 
         engine = build_engine(database_url)
         try:
             _wait_for_database(engine)
         except RuntimeError as exc:
-            print(f"Status: unable to reach Postgres. {exc}")
+            print(f"Status: unable to reach the database. {exc}")
             raise SystemExit(1) from exc
 
         create_schema(engine)
@@ -545,7 +545,7 @@ def _run_service_task_connector_poc(
                 source_bpmn_xml=bpmn_xml,
                 properties_json={
                     "version": 1,
-                    "flow": "service_task_connector_poc",
+                    "flow": "service_task_connector",
                     "lane_owners": {
                         TASK_LANE_NAME: [context.operator_username],
                     },
@@ -716,7 +716,7 @@ def _run_service_task_connector_poc(
         )
 
     _print_note(
-        "The service-task connector POC is complete. The definition and "
+        "The service-task connector example is complete. The definition and "
         "process instance were left in place for audit."
     )
 
@@ -910,7 +910,7 @@ def _print_workflow_service_task_snapshot(
         process_instance_id=process_instance_id,
     )
     if workflow_state_json is None:
-        raise RuntimeError("Expected a persisted workflow state for the POC")
+        raise RuntimeError("Expected a persisted workflow state for the example")
 
     workflow = _restore_workflow(workflow_state_json)
     service_task_data = {
@@ -1025,7 +1025,7 @@ def _deploy_service_task_definition_to_m8flow_backend(
     model_dir.mkdir(parents=True, exist_ok=True)
     if bpmn_path.exists():
         warnings.append(
-            "Refreshed the existing service-task connector POC deployment so "
+            "Refreshed the existing service-task connector example deployment so "
             "the UI matches this run."
         )
 

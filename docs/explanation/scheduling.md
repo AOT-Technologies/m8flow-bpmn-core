@@ -202,7 +202,7 @@ inline loop. That fits m8flow's architecture: state in the database, Celery
 for worker transport and isolation, and the host application restoring tenant
 and session context.
 
-`examples/celery_scheduler_poc.py` shows the minimal setup. It adds no new
+`examples/celery_scheduler.py` shows the minimal setup. It adds no new
 library API: Celery beat calls `api.run_due_scheduler_jobs` on a schedule,
 over the same Redis broker m8flow uses. A library-owned Celery dispatcher
 doesn't exist yet.

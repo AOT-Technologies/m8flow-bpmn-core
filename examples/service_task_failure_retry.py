@@ -16,7 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from conditional_approval_poc import (
+from conditional_approval import (
     EXAMPLE_KEYCLOAK_DEFAULT_PASSWORD,
     BackendProcessModelDeployment,
     _align_shared_db_tenants_with_keycloak_organizations,
@@ -31,6 +31,7 @@ from conditional_approval_poc import (
     _pause,
     _print_backend_deployment_summary,
     _print_note,
+    _reject_sqlite_flag,
     _remove_temporary_postgres_container,
     _require_single_task,
     _resolve_backend_tenant_root,
@@ -74,7 +75,7 @@ PROCESS_GROUP_DESCRIPTION = (
 )
 PROCESS_MODEL_ID = "service-task-failure-retry-poc"
 PROCESS_MODEL_IDENTIFIER = f"{PROCESS_GROUP_ID}/{PROCESS_MODEL_ID}"
-PROCESS_MODEL_DISPLAY_NAME = "Service Task Failure Retry POC"
+PROCESS_MODEL_DISPLAY_NAME = "Service Task Failure Retry Example"
 PRIMARY_PROCESS_ID = "Process_service_task_failure_retry_poc"
 PRIMARY_FILE_NAME = "service_task_failure_retry_poc.bpmn"
 FAILURE_RETRY_BPMN_PATH = REPO_ROOT / "tests" / "fixtures" / PRIMARY_FILE_NAME
@@ -182,11 +183,15 @@ class RecordingDemoServiceTaskConnector:
 
 
 def main() -> None:
+    _reject_sqlite_flag(
+        "this example needs PostgreSQL, because SQLite cannot persist the "
+        "failure state from an independent transaction."
+    )
     database_url, display_database_url = _resolve_database_url()
     temporary_container_name: str | None = None
     engine: Engine | None = None
 
-    print("m8flow-core service-task failure retry POC")
+    print("m8flow-core service-task failure retry example")
     print(
         "This example intentionally starts a service-task workflow without any "
         "registered service-task connector, lets that failure escape a "
@@ -222,13 +227,13 @@ def main() -> None:
         print()
         print(SECTION_SEPARATOR)
         print("Database setup")
-        print("Connecting to Postgres and creating the schema...")
+        print("Connecting to the database and creating the schema...")
 
         engine = build_engine(database_url)
         try:
             _wait_for_database(engine)
         except RuntimeError as exc:
-            print(f"Status: unable to reach Postgres. {exc}")
+            print(f"Status: unable to reach the database. {exc}")
             raise SystemExit(1) from exc
 
         create_schema(engine)
@@ -470,7 +475,7 @@ def _run_failure_retry_poc(
             source_bpmn_xml=bpmn_xml,
             properties_json={
                 "version": 1,
-                "flow": "service_task_failure_retry_poc",
+                "flow": "service_task_failure_retry",
                 "lane_owners": {
                     TASK_LANE_NAME: [context.operator_username],
                 },
@@ -564,7 +569,7 @@ def _run_failure_retry_poc(
 
     _print_note(
         "No connector call was recorded during the failed start because the "
-        "POC intentionally used an empty registry for that step."
+        "example intentionally used an empty registry for that step."
     )
 
     process_instances = _run_registry_step(
@@ -696,7 +701,7 @@ def _run_failure_retry_poc(
         title="Complete the review task and execute the final service task",
         context_text=(
             "Completing the user task triggers the second service task. In this "
-            "POC the final service task succeeds so the same process instance "
+            "example the final service task succeeds so the same process instance "
             "can be seen moving all the way to completion."
         ),
         command=api.CompleteTaskCommand(
@@ -763,7 +768,7 @@ def _run_failure_retry_poc(
     )
 
     _print_note(
-        "The service-task failure retry POC is complete. The definition and "
+        "The service-task failure retry example is complete. The definition and "
         "process instance were left in place for audit."
     )
 
@@ -794,18 +799,30 @@ def _run_registry_step(
 
     try:
         with api.service_task_registry_scope(registry):
+            # Format the result while the session is open, so lazy
+            # relationships can still load.
             if use_session_scope:
                 with session_scope(engine) as session:
                     if is_query:
                         result = api.execute_query(session, command)
                     else:
                         result = api.execute_command(session, command)
+                    formatted_result = _format_result(result)
             else:
                 with engine.begin() as connection:
-                    if is_query:
-                        result = api.execute_query(connection, command)
-                    else:
-                        result = api.execute_command(connection, command)
+                    session = Session(
+                        bind=connection,
+                        autoflush=False,
+                        expire_on_commit=False,
+                    )
+                    try:
+                        if is_query:
+                            result = api.execute_query(session, command)
+                        else:
+                            result = api.execute_command(session, command)
+                        formatted_result = _format_result(result)
+                    finally:
+                        session.close()
     except Exception as exc:
         if expected_failure is None or not isinstance(exc, expected_failure):
             raise
@@ -830,7 +847,7 @@ def _run_registry_step(
 
     print("Status: command complete and committed.")
     print("Result:")
-    print(_format_result(result))
+    print(formatted_result)
     _pause("Press Enter to continue.")
     return result
 
@@ -877,7 +894,7 @@ def _print_failed_workflow_snapshot(
         process_instance_id=process_instance_id,
     )
     if workflow_state_json is None:
-        raise RuntimeError("Expected a persisted workflow state for the POC")
+        raise RuntimeError("Expected a persisted workflow state for the example")
 
     workflow = _restore_workflow(workflow_state_json)
     errored_tasks = [
@@ -912,7 +929,7 @@ def _print_completed_workflow_snapshot(
         process_instance_id=process_instance_id,
     )
     if workflow_state_json is None:
-        raise RuntimeError("Expected a persisted workflow state for the POC")
+        raise RuntimeError("Expected a persisted workflow state for the example")
 
     workflow = _restore_workflow(workflow_state_json)
     service_task_data = {
@@ -1074,7 +1091,7 @@ def _deploy_failure_retry_definition_to_m8flow_backend(
     model_dir.mkdir(parents=True, exist_ok=True)
     if bpmn_path.exists():
         warnings.append(
-            "Refreshed the existing service-task failure retry POC deployment "
+            "Refreshed the existing service-task failure retry example deployment "
             "so the UI matches this run."
         )
 

@@ -20,7 +20,7 @@ function Main {
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
     Set-Location $repoRoot
 
-    $exampleScript = Join-Path $PSScriptRoot "scheduled_boundary_timer_poc.py"
+    $exampleScript = Join-Path $PSScriptRoot "service_task_failure_retry.py"
     $pythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
     $defaultDatabaseUrl = "postgresql+psycopg://postgres:postgres@localhost:6843/postgres?connect_timeout=1"
 
@@ -49,7 +49,7 @@ function Main {
         $env:M8FLOW_EXAMPLE_DATABASE_URL = $exampleDatabaseUrl
 
         Write-Host ""
-        Write-Host "Status: launching the scheduled boundary timer POC..."
+        Write-Host "Status: launching the service-task failure retry example..."
         Write-Host "Status: using database URL $($exampleDatabaseUrl -replace ':[^:@/]+@', ':***@')"
         & $pythonExe $exampleScript
         $exitCode = $LASTEXITCODE

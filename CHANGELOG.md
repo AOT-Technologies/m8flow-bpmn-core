@@ -44,14 +44,16 @@ and m8flow together.
 - A sample host application in `sample_app/` that consumes the library as a
   wheel.
 - Runnable examples for conditional approval, parallel review, timers,
-  retries, service tasks, and error handling.
+  retries, service tasks, and error handling. Most interactive examples also
+  run on SQLite with `--sqlite`.
 - Apache License 2.0 `LICENSE` and `NOTICE` files, and license metadata in the
   package.
 - Contributing guide, code of conduct, security policy,
   support page, issue and pull request templates, and CI for lint, type, and
   security checks, CodeQL, secret scanning, and dependency review.
 - A manual workflow that publishes betas and releases to PyPI through trusted
-  publishing, with build attestations and a vulnerability scan.
+  publishing, with build attestations and a vulnerability scan. A release
+  publishes only from the commit its GitHub Release tag points at.
 - Documentation organized as tutorials, how-to guides, reference, and
   explanation, with a quick start, an upgrade guide, a database schema
   reference, and diagrams.
@@ -81,6 +83,9 @@ and m8flow together.
 - **Breaking:** the Celery example reads `M8FLOW_CORE_CELERY_*` variables
   instead of `M8FLOW_BPMN_CORE_CELERY_*`, and the examples publish to the
   `m8flow-core-examples` process group.
+- **Breaking:** the example scripts dropped their `_poc` suffix, for example
+  `examples/conditional_approval.py` instead of
+  `examples/conditional_approval_poc.py`.
 - `resolve_lane_assignment_id` takes an optional `tenant_id`, so equal lane
   names in different tenants never share a group.
 - Constraints and indexes use the `m8f_*` namespace.
@@ -101,6 +106,8 @@ and m8flow together.
 
 ### Fixed
 
+- The interactive examples crashed when printing a task, because they read
+  its lazy-loaded name after the session had closed.
 - Authorization race conditions when two requests create the same permission
   rows at once.
 - The sample app's lockfile, which was missing the `defusedxml` dependency.

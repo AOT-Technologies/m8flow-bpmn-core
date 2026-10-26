@@ -31,7 +31,7 @@ EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"
 if str(EXAMPLES_DIR) not in sys.path:
     sys.path.insert(0, str(EXAMPLES_DIR))
 
-import conditional_approval_poc as example_poc  # noqa: E402
+import conditional_approval as example_poc  # noqa: E402
 
 
 def _lane_owners() -> dict[str, list[str]]:

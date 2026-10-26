@@ -2,8 +2,8 @@
 
 The `examples/` folder holds runnable scripts that drive real workflows
 through the public API. This guide lists them, shows how to run each kind, and
-explains how the PostgreSQL examples share a database with a local m8flow
-stack.
+explains how the interactive examples share a PostgreSQL database with a local
+m8flow stack.
 
 ## Available examples
 
@@ -11,17 +11,17 @@ The repository has the following examples:
 
 | Script | What it shows | Database |
 |---|---|---|
-| `parallel_review_poc.py` | A purchase order through a parallel gateway, script tasks, and an exclusive gateway, across three lanes | In-memory SQLite |
+| `parallel_review.py` | A purchase order through a parallel gateway, script tasks, and an exclusive gateway, across three lanes | In-memory SQLite |
 | `errors_demo.py` | Every public error class, raised for real | In-memory SQLite |
-| `conditional_approval_poc.py` | An approval with an exclusive gateway, a DMN decision, lane assignment, and command permission checks | PostgreSQL |
-| `conditional_approval_rejection_poc.py` | The same approval, where the manager rejects and the Finance lane never starts | PostgreSQL |
-| `scheduled_timer_poc.py` | A timer start event fired by an inline scheduler loop | PostgreSQL |
-| `celery_timer_poc.py` | The same timer start event, fired by a separate Celery worker | PostgreSQL and Redis |
-| `scheduled_boundary_timer_poc.py` | An interrupting boundary timer that cancels a waiting task and starts the timeout path | PostgreSQL |
-| `scheduled_cycle_timer_poc.py` | A recurring `timeCycle` timer start (`R3/PT20S`) that creates three instances | PostgreSQL |
-| `scheduled_retry_poc.py` | A delayed retry that reopens an errored instance and its task | PostgreSQL |
-| `service_task_connector_poc.py` | Two BPMN service tasks run through a live `m8flow-connector-proxy` | PostgreSQL and the connector proxy |
-| `service_task_failure_retry_poc.py` | A service task that fails on start, survives the caller's rollback, and succeeds on retry | PostgreSQL |
+| `conditional_approval.py` | An approval with an exclusive gateway, a DMN decision, lane assignment, and command permission checks | PostgreSQL or SQLite |
+| `conditional_approval_rejection.py` | The same approval, where the manager rejects and the Finance lane never starts | PostgreSQL or SQLite |
+| `scheduled_timer.py` | A timer start event fired by an inline scheduler loop | PostgreSQL or SQLite |
+| `celery_timer.py` | The same timer start event, fired by a separate Celery worker | PostgreSQL and Redis |
+| `scheduled_boundary_timer.py` | An interrupting boundary timer that cancels a waiting task and starts the timeout path | PostgreSQL or SQLite |
+| `scheduled_cycle_timer.py` | A recurring `timeCycle` timer start (`R3/PT20S`) that creates three instances | PostgreSQL |
+| `scheduled_retry.py` | A delayed retry that reopens an errored instance and its task | PostgreSQL or SQLite |
+| `service_task_connector.py` | Two BPMN service tasks run through a live `m8flow-connector-proxy` | PostgreSQL or SQLite, and the connector proxy |
+| `service_task_failure_retry.py` | A service task that fails on start, survives the caller's rollback, and succeeds on retry | PostgreSQL |
 
 The BPMN and DMN files they use are in `tests/fixtures/`.
 
@@ -31,11 +31,11 @@ The SQLite examples need nothing beyond `uv sync`. They run without pausing
 and print each step. To run them, use the following commands:
 
 ```bash
-uv run python examples/parallel_review_poc.py
+uv run python examples/parallel_review.py
 uv run python examples/errors_demo.py
 ```
 
-In `parallel_review_poc.py`, change `SCENARIO` near the top of the file to
+In `parallel_review.py`, change `SCENARIO` near the top of the file to
 `finance_rejects` or `compliance_rejects` to follow the rejection branches.
 The interesting moment is right after Finance completes its review: the
 Compliance branch is still pending, so the workflow waits at the join.
@@ -52,10 +52,35 @@ Reading a process instance that does not exist.
   domain:   NotFoundError (also subclass of LookupError)
 ```
 
-## Run the PostgreSQL examples
+## Run an interactive example on SQLite
 
-The PostgreSQL examples are interactive. They pause before and after each
-command and explain what it does.
+The other examples are interactive. They pause before and after each command
+and explain what it does. Most of them can run on SQLite, with nothing beyond
+`uv sync`. To run one on SQLite, pass `--sqlite` to the script:
+
+```bash
+uv run python examples/conditional_approval.py --sqlite
+```
+
+The example creates a fresh database file in your temporary directory, under
+`m8flow-core-examples/`, named after the script. It prints the file's path
+before it starts, and leaves the file in place afterwards so you can inspect
+it. The next run of the same example replaces the file.
+
+The following examples need PostgreSQL and refuse `--sqlite`, because SQLite
+can't run the independent write that their library path depends on, or can't
+be shared with another process:
+
+- `scheduled_cycle_timer.py`
+- `service_task_failure_retry.py`
+- `celery_timer.py`
+
+On SQLite, the example doesn't publish to the m8flow backend or Keycloak, so
+you can't follow the run in the m8flow UI. For that, use PostgreSQL in shared
+mode, as described in
+[Watch a workflow in the m8flow UI](#watch-a-workflow-in-the-m8flow-ui).
+
+## Run an interactive example on PostgreSQL
 
 To run one, follow these steps:
 
@@ -69,13 +94,13 @@ To run one, follow these steps:
    Bash launcher:
 
    ```bash
-   bash examples/conditional_approval_poc.sh
+   bash examples/conditional_approval.sh
    ```
 
    Or use the PowerShell launcher:
 
    ```powershell
-   .\examples\conditional_approval_poc.ps1
+   .\examples\conditional_approval.ps1
    ```
 
 Every PostgreSQL example has a `.sh` and a `.ps1` launcher with the same name.
@@ -84,7 +109,7 @@ The launcher uses the database described in
 
 To run an example without a launcher, set `M8FLOW_EXAMPLE_DATABASE_URL` and
 run the script directly, for example
-`uv run python examples/scheduled_timer_poc.py`.
+`uv run python examples/scheduled_timer.py`.
 
 ### Choose the database
 
@@ -146,10 +171,10 @@ To run it, follow these steps:
 3. In the second terminal, start the workflow:
 
    ```bash
-   bash examples/celery_timer_poc.sh --use-existing-worker
+   bash examples/celery_timer.sh --use-existing-worker
    ```
 
-   On Windows, run `.\examples\celery_timer_poc.ps1 -UseExistingWorker`.
+   On Windows, run `.\examples\celery_timer.ps1 -UseExistingWorker`.
 
 The worker listens on its own queue, `m8flow-core-poc`. To use a
 different broker, result backend, or queue, set the
@@ -162,16 +187,16 @@ To start Celery yourself instead of with the helper, run beat and the worker
 in the first terminal:
 
 ```bash
-celery -A examples.celery_scheduler_poc:celery_app beat --loglevel info
-celery -A examples.celery_scheduler_poc:celery_app worker --pool solo \
+celery -A examples.celery_scheduler:celery_app beat --loglevel info
+celery -A examples.celery_scheduler:celery_app worker --pool solo \
     --loglevel info -Q m8flow-core-poc
 ```
 
-Then run `uv run python examples/celery_timer_poc.py` in the second terminal.
+Then run `uv run python examples/celery_timer.py` in the second terminal.
 
 ## Service task examples
 
-`service_task_connector_poc.py` needs a running `m8flow-connector-proxy`, by
+`service_task_connector.py` needs a running `m8flow-connector-proxy`, by
 default at `http://localhost:6844`. It starts a small HTTP server on your
 machine and points the BPMN service tasks at it through the proxy's
 `http/GetRequestV2` command. If the proxy runs in Docker, it reaches your
@@ -179,7 +204,7 @@ machine through `host.docker.internal`. To change the proxy URL or the host
 alias, set `M8FLOW_CONNECTOR_PROXY_BASE_URL` or
 `M8FLOW_CONNECTOR_POC_HOST_ALIAS`.
 
-`service_task_failure_retry_poc.py` needs no proxy. It starts the instance
+`service_task_failure_retry.py` needs no proxy. It starts the instance
 with an empty connector registry, so the first service task fails, lets the
 error escape a rolling-back transaction, and shows the instance still saved in
 `error`. It then installs a working in-process connector and retries the same

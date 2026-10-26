@@ -151,7 +151,7 @@ def poll_due_scheduler_jobs() -> dict[str, object]:
 
 
 def main() -> None:
-    print("m8flow-core Celery scheduler POC")
+    print("m8flow-core Celery scheduler example")
     print(
         "This module defines a dedicated Celery app that periodically calls "
         "`api.run_due_scheduler_jobs(...)` against the configured database."
@@ -161,13 +161,13 @@ def main() -> None:
     print()
     print("Recommended beat command:")
     print(
-        "celery -A examples.celery_scheduler_poc:celery_app beat "
+        "celery -A examples.celery_scheduler:celery_app beat "
         "--loglevel info"
     )
     print()
     print("Recommended worker command:")
     print(
-        "celery -A examples.celery_scheduler_poc:celery_app worker "
+        "celery -A examples.celery_scheduler:celery_app worker "
         f"--pool solo --loglevel info -Q {CONFIG.queue_name}"
     )
 

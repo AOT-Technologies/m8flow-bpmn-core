@@ -3,14 +3,7 @@ param(
     [string]$DatabaseUrl,
     [switch]$UseDocker,
     [string]$PostgresImage = $env:M8FLOW_EXAMPLE_POSTGRES_IMAGE,
-    [switch]$KeepContainer,
-    [switch]$UseExistingWorker,
-    [string]$BrokerUrl,
-    [string]$ResultBackend,
-    [string]$QueueName,
-    [string]$TenantId,
-    [double]$PollSeconds = 1,
-    [string]$LogLevel = "info"
+    [switch]$KeepContainer
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,29 +14,18 @@ function Main {
         [string]$DatabaseUrl,
         [switch]$UseDocker,
         [string]$PostgresImage,
-        [switch]$KeepContainer,
-        [switch]$UseExistingWorker,
-        [string]$BrokerUrl,
-        [string]$ResultBackend,
-        [string]$QueueName,
-        [string]$TenantId,
-        [double]$PollSeconds,
-        [string]$LogLevel
+        [switch]$KeepContainer
     )
 
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
     Set-Location $repoRoot
 
-    $exampleScript = Join-Path $PSScriptRoot "celery_timer_poc.py"
-    $workerScript = Join-Path $PSScriptRoot "celery_scheduler_worker.ps1"
+    $exampleScript = Join-Path $PSScriptRoot "conditional_approval_rejection.py"
     $pythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
     $defaultDatabaseUrl = "postgresql+psycopg://postgres:postgres@localhost:6843/postgres?connect_timeout=1"
 
     if (-not (Test-Path $pythonExe)) {
         throw "Could not find the project virtual environment at $pythonExe"
-    }
-    if (-not (Test-Path $workerScript)) {
-        throw "Could not find the Celery scheduler worker helper at $workerScript"
     }
 
     if (-not $PostgresImage) {
@@ -52,7 +34,6 @@ function Main {
 
     $previousExampleDatabaseUrl = $env:M8FLOW_EXAMPLE_DATABASE_URL
     $startedContainerName = $null
-    $workerHostProcess = $null
     $exitCode = 0
 
     try {
@@ -68,29 +49,8 @@ function Main {
         $env:M8FLOW_EXAMPLE_DATABASE_URL = $exampleDatabaseUrl
 
         Write-Host ""
-        Write-Host "Status: launching the Celery timer POC..."
+        Write-Host "Status: launching the interactive conditional-approval rejection example..."
         Write-Host "Status: using database URL $($exampleDatabaseUrl -replace ':[^:@/]+@', ':***@')"
-
-        if ($UseExistingWorker) {
-            Write-Host "Status: using an already-running Celery scheduler worker."
-        }
-        else {
-            $workerLaunch = Start-CelerySchedulerWorker `
-                -WorkerScriptPath $workerScript `
-                -DatabaseUrl $exampleDatabaseUrl `
-                -BrokerUrl $BrokerUrl `
-                -ResultBackend $ResultBackend `
-                -QueueName $QueueName `
-                -TenantId $TenantId `
-                -PollSeconds $PollSeconds `
-                -LogLevel $LogLevel
-            $workerHostProcess = $workerLaunch.Process
-            Write-Host "Status: started the temporary Celery scheduler worker helper."
-            Write-Host "Status: worker helper PID $($workerHostProcess.Id)"
-            Write-Host "Status: worker stdout log $($workerLaunch.StdOutPath)"
-            Write-Host "Status: worker stderr log $($workerLaunch.StdErrPath)"
-        }
-
         & $pythonExe $exampleScript
         $exitCode = $LASTEXITCODE
         if ($exitCode -ne 0) {
@@ -103,19 +63,6 @@ function Main {
         }
         else {
             Remove-Item Env:M8FLOW_EXAMPLE_DATABASE_URL -ErrorAction SilentlyContinue
-        }
-
-        if ($workerHostProcess) {
-            try {
-                $workerHostProcess.Refresh()
-                if (-not $workerHostProcess.HasExited) {
-                    Write-Host "Status: stopping the temporary Celery scheduler worker tree rooted at PID $($workerHostProcess.Id)..."
-                    & taskkill /PID $workerHostProcess.Id /T /F | Out-Null
-                }
-            }
-            catch {
-                Write-Host "Warning: failed to stop the temporary Celery scheduler worker cleanly. $_"
-            }
         }
 
         if ($startedContainerName -and -not $KeepContainer) {
@@ -256,89 +203,6 @@ finally:
     }
     finally {
         Remove-Item -LiteralPath $checkScriptPath -ErrorAction SilentlyContinue
-    }
-}
-
-function Start-CelerySchedulerWorker {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$WorkerScriptPath,
-        [Parameter(Mandatory = $true)]
-        [string]$DatabaseUrl,
-        [string]$BrokerUrl,
-        [string]$ResultBackend,
-        [string]$QueueName,
-        [string]$TenantId,
-        [double]$PollSeconds,
-        [string]$LogLevel
-    )
-
-    $powershellExe = Join-Path $PSHOME "powershell.exe"
-    if (-not (Test-Path $powershellExe)) {
-        throw "Could not find powershell.exe at $powershellExe"
-    }
-
-    $stdOutPath = Join-Path ([System.IO.Path]::GetTempPath()) (
-        "m8flow-core-celery-worker-$([Guid]::NewGuid().ToString('N')).out.log"
-    )
-    $stdErrPath = Join-Path ([System.IO.Path]::GetTempPath()) (
-        "m8flow-core-celery-worker-$([Guid]::NewGuid().ToString('N')).err.log"
-    )
-
-    $argumentList = @(
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        $WorkerScriptPath,
-        "-DatabaseUrl",
-        $DatabaseUrl,
-        "-PollSeconds",
-        $PollSeconds.ToString([System.Globalization.CultureInfo]::InvariantCulture),
-        "-LogLevel",
-        $LogLevel
-    )
-
-    if ($BrokerUrl) {
-        $argumentList += @("-BrokerUrl", $BrokerUrl)
-    }
-    if ($ResultBackend) {
-        $argumentList += @("-ResultBackend", $ResultBackend)
-    }
-    if ($QueueName) {
-        $argumentList += @("-QueueName", $QueueName)
-    }
-    if ($TenantId) {
-        $argumentList += @("-TenantId", $TenantId)
-    }
-
-    $process = Start-Process `
-        -FilePath $powershellExe `
-        -ArgumentList $argumentList `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $stdOutPath `
-        -RedirectStandardError $stdErrPath `
-        -PassThru
-
-    Start-Sleep -Seconds 5
-    $process.Refresh()
-    if ($process.HasExited) {
-        $stdout = ""
-        $stderr = ""
-        if (Test-Path $stdOutPath) {
-            $stdout = Get-Content -LiteralPath $stdOutPath -Raw
-        }
-        if (Test-Path $stdErrPath) {
-            $stderr = Get-Content -LiteralPath $stdErrPath -Raw
-        }
-        $failureMessage = "The temporary Celery scheduler worker exited immediately with code $($process.ExitCode). Stdout:`n$stdout`nStderr:`n$stderr"
-        throw $failureMessage
-    }
-
-    return [pscustomobject]@{
-        Process    = $process
-        StdOutPath = $stdOutPath
-        StdErrPath = $stdErrPath
     }
 }
 

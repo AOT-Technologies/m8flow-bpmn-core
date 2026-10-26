@@ -16,7 +16,7 @@ main() {
   script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
   local repo_root
   repo_root="$(cd -- "$script_dir/.." && pwd -P)"
-  local example_script="$script_dir/conditional_approval_poc.py"
+  local example_script="$script_dir/conditional_approval.py"
   local default_database_url="postgresql+psycopg://postgres:postgres@localhost:6843/postgres?connect_timeout=1"
 
   if [[ ! -f "$example_script" ]]; then
@@ -100,7 +100,7 @@ parse_args() {
 print_usage() {
   cat <<'EOF'
 Usage:
-  ./examples/conditional_approval_poc.sh [--database-url URL] [--docker] [--postgres-image IMAGE] [--keep-container]
+  ./examples/conditional_approval.sh [--database-url URL] [--docker] [--postgres-image IMAGE] [--keep-container]
 
 Options:
   --database-url URL      Use an explicit PostgreSQL URL.

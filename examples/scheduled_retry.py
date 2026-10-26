@@ -8,7 +8,7 @@ from pathlib import Path
 from pprint import pformat
 from typing import Any
 
-from conditional_approval_poc import (
+from conditional_approval import (
     EXAMPLE_KEYCLOAK_DEFAULT_PASSWORD,
     BackendProcessModelDeployment,
     _align_shared_db_tenants_with_keycloak_organizations,
@@ -36,10 +36,10 @@ from sqlalchemy.orm import Session
 
 from m8flow_core import api
 from m8flow_core.db import build_engine, create_schema
+from m8flow_core.models.process_instance import ProcessInstanceModel
 from m8flow_core.models.scheduler_job import SchedulerJobModel
 from m8flow_core.models.tenant import M8flowTenantModel
 from m8flow_core.models.user import UserModel
-from m8flow_core.models.work_item import WorkItemModel
 from m8flow_core.services.authorization import (
     ROLE_ADMIN,
     ROLE_MANAGER,
@@ -54,47 +54,47 @@ from m8flow_core.utils.keycloak import (
 )
 
 SECTION_SEPARATOR = "=" * 88
-BOUNDARY_TIMER_DELAY_SECONDS = 60
+RETRY_DELAY_SECONDS = 20
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROCESS_GROUP_ID = "m8flow-core-examples"
 PROCESS_GROUP_DISPLAY_NAME = "m8flow-core Examples"
 PROCESS_GROUP_DESCRIPTION = (
     "Process models published by the m8flow-core examples."
 )
-PROCESS_MODEL_ID = "scheduled-boundary-timer-poc"
+PROCESS_MODEL_ID = "scheduled-retry-poc"
 PROCESS_MODEL_IDENTIFIER = f"{PROCESS_GROUP_ID}/{PROCESS_MODEL_ID}"
-PROCESS_MODEL_DISPLAY_NAME = "Scheduled Boundary Timer POC"
-PRIMARY_PROCESS_ID = "Process_scheduled_boundary_timer_poc"
-PRIMARY_FILE_NAME = "scheduled_boundary_timer_poc.bpmn"
-BOUNDARY_TIMER_WORKER_ID = "scheduled-boundary-timer-poc-inline-worker"
-BOUNDARY_TIMER_BPMN_PATH = REPO_ROOT / "tests" / "fixtures" / PRIMARY_FILE_NAME
-TASK_LANE_NAME = "Operations"
+PROCESS_MODEL_DISPLAY_NAME = "Scheduled Retry Example"
+PRIMARY_PROCESS_ID = "Process_scheduled_retry_poc"
+PRIMARY_FILE_NAME = "scheduled_retry_poc.bpmn"
+RETRY_WORKER_ID = "scheduled-retry-poc-inline-worker"
+RETRY_BPMN_PATH = REPO_ROOT / "tests" / "fixtures" / PRIMARY_FILE_NAME
 
 DEMO_TENANT = {
-    "id": "tenant-scheduled-boundary-timer-example",
-    "name": "Scheduled Boundary Timer Example",
-    "slug": "scheduled-boundary-timer-example",
+    "id": "tenant-scheduled-retry-example",
+    "name": "Scheduled Retry Example",
+    "slug": "scheduled-retry-example",
 }
 DEMO_USERS = {
     "admin": {
-        "username": "boundary-timer-poc-admin",
-        "email": "boundary-timer-poc-admin@example.com",
-        "service_id": "boundary-timer-poc-admin-keycloak",
-        "display_name": "Boundary Timer POC Admin",
+        "username": "retry-poc-admin",
+        "email": "retry-poc-admin@example.com",
+        "service_id": "retry-poc-admin-keycloak",
+        "display_name": "Retry Example Admin",
         "keycloak_groups": ("Approvers", "Viewers"),
     },
     "operator": {
-        "username": "boundary-timer-poc-operator",
-        "email": "boundary-timer-poc-operator@example.com",
-        "service_id": "boundary-timer-poc-operator-keycloak",
-        "display_name": "Boundary Timer POC Operator",
+        "username": "retry-poc-operator",
+        "email": "retry-poc-operator@example.com",
+        "service_id": "retry-poc-operator-keycloak",
+        "display_name": "Retry Example Operator",
         "keycloak_groups": ("Approvers", "Viewers"),
     },
 }
+TASK_LANE_NAME = "Operations"
 
 
 @dataclass(frozen=True, slots=True)
-class BoundaryTimerPocContext:
+class RetryPocContext:
     tenant_id: str
     tenant_slug: str
     admin_user_id: int
@@ -109,12 +109,12 @@ def main() -> None:
     temporary_container_name: str | None = None
     engine: Engine | None = None
 
-    print("m8flow-core scheduled boundary timer POC")
+    print("m8flow-core scheduled retry example")
     print(
-        "This example imports an interrupting timer boundary-event workflow, "
-        "starts a normal process instance, persists the waiting timer in "
-        "scheduler_job, runs an inline poller loop, and shows the timer "
-        "cancelling the active task and opening the timeout path."
+        "This example imports a simple workflow, starts a process instance, "
+        "forces it into error, schedules a delayed retry, runs an inline "
+        "poller loop, reopens the original user task, and completes the "
+        "workflow so the full retry lifecycle can be audited in m8flow."
     )
     (
         database_url,
@@ -130,9 +130,8 @@ def main() -> None:
     print("Database connection details")
     print(_format_connection_details(_describe_connection(database_url)))
     print(
-        "The example keeps the definition, process instance, human tasks, and "
-        "event history in place so the timeout transition can be audited after "
-        "the run."
+        "The example keeps the definition, completed process instance, and "
+        "event history in place so they can be inspected after the run."
     )
     _pause("Press Enter to start the example.")
 
@@ -140,13 +139,13 @@ def main() -> None:
         print()
         print(SECTION_SEPARATOR)
         print("Database setup")
-        print("Connecting to Postgres and creating the schema...")
+        print("Connecting to the database and creating the schema...")
 
         engine = build_engine(database_url)
         try:
             _wait_for_database(engine)
         except RuntimeError as exc:
-            print(f"Status: unable to reach Postgres. {exc}")
+            print(f"Status: unable to reach the database. {exc}")
             raise SystemExit(1) from exc
 
         create_schema(engine)
@@ -158,14 +157,14 @@ def main() -> None:
                 expire_on_commit=False,
             )
             try:
-                context = _seed_boundary_timer_poc_context(
+                context = _seed_retry_poc_context(
                     session,
                     database_url=database_url,
                 )
             finally:
                 session.close()
 
-        _run_boundary_timer_poc(
+        _run_retry_poc(
             engine,
             context,
             database_url=database_url,
@@ -178,11 +177,11 @@ def main() -> None:
         _remove_temporary_postgres_container(temporary_container_name)
 
 
-def _seed_boundary_timer_poc_context(
+def _seed_retry_poc_context(
     session: Session,
     *,
     database_url: str,
-) -> BoundaryTimerPocContext:
+) -> RetryPocContext:
     print()
     print(SECTION_SEPARATOR)
     print("Setup: create the demo tenant and users")
@@ -191,7 +190,7 @@ def _seed_boundary_timer_poc_context(
         "and users are seeded directly because the library does not expose "
         "public tenant-management commands."
     )
-    _pause("Press Enter to seed the boundary timer demo data.")
+    _pause("Press Enter to seed the retry demo data.")
 
     warnings: list[str] = []
     tenant = _get_or_create_tenant(
@@ -259,7 +258,7 @@ def _seed_boundary_timer_poc_context(
         for warning in warnings:
             print(f"- {warning}")
 
-    context = BoundaryTimerPocContext(
+    context = RetryPocContext(
         tenant_id=tenant.id,
         tenant_slug=tenant.slug,
         admin_user_id=users["admin"].id,
@@ -298,7 +297,7 @@ def _seed_boundary_timer_poc_context(
             "Shared Keycloak users are ready. New users use password "
             f"'{context.keycloak_password}'."
         )
-    _pause("Press Enter to continue to the boundary timer workflow.")
+    _pause("Press Enter to continue to the retry workflow.")
     return context
 
 
@@ -345,9 +344,9 @@ def _provision_shared_db_keycloak_context(
     return keycloak_context
 
 
-def _run_boundary_timer_poc(
+def _run_retry_poc(
     engine: Engine,
-    context: BoundaryTimerPocContext,
+    context: RetryPocContext,
     *,
     database_url: str,
 ) -> None:
@@ -355,47 +354,30 @@ def _run_boundary_timer_poc(
     print(SECTION_SEPARATOR)
     print("Workflow plan")
     print(
-        "This run starts a normal process instance and attaches an interrupting "
-        f"timer boundary event due {BOUNDARY_TIMER_DELAY_SECONDS} seconds later."
+        "This run starts a normal process instance, forces it into `error`, "
+        f"then schedules a retry {RETRY_DELAY_SECONDS} seconds in the future."
     )
     print(
-        "Before the due time, the operator sees the original review task. When "
-        "the timer becomes due, the inline poller calls "
-        "`api.run_due_scheduler_jobs(...)`, the library cancels that active "
-        "task, and the timeout user task becomes READY on the same process "
-        "instance."
+        "Once the due time is reached, the inline poller will call "
+        "`api.run_due_scheduler_jobs(...)` and the library will execute the "
+        "same retry lifecycle that an immediate `process.retry` command uses."
+    )
+    print(
+        "The key outcomes to watch are that the same process instance is "
+        "reused, the same human task id becomes READY again, and completing "
+        "that reopened task finishes the workflow."
     )
     _pause("Press Enter to continue to the import step.")
 
-    print()
-    print(SECTION_SEPARATOR)
-    print("Step 1: Import the boundary-timer definition")
-    print(
-        "This stores the BPMN definition. The boundary-timer scheduler row is "
-        "not created yet because it belongs to a specific process instance and "
-        "will be synchronized when the workflow is started."
-    )
-    print(SECTION_SEPARATOR)
-    _pause(
-        "Press Enter to stamp a fresh boundary due time and execute the import "
-        "command."
-    )
-
-    boundary_due_at = (
-        datetime.now(UTC).replace(microsecond=0)
-        + timedelta(seconds=BOUNDARY_TIMER_DELAY_SECONDS)
-    )
-    bpmn_xml = _render_boundary_timer_bpmn_xml(boundary_due_at)
+    bpmn_xml = _read_retry_bpmn_xml()
     import_timestamp = datetime.now(UTC).replace(microsecond=0)
     definition = _run_command_step(
         engine,
         step_number=1,
-        title="Import the boundary-timer demonstration definition",
+        title="Import the retry demonstration definition",
         context_text=(
-            "The BPMN fixture uses an interrupting timer boundary event "
-            "attached to the first user task. The quoted `timeDate` expression "
-            "is rendered immediately before import so interactive pauses do not "
-            "make the timer stale."
+            "This stores a simple user-task workflow that will later be put "
+            "into error and retried."
         ),
         command=api.ImportBpmnProcessDefinitionCommand(
             tenant_id=context.tenant_id,
@@ -405,14 +387,14 @@ def _run_boundary_timer_poc(
             source_bpmn_xml=bpmn_xml,
             properties_json={
                 "version": 1,
-                "flow": "scheduled_boundary_timer_poc",
+                "flow": "scheduled_retry",
                 "lane_owners": {
                     TASK_LANE_NAME: [context.operator_username],
                 },
-                "boundary_due_at": boundary_due_at.isoformat(),
+                "retry_delay_seconds": RETRY_DELAY_SECONDS,
             },
             bpmn_version_control_type="git",
-            bpmn_version_control_identifier="boundary-timer-poc",
+            bpmn_version_control_identifier="retry-poc",
             created_at=import_timestamp,
             updated_at=import_timestamp,
         ),
@@ -435,15 +417,15 @@ def _run_boundary_timer_poc(
         step_number=2,
         title="Start a process instance from the stored definition",
         context_text=(
-            "Starting the process persists the workflow state, materializes the "
-            "first user task, and synchronizes one instance-scoped "
-            "`intermediate_timer` scheduler row for the attached boundary timer."
+            "This is a normal `process.start` flow. The new instance should "
+            "stop at its first human task and assign that task through the "
+            "BPMN lane plus properties_json['lane_owners']."
         ),
         command=api.InitializeProcessInstanceFromDefinitionCommand(
             tenant_id=context.tenant_id,
             bpmn_process_definition_id=definition.id,
             process_initiator_id=context.admin_user_id,
-            summary="Scheduled boundary timer demonstration instance",
+            summary="Scheduled retry demonstration instance",
             started_at=started_at,
         ),
     )
@@ -453,11 +435,10 @@ def _run_boundary_timer_poc(
     operator_tasks = _run_command_step(
         engine,
         step_number=3,
-        title="List the operator pending tasks before the timeout fires",
+        title="List the operator pending tasks",
         context_text=(
-            "The process should now be paused at the original review task. The "
-            "boundary timer exists in waiting state beside it, but the timeout "
-            "path should not be active yet."
+            "This shows the instance in its normal waiting state before any "
+            "failure or retry scheduling is involved."
         ),
         command=api.GetPendingTasksQuery(
             tenant_id=context.tenant_id,
@@ -466,16 +447,97 @@ def _run_boundary_timer_poc(
     )
     if operator_tasks is None:
         raise RuntimeError("Pending-task query did not return a task list")
-    review_task = _require_single_task(
+    operator_task = _require_single_task(
         operator_tasks,
-        "boundary-timer review task",
+        "scheduled retry task",
         process_instance_id=process_instance.id,
     )
+
+    errored_at = datetime.now(UTC).replace(microsecond=0)
+    errored_process_instance = _run_command_step(
+        engine,
+        step_number=4,
+        title="Force the running instance into error",
+        context_text=(
+            "This simulates an operator or host application marking the "
+            "instance as failed. The runtime state and current human task are "
+            "closed so the instance can be retried later."
+        ),
+        command=api.ErrorProcessInstanceCommand(
+            tenant_id=context.tenant_id,
+            process_instance_id=process_instance.id,
+            user_id=context.admin_user_id,
+            errored_at=errored_at,
+        ),
+    )
+    if errored_process_instance is None:
+        raise RuntimeError("Erroring the process instance did not return a result")
+
+    error_instances = _run_command_step(
+        engine,
+        step_number=5,
+        title="List errored process instances",
+        context_text=(
+            "Only errored instances can be scheduled for retry, so the current "
+            "instance should now be visible in the tenant's error list."
+        ),
+        command=api.ListErrorProcessInstancesQuery(tenant_id=context.tenant_id),
+    )
+    if error_instances is None:
+        raise RuntimeError("Error-instance query did not return a result")
+    if process_instance.id not in {item.id for item in error_instances}:
+        raise RuntimeError(
+            "Expected the current process instance to appear in the tenant "
+            "error list after being marked errored."
+        )
+
+    print()
+    print(SECTION_SEPARATOR)
+    print("Step 6: Schedule a delayed retry")
+    print(
+        "This persists a tenant-scoped `process_retry` scheduler row for the "
+        "current process instance. The due time is generated immediately "
+        "before the command runs so interactive pauses do not make it stale."
+    )
+    print(SECTION_SEPARATOR)
+    _pause(
+        "Press Enter to stamp a fresh retry due time and execute the "
+        "scheduling command."
+    )
+
+    retry_due_at = datetime.now(UTC).replace(microsecond=0) + timedelta(
+        seconds=RETRY_DELAY_SECONDS
+    )
+    schedule_retry_command = api.ScheduleProcessInstanceRetryCommand(
+        tenant_id=context.tenant_id,
+        process_instance_id=process_instance.id,
+        user_id=context.admin_user_id,
+        retry_at=retry_due_at,
+        scheduled_at=datetime.now(UTC).replace(microsecond=0),
+    )
+    print("Command:")
+    print(pformat(schedule_retry_command, sort_dicts=False, width=100))
+    print(
+        "Status: executing retry scheduling with due time "
+        f"{retry_due_at.isoformat()}."
+    )
+    with engine.begin() as connection:
+        scheduled_retry_job = api.execute_command(connection, schedule_retry_command)
+    print("Status: command complete and committed.")
+    print("Result:")
+    print(
+        pformat(
+            _summarize_scheduler_job(scheduled_retry_job),
+            sort_dicts=False,
+            width=100,
+        )
+    )
+    _pause("Press Enter to continue.")
 
     with engine.begin() as connection:
         session = Session(bind=connection, autoflush=False, expire_on_commit=False)
         try:
-            scheduler_job = _load_boundary_timer_job(
+            persisted_retry_job = _load_process_retry_job(
                 session,
                 tenant_id=context.tenant_id,
                 process_instance_id=process_instance.id,
@@ -485,7 +547,7 @@ def _run_boundary_timer_poc(
             print("Persisted scheduler job")
             print(
                 pformat(
-                    _summarize_scheduler_job(scheduler_job),
+                    _summarize_scheduler_job(persisted_retry_job),
                     sort_dicts=False,
                     width=100,
                 )
@@ -494,108 +556,128 @@ def _run_boundary_timer_poc(
             session.close()
 
     _pause(
-        "Press Enter to start the inline scheduler loop and wait for the "
-        "boundary timer."
+        "Press Enter to start the inline scheduler loop and wait for the retry."
     )
-    _run_scheduler_until_boundary_timer_fires(
+    _run_scheduler_until_retry_executes(
         engine,
         tenant_id=context.tenant_id,
         process_instance_id=process_instance.id,
         operator_user_id=context.operator_user_id,
-        review_work_item_id=review_task.id,
-        boundary_due_at=boundary_due_at,
+        work_item_id=operator_task.id,
+        retry_due_at=retry_due_at,
     )
 
-    operator_tasks_after_timeout = _run_command_step(
+    retried_process_instance = _run_command_step(
         engine,
-        step_number=4,
-        title="List the operator pending tasks after the timeout fires",
+        step_number=7,
+        title="Read back the retried process instance",
         context_text=(
-            "The original review task should be gone from the pending list, and "
-            "the timeout escalation task should now be READY on the same "
-            "process instance."
+            "The same process instance should now be running again. Retry "
+            "clears the previous end occurred_at and reopens the runtime state "
+            "instead of creating a new instance."
+        ),
+        command=api.GetProcessInstanceQuery(
+            tenant_id=context.tenant_id,
+            process_instance_id=process_instance.id,
+        ),
+    )
+    if retried_process_instance is None:
+        raise RuntimeError("Retried process query did not return a process instance")
+
+    operator_tasks_after_retry = _run_command_step(
+        engine,
+        step_number=8,
+        title="List the operator pending tasks after retry",
+        context_text=(
+            "The key retry outcome is that the original human task comes back "
+            "READY on the same process instance. The next steps will claim "
+            "and complete that same task to show the workflow finishing cleanly."
         ),
         command=api.GetPendingTasksQuery(
             tenant_id=context.tenant_id,
             user_id=context.operator_user_id,
         ),
     )
-    if operator_tasks_after_timeout is None:
-        raise RuntimeError(
-            "Post-timeout pending-task query did not return a task list"
-        )
-    timeout_task = _require_single_task(
-        operator_tasks_after_timeout,
-        "boundary timeout task",
+    if operator_tasks_after_retry is None:
+        raise RuntimeError("Post-retry pending-task query did not return a task list")
+    reopened_task = _require_single_task(
+        operator_tasks_after_retry,
+        "reopened scheduled retry task",
+        task_id=operator_task.id,
         process_instance_id=process_instance.id,
     )
+    if reopened_task.id != operator_task.id:
+        raise RuntimeError(
+            "Expected retry to reopen the original human task row, but it "
+            "returned a different task id."
+        )
 
-    with engine.begin() as connection:
-        session = Session(bind=connection, autoflush=False, expire_on_commit=False)
-        try:
-            current_human_tasks = _load_process_human_tasks(
-                session,
-                tenant_id=context.tenant_id,
-                process_instance_id=process_instance.id,
-            )
-            cancelled_review_task = next(
-                task for task in current_human_tasks if task.id == review_task.id
-            )
-            ready_timeout_task = next(
-                task for task in current_human_tasks if task.id == timeout_task.id
-            )
-            print()
-            print(SECTION_SEPARATOR)
-            print("Boundary transition summary")
-            print(
-                pformat(
-                    {
-                        "process_instance_id": process_instance.id,
-                        "cancelled_review_task": _summarize_human_task(
-                            cancelled_review_task
-                        ),
-                        "ready_timeout_task": _summarize_human_task(
-                            ready_timeout_task
-                        ),
-                    },
-                    sort_dicts=False,
-                    width=100,
-                )
-            )
-        finally:
-            session.close()
+    print()
+    print(SECTION_SEPARATOR)
+    print("Reopened task identity")
+    print(
+        pformat(
+            {
+                "process_instance_id": process_instance.id,
+                "original_task_id": operator_task.id,
+                "reopened_task_id": reopened_task.id,
+                "task_name": reopened_task.task_name,
+                "task_status": reopened_task.task_status,
+            },
+            sort_dicts=False,
+            width=100,
+        )
+    )
+
+    error_instances_after_retry = _run_command_step(
+        engine,
+        step_number=9,
+        title="List errored process instances after retry",
+        context_text=(
+            "Once the due retry is executed, the current instance should no "
+            "longer be present in the tenant's errored-instance list."
+        ),
+        command=api.ListErrorProcessInstancesQuery(tenant_id=context.tenant_id),
+    )
+    if error_instances_after_retry is None:
+        raise RuntimeError("Post-retry error-instance query did not return a result")
+    if process_instance.id in {item.id for item in error_instances_after_retry}:
+        raise RuntimeError(
+            "Expected the current process instance to leave the error list "
+            "after the scheduled retry executed."
+        )
 
     _run_command_step(
         engine,
-        step_number=5,
-        title="Claim the timeout task",
+        step_number=10,
+        title="Claim the reopened user task",
         context_text=(
-            "After the boundary timer interrupts the original task, the timeout "
-            "path is still handled through the normal claim-and-complete task "
-            "lifecycle."
+            "Retry reopens the task in READY state; task interaction after "
+            "retry is still the normal claim-and-complete lifecycle."
         ),
         command=api.ClaimTaskCommand(
             tenant_id=context.tenant_id,
-            work_item_id=timeout_task.id,
+            work_item_id=reopened_task.id,
             user_id=context.operator_user_id,
         ),
     )
 
     _run_command_step(
         engine,
-        step_number=6,
-        title="Complete the timeout task",
+        step_number=11,
+        title="Complete the reopened user task",
         context_text=(
-            "Completing the timeout task shows that an interrupted boundary "
-            "path hands off cleanly to normal workflow completion."
+            "Completing the reopened task proves that delayed retry hands the "
+            "process back to the normal workflow path rather than leaving it "
+            "in a special retry-only state."
         ),
         command=api.CompleteTaskCommand(
             tenant_id=context.tenant_id,
-            work_item_id=timeout_task.id,
+            work_item_id=reopened_task.id,
             user_id=context.operator_user_id,
             completed_at=datetime.now(UTC).replace(microsecond=0),
             task_payload={
-                "completed_after_boundary_timeout": "true",
+                "completed_after_retry": "true",
                 "completed_by": context.operator_username,
                 "completed_at": datetime.now(UTC).replace(
                     microsecond=0
@@ -604,28 +686,59 @@ def _run_boundary_timer_poc(
         ),
     )
 
-    _run_command_step(
+    completed_process_instance = _run_command_step(
         engine,
-        step_number=7,
+        step_number=12,
         title="Read back the completed process instance",
         context_text=(
-            "The same process instance should now be complete after the timeout "
-            "path task is finished."
+            "After the reopened task is completed, the same process instance "
+            "should move to its normal completed end state."
         ),
         command=api.GetProcessInstanceQuery(
             tenant_id=context.tenant_id,
             process_instance_id=process_instance.id,
         ),
     )
+    if completed_process_instance is None:
+        raise RuntimeError(
+            "Completed process query did not return a process instance"
+        )
+
+    pending_tasks_after_completion = _run_command_step(
+        engine,
+        step_number=13,
+        title="List the operator pending tasks after completion",
+        context_text=(
+            "Once the reopened task is completed, this process instance should "
+            "no longer contribute any pending work for the operator."
+        ),
+        command=api.GetPendingTasksQuery(
+            tenant_id=context.tenant_id,
+            user_id=context.operator_user_id,
+        ),
+    )
+    if pending_tasks_after_completion is None:
+        raise RuntimeError(
+            "Post-completion pending-task query did not return a task list"
+        )
+    remaining_instance_tasks = [
+        task
+        for task in pending_tasks_after_completion
+        if task.process_instance_id == process_instance.id
+    ]
+    if remaining_instance_tasks:
+        raise RuntimeError(
+            "Expected no remaining pending tasks for the completed retried "
+            f"instance, but found {len(remaining_instance_tasks)}."
+        )
 
     _run_command_step(
         engine,
-        step_number=8,
+        step_number=14,
         title="Read back the event history",
         context_text=(
-            "The event log should show the boundary interruption through "
-            "`task_cancelled`, followed by the timeout task completion and "
-            "process completion."
+            "The event log should now show the full lifecycle: creation, "
+            "error, retry, task completion, and process completion."
         ),
         command=api.GetProcessInstanceEventsQuery(
             tenant_id=context.tenant_id,
@@ -633,9 +746,8 @@ def _run_boundary_timer_poc(
         ),
     )
     _print_note(
-        "The scheduled boundary timer POC is complete. The database rows were "
-        "left in place so the interrupted task and timeout path can still be "
-        "audited."
+        "The scheduled retry example is complete. The database rows were left in "
+        "place so the completed retried instance can still be audited."
     )
 
 
@@ -670,7 +782,7 @@ def _maybe_deploy_process_model_to_m8flow_backend(
         tenant_id=tenant_id,
         tenant_slug=tenant_slug,
     )
-    deployment = _deploy_boundary_timer_definition_to_m8flow_backend(
+    deployment = _deploy_retry_definition_to_m8flow_backend(
         process_models_root=process_models_root,
         tenant_root=backend_tenant_root,
         bpmn_xml=bpmn_xml,
@@ -693,7 +805,7 @@ def _maybe_deploy_process_model_to_m8flow_backend(
     )
 
 
-def _deploy_boundary_timer_definition_to_m8flow_backend(
+def _deploy_retry_definition_to_m8flow_backend(
     *,
     process_models_root: Path,
     tenant_root: str,
@@ -709,8 +821,8 @@ def _deploy_boundary_timer_definition_to_m8flow_backend(
     model_dir.mkdir(parents=True, exist_ok=True)
     if bpmn_path.exists():
         warnings.append(
-            "Refreshed the existing scheduled-boundary-timer POC deployment so "
-            "the UI matches this run's BPMN model."
+            "Refreshed the existing scheduled-retry example deployment so the UI "
+            "matches this run's BPMN model."
         )
 
     _write_json_file(group_json_path, _backend_process_group_payload())
@@ -742,7 +854,7 @@ def _backend_process_group_payload() -> dict[str, Any]:
 def _backend_process_model_payload() -> dict[str, Any]:
     return {
         "description": (
-            "Published by the m8flow-core scheduled boundary timer example."
+            "Published by the m8flow-core scheduled retry example."
         ),
         "display_name": PROCESS_MODEL_DISPLAY_NAME,
         "exception_notification_addresses": [],
@@ -753,14 +865,11 @@ def _backend_process_model_payload() -> dict[str, Any]:
     }
 
 
-def _render_boundary_timer_bpmn_xml(boundary_due_at: datetime) -> str:
-    return BOUNDARY_TIMER_BPMN_PATH.read_text(encoding="utf-8").replace(
-        "__BOUNDARY_TIMER_DUE_AT__",
-        boundary_due_at.isoformat(),
-    )
+def _read_retry_bpmn_xml() -> str:
+    return RETRY_BPMN_PATH.read_text(encoding="utf-8")
 
 
-def _load_boundary_timer_job(
+def _load_process_retry_job(
     session: Session,
     *,
     tenant_id: str,
@@ -770,31 +879,15 @@ def _load_boundary_timer_job(
         select(SchedulerJobModel).where(
             SchedulerJobModel.m8f_tenant_id == tenant_id,
             SchedulerJobModel.process_instance_id == process_instance_id,
-            SchedulerJobModel.job_type == "intermediate_timer",
+            SchedulerJobModel.job_type == "process_retry",
         )
     )
     if scheduler_job is None:
         raise RuntimeError(
-            "Expected a persisted boundary-timer scheduler job for process "
+            "Expected a persisted process-retry scheduler job for process "
             f"instance {process_instance_id}, but none was found."
         )
     return scheduler_job
-
-
-def _load_process_human_tasks(
-    session: Session,
-    *,
-    tenant_id: str,
-    process_instance_id: int,
-) -> list[WorkItemModel]:
-    return list(
-        session.scalars(
-            select(WorkItemModel).where(
-                WorkItemModel.m8f_tenant_id == tenant_id,
-                WorkItemModel.process_instance_id == process_instance_id,
-            )
-        ).all()
-    )
 
 
 def _summarize_scheduler_job(scheduler_job: SchedulerJobModel) -> dict[str, Any]:
@@ -811,26 +904,14 @@ def _summarize_scheduler_job(scheduler_job: SchedulerJobModel) -> dict[str, Any]
     }
 
 
-def _summarize_human_task(task: WorkItemModel) -> dict[str, Any]:
-    return {
-        "id": task.id,
-        "task_name": task.task_name,
-        "task_status": task.task_status,
-        "completed": task.completed,
-        "process_instance_id": task.process_instance_id,
-        "actual_owner_id": task.actual_owner_id,
-        "completed_by_user_id": task.completed_by_user_id,
-    }
-
-
-def _run_scheduler_until_boundary_timer_fires(
+def _run_scheduler_until_retry_executes(
     engine: Engine,
     *,
     tenant_id: str,
     process_instance_id: int,
     operator_user_id: int,
-    review_work_item_id: int,
-    boundary_due_at: datetime,
+    work_item_id: int,
+    retry_due_at: datetime,
 ) -> None:
     print()
     print(SECTION_SEPARATOR)
@@ -838,41 +919,37 @@ def _run_scheduler_until_boundary_timer_fires(
     print(
         "The host application is responsible for wake-up cadence. This loop "
         "polls once per second and waits for the current process instance to "
-        "switch from its review task to the timeout task."
+        "leave `error` and reopen its original task."
     )
 
     total_processed = 0
     while True:
-        (
-            review_task,
-            timeout_task,
-            scheduler_job,
-        ) = _current_boundary_timer_runtime_state(
+        process_instance, scheduler_job, task_reopened = _current_retry_runtime_state(
             engine,
             tenant_id=tenant_id,
             process_instance_id=process_instance_id,
             operator_user_id=operator_user_id,
-            review_work_item_id=review_work_item_id,
+            work_item_id=work_item_id,
         )
         if (
-            timeout_task is not None
-            and review_task is not None
-            and review_task.completed
+            process_instance.status == api.ProcessInstanceStatus.running.value
+            and scheduler_job is None
+            and task_reopened
         ):
             print()
             print(
                 "Status: the inline poller processed "
-                f"{total_processed} due scheduler job(s) before the timeout "
-                "task became READY."
+                f"{total_processed} due scheduler job(s) before the current "
+                "process instance reopened its task."
             )
             return
 
         now = datetime.now(UTC)
-        remaining_seconds = int((boundary_due_at - now).total_seconds())
+        remaining_seconds = int((retry_due_at - now).total_seconds())
         if remaining_seconds > 0:
             print(
-                "\rWaiting for boundary timer due time "
-                f"{boundary_due_at.isoformat()} ({remaining_seconds}s remaining)...",
+                "\rWaiting for retry due time "
+                f"{retry_due_at.isoformat()} ({remaining_seconds}s remaining)...",
                 end="",
                 flush=True,
             )
@@ -882,57 +959,77 @@ def _run_scheduler_until_boundary_timer_fires(
         with engine.begin() as connection:
             processed = api.run_due_scheduler_jobs(
                 connection,
-                worker_id=BOUNDARY_TIMER_WORKER_ID,
+                worker_id=RETRY_WORKER_ID,
                 tenant_id=tenant_id,
             )
         total_processed += processed
 
-        (
-            review_task,
-            timeout_task,
-            scheduler_job,
-        ) = _current_boundary_timer_runtime_state(
+        process_instance, scheduler_job, task_reopened = _current_retry_runtime_state(
             engine,
             tenant_id=tenant_id,
             process_instance_id=process_instance_id,
             operator_user_id=operator_user_id,
-            review_work_item_id=review_work_item_id,
+            work_item_id=work_item_id,
         )
         if (
-            timeout_task is not None
-            and review_task is not None
-            and review_task.completed
+            process_instance.status == api.ProcessInstanceStatus.running.value
+            and scheduler_job is None
+            and task_reopened
         ):
             print()
             print(
                 "Status: the inline poller processed "
-                f"{total_processed} due scheduler job(s) before the timeout "
-                "task became READY."
+                f"{total_processed} due scheduler job(s) before the current "
+                "process instance reopened its task."
             )
             return
-        if scheduler_job is None:
+
+        if (
+            process_instance.status == api.ProcessInstanceStatus.error.value
+            and scheduler_job is None
+        ):
             raise RuntimeError(
-                "The boundary-timer scheduler job disappeared, but the timeout "
-                "task did not become READY for the current process instance."
+                "The retry scheduler job disappeared, but the current process "
+                "instance is still in error."
             )
-        time.sleep(1)
+
+        if processed == 0:
+            print(
+                "\rRetry is due, but no job was processed yet. Polling again...   ",
+                end="",
+                flush=True,
+            )
+        else:
+            print(
+                "\rProcessed due work for this tenant, but the current process "
+                "instance has not reopened its task yet. Polling again...   ",
+                end="",
+                flush=True,
+            )
+            time.sleep(1)
 
 
-def _current_boundary_timer_runtime_state(
+def _current_retry_runtime_state(
     engine: Engine,
     *,
     tenant_id: str,
     process_instance_id: int,
     operator_user_id: int,
-    review_work_item_id: int,
-) -> tuple[WorkItemModel | None, WorkItemModel | None, SchedulerJobModel | None]:
+    work_item_id: int,
+) -> tuple[ProcessInstanceModel, SchedulerJobModel | None, bool]:
     with engine.begin() as connection:
-        session = Session(bind=connection, autoflush=False, expire_on_commit=False)
+        session = Session(
+            bind=connection,
+            autoflush=False,
+            expire_on_commit=False,
+        )
         try:
-            human_tasks = _load_process_human_tasks(
+            process_instance = api.execute_query(
                 session,
-                tenant_id=tenant_id,
-                process_instance_id=process_instance_id,
+                api.GetProcessInstanceQuery(
+                    tenant_id=tenant_id,
+                    process_instance_id=process_instance_id,
+                ),
             )
             pending_tasks = api.execute_query(
                 session,
@@ -945,23 +1042,15 @@ def _current_boundary_timer_runtime_state(
                 select(SchedulerJobModel).where(
                     SchedulerJobModel.m8f_tenant_id == tenant_id,
                     SchedulerJobModel.process_instance_id == process_instance_id,
-                    SchedulerJobModel.job_type == "intermediate_timer",
+                    SchedulerJobModel.job_type == "process_retry",
                 )
             )
-            review_task = next(
-                (task for task in human_tasks if task.id == review_work_item_id),
-                None,
+            task_reopened = any(
+                task.id == work_item_id
+                and task.process_instance_id == process_instance_id
+                for task in pending_tasks
             )
-            timeout_task = next(
-                (
-                    task
-                    for task in pending_tasks
-                    if task.process_instance_id == process_instance_id
-                    and task.task_name == "Task_timeout"
-                ),
-                None,
-            )
-            return review_task, timeout_task, scheduler_job
+            return process_instance, scheduler_job, task_reopened
         finally:
             session.close()
 

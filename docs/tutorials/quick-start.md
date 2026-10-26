@@ -226,7 +226,7 @@ role.
 ## Next steps
 
 - Run a larger workflow with parallel reviewers: `uv run python
-  examples/parallel_review_poc.py`. [Run the examples](../how-to/run-the-examples.md)
+  examples/parallel_review.py`. [Run the examples](../how-to/run-the-examples.md)
   lists the others.
 - Use the library inside a real application, with your own transaction:
   [Embed the library in your application](../how-to/embed-in-your-application.md).

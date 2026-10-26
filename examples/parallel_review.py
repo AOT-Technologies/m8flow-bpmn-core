@@ -2,10 +2,10 @@
 
 Run with:
 
-    uv run python examples/parallel_review_poc.py
+    uv run python examples/parallel_review.py
 
-This is a non-interactive companion to ``examples/conditional_approval_poc.py``
-that exercises BPMN shapes the conditional-approval POC does not cover:
+This is a non-interactive companion to ``examples/conditional_approval.py``
+that exercises BPMN shapes the conditional-approval example does not cover:
 
 * a parallel gateway (AND-split followed by AND-join),
 * two script tasks ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â one before the split, one after the join,
@@ -76,7 +76,7 @@ SCENARIO = Scenario(
 
 
 def main() -> None:
-    print("m8flow-core parallel-review purchase-order POC")
+    print("m8flow-core parallel-review purchase-order example")
     print()
     print(f"Scenario: {SCENARIO.name}")
     print(f"  finance_decision    = {SCENARIO.finance_decision!r}")
@@ -102,7 +102,7 @@ def main() -> None:
                 tenant_id=TENANT_ID,
                 bpmn_identifier="parallel-review-poc",
                 user_id=users["admin"].id,
-                bpmn_name="Parallel Review POC",
+                bpmn_name="Parallel Review Example",
                 source_bpmn_xml=BPMN_PATH.read_text(encoding="utf-8"),
                 properties_json={
                     "flow": "parallel_review",

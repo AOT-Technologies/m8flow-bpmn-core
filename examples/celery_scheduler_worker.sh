@@ -214,7 +214,7 @@ start_beat() {
   beat_schedule_path="$(mktemp "${TMPDIR:-/tmp}/m8flow-core-celery-beat.XXXXXX.schedule")"
 
   printf '%s\n' 'Status: starting a Celery beat helper...'
-  "${CELERY_RUNNER[@]}" -A examples.celery_scheduler_poc:celery_app beat \
+  "${CELERY_RUNNER[@]}" -A examples.celery_scheduler:celery_app beat \
     --loglevel "$LOG_LEVEL" \
     --schedule "$beat_schedule_path" \
     >"$BEAT_STDOUT_PATH" 2>"$BEAT_STDERR_PATH" &
@@ -250,7 +250,7 @@ main() {
   trap cleanup EXIT INT TERM
 
   printf '%s\n' 'Status: starting the Celery scheduler worker helper...'
-  printf '%s\n' 'Status: this script only runs the scheduler poller. Use celery_timer_poc.sh for the full workflow POC.'
+  printf '%s\n' 'Status: this script only runs the scheduler poller. Use celery_timer.sh for the full workflow example.'
   printf 'Status: broker URL %s\n' "${M8FLOW_CORE_CELERY_BROKER_URL:-${M8FLOW_BACKEND_CELERY_BROKER_URL:-}}"
   printf 'Status: result backend %s\n' "${M8FLOW_CORE_CELERY_RESULT_BACKEND:-${M8FLOW_BACKEND_CELERY_RESULT_BACKEND:-}}"
   if [[ -n "${M8FLOW_CORE_CELERY_DATABASE_URL:-}" ]]; then
@@ -269,7 +269,7 @@ main() {
   fi
 
   local worker_exit_code
-  if "${CELERY_RUNNER[@]}" -A examples.celery_scheduler_poc:celery_app worker \
+  if "${CELERY_RUNNER[@]}" -A examples.celery_scheduler:celery_app worker \
     --pool solo \
     --loglevel "$LOG_LEVEL" \
     -Q "$M8FLOW_CORE_CELERY_QUEUE"; then

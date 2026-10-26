@@ -136,7 +136,7 @@ Common commands:
 - `make test`
 - `make test-integration`
 - `make package`
-- `uv run python examples/parallel_review_poc.py`
+- `uv run python examples/parallel_review.py`
 - `uv run python examples/errors_demo.py`
 
 ## Change Checklist

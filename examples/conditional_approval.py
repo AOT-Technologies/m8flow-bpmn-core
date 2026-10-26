@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import UTC, datetime, timedelta
@@ -91,7 +92,7 @@ M8FLOW_BACKEND_PROCESS_MODEL_ID = "conditional-approval-poc"
 CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER = (
     f"{M8FLOW_BACKEND_PROCESS_GROUP_ID}/{M8FLOW_BACKEND_PROCESS_MODEL_ID}"
 )
-M8FLOW_BACKEND_PROCESS_MODEL_DISPLAY_NAME = "Conditional Approval POC"
+M8FLOW_BACKEND_PROCESS_MODEL_DISPLAY_NAME = "Conditional Approval Example"
 M8FLOW_BACKEND_PROCESS_MODELS_TARGET = "/app/data/process_models"
 M8FLOW_BACKEND_DEFAULT_CONTAINER_NAMES = (
     "m8flow-m8flow-backend-1",
@@ -101,6 +102,7 @@ M8FLOW_BACKEND_DEFAULT_CONTAINER_NAMES = (
 EXAMPLE_KEYCLOAK_DEFAULT_PASSWORD = "poc-demo-password"
 FALLBACK_POSTGRES_DATABASE_NAME = "m8flow_core_example"
 FALLBACK_POSTGRES_IMAGE = "postgres:16"
+SQLITE_FLAG = "--sqlite"
 
 DEMO_TENANT = {
     "id": "tenant-conditional-approval-example",
@@ -224,7 +226,7 @@ def main() -> None:
     print(SECTION_SEPARATOR)
     print("Database connection details")
     print(
-        "Open DBeaver or another PostgreSQL client with the settings below "
+        "Open DBeaver or another database client with the settings below "
         "if you want to inspect the demo database before the workflow starts."
     )
     print(_format_connection_details(_describe_connection(database_url)))
@@ -238,7 +240,7 @@ def main() -> None:
         print()
         print(SECTION_SEPARATOR)
         print("Database setup")
-        print("Connecting to Postgres and creating the schema...")
+        print("Connecting to the database and creating the schema...")
         print(
             "If this takes a moment, the example is waiting for the database "
             "server to accept connections."
@@ -249,7 +251,7 @@ def main() -> None:
         try:
             _wait_for_database(engine)
         except RuntimeError as exc:
-            print(f"Status: unable to reach Postgres. {exc}")
+            print(f"Status: unable to reach the database. {exc}")
             print(
                 "Hint: start PostgreSQL locally or set "
                 "M8FLOW_EXAMPLE_DATABASE_URL to a reachable database, then "
@@ -295,8 +297,29 @@ def main() -> None:
 
 
 def _resolve_database_url() -> tuple[str, str]:
+    if SQLITE_FLAG in sys.argv[1:]:
+        return _fresh_sqlite_database_url()
     raw_url = os.getenv("M8FLOW_EXAMPLE_DATABASE_URL") or DEFAULT_LOCAL_DATABASE_URL
     return _normalize_database_url(raw_url)
+
+
+def _fresh_sqlite_database_url() -> tuple[str, str]:
+    # One file per script, recreated on every run, so a rerun never trips
+    # over rows or scheduler jobs left behind by the previous run.
+    database_path = (
+        Path(tempfile.gettempdir())
+        / "m8flow-core-examples"
+        / f"{Path(sys.argv[0]).stem}.db"
+    )
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    database_path.unlink(missing_ok=True)
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    return database_url, database_url
+
+
+def _reject_sqlite_flag(reason: str) -> None:
+    if SQLITE_FLAG in sys.argv[1:]:
+        raise SystemExit(f"{SQLITE_FLAG} is not supported here: {reason}")
 
 
 def _current_timestamp() -> datetime:
@@ -333,6 +356,8 @@ def _normalize_database_url(raw_url: str) -> tuple[str, str]:
 
 def _describe_connection(database_url: str) -> dict[str, Any]:
     url = make_url(database_url)
+    if url.get_backend_name() == "sqlite":
+        return {"backend": "sqlite", "database_file": url.database}
     host = url.host or "localhost"
     port = url.port or 5432
     database = url.database or ""
@@ -1915,7 +1940,7 @@ def _run_workflow(engine: Engine, context: ExampleContext) -> None:
             tenant_id=context.tenant_id,
             bpmn_identifier=CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER,
             user_id=context.user_ids["admin"],
-            bpmn_name="Conditional Approval POC",
+            bpmn_name="Conditional Approval Example",
             source_bpmn_xml=bpmn_xml,
             source_dmn_xml=dmn_xml,
             properties_json={
@@ -2528,10 +2553,21 @@ def _run_command_step(
     is_query = type(command).__name__.endswith("Query")
     try:
         with engine.begin() as connection:
-            if is_query:
-                result = api.execute_query(connection, command)
-            else:
-                result = api.execute_command(connection, command)
+            # Format the result while the session is open, so lazy
+            # relationships such as WorkItemModel.task_model can still load.
+            session = Session(
+                bind=connection,
+                autoflush=False,
+                expire_on_commit=False,
+            )
+            try:
+                if is_query:
+                    result = api.execute_query(session, command)
+                else:
+                    result = api.execute_command(session, command)
+                formatted_result = _format_result(result)
+            finally:
+                session.close()
     except Exception as exc:
         if expected_failure is None or not isinstance(exc, expected_failure):
             raise
@@ -2556,7 +2592,7 @@ def _run_command_step(
 
     print("Status: command complete and committed.")
     print("Result:")
-    print(_format_result(result))
+    print(formatted_result)
     _pause("Press Enter to continue.")
     return result
 

@@ -41,13 +41,13 @@ The example scripts and their launchers read the following variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `M8FLOW_EXAMPLE_DATABASE_URL` | The local m8flow database, `localhost:6843/postgres` | Database for the PostgreSQL examples |
+| `M8FLOW_EXAMPLE_DATABASE_URL` | The local m8flow database, `localhost:6843/postgres` | Database for the interactive examples, ignored when you pass `--sqlite` |
 | `M8FLOW_EXAMPLE_POSTGRES_IMAGE` | `postgres:16` | Docker image when a launcher starts a temporary database |
 | `M8FLOW_EXAMPLE_KEYCLOAK_PASSWORD` | `poc-demo-password` | Password for demo users the examples create in Keycloak |
 | `M8FLOW_EXAMPLE_PROCESS_MODELS_DIR` | Discovered | Local path of the m8flow backend's process model catalog, for shared mode |
 | `M8FLOW_EXAMPLE_BACKEND_CONTAINER` | Discovered | Docker container of the m8flow backend, used to find the catalog |
 | `M8FLOW_EXAMPLE_BACKEND_TENANT_ROOT` | Discovered | Tenant folder used when publishing models to the catalog |
-| `M8FLOW_SCHEDULER_EXECUTION_MODE` | `inline` | Set to `external` to make `scheduled_timer_poc.py` wait for an external scheduler, as the Celery example does |
+| `M8FLOW_SCHEDULER_EXECUTION_MODE` | `inline` | Set to `external` to make `scheduled_timer.py` wait for an external scheduler, as the Celery example does |
 | `M8FLOW_CONNECTOR_PROXY_BASE_URL` | `http://localhost:6844` | Base URL of `m8flow-connector-proxy` for the service task example |
 | `M8FLOW_CONNECTOR_POC_HOST_ALIAS` | `host.docker.internal` | Host name the connector proxy uses to reach the example's HTTP server |
 | `M8FLOW_CORE_CELERY_BROKER_URL` | `redis://localhost:6848/0` | Celery broker for the Celery scheduler example. Falls back to `M8FLOW_BACKEND_CELERY_BROKER_URL`. |

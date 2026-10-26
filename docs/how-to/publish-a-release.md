@@ -25,7 +25,7 @@ The workflow has two channels:
 | Channel | Publishes | Requirements |
 |---|---|---|
 | `beta` | A pre-release derived from the version in `pyproject.toml`: `1.0.0b1`, then `1.0.0b2`, and so on. The workflow picks the next number from what's already on PyPI. | None |
-| `release` | The version in `pyproject.toml`, unchanged, such as `1.0.0` | A dated `CHANGELOG.md` entry, a GitHub Release for the version, and a version that isn't on PyPI yet |
+| `release` | The version in `pyproject.toml`, unchanged, such as `1.0.0` | A dated `CHANGELOG.md` entry, a GitHub Release for the version whose tag points at the commit you publish, and a version that isn't on PyPI yet |
 
 `pip install m8flow-core` never installs a beta. To try one, install it by
 version, such as `pip install m8flow-core==1.0.0b1`, or pass `--pre`.
@@ -66,8 +66,9 @@ To publish a release, follow these steps:
 
 The workflow stops before uploading anything if a check fails: for example,
 if the version is already on PyPI, the changelog entry or link is missing, the
-GitHub Release doesn't exist, a test fails, or a dependency has a known
-vulnerability. Fix the cause and run the workflow again.
+GitHub Release doesn't exist, the release tag points at a different commit
+than the one you chose in **Use workflow from**, a test fails, or a dependency
+has a known vulnerability. Fix the cause and run the workflow again.
 
 ## Set up PyPI publishing
 

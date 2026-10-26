@@ -95,7 +95,7 @@ the time the job is due, the library deletes the job without retrying.
 
 To run the scheduler from Celery instead of an inline loop, schedule a Celery
 beat task that calls `api.run_due_scheduler_jobs`. The stored jobs are the
-same, so nothing else changes. `examples/celery_scheduler_poc.py` is a working
+same, so nothing else changes. `examples/celery_scheduler.py` is a working
 beat and worker setup, and
 [Run the examples](run-the-examples.md#run-the-celery-timer-example) shows how
 to start it.

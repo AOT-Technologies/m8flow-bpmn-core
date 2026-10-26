@@ -21,7 +21,7 @@ WORKER_STDERR_PATH=""
 print_usage() {
   cat <<'EOF'
 Usage:
-  ./examples/celery_timer_poc.sh [--database-url URL] [--docker] [--postgres-image IMAGE] [--keep-container] [--use-existing-worker] [--broker-url URL] [--result-backend URL] [--queue-name NAME] [--tenant-id ID] [--poll-seconds SECONDS] [--log-level LEVEL]
+  ./examples/celery_timer.sh [--database-url URL] [--docker] [--postgres-image IMAGE] [--keep-container] [--use-existing-worker] [--broker-url URL] [--result-backend URL] [--queue-name NAME] [--tenant-id ID] [--poll-seconds SECONDS] [--log-level LEVEL]
 
 Options:
   --database-url URL      Use an explicit PostgreSQL URL.
@@ -229,7 +229,7 @@ main() {
   m8f_init_postgres_launcher_defaults
   parse_args "$@"
 
-  local example_script="$SCRIPT_DIR/celery_timer_poc.py"
+  local example_script="$SCRIPT_DIR/celery_timer.py"
   local worker_script="$SCRIPT_DIR/celery_scheduler_worker.sh"
   local default_database_url="postgresql+psycopg://postgres:postgres@localhost:6843/postgres?connect_timeout=1"
 
@@ -252,7 +252,7 @@ main() {
   m8f_apply_example_database_env "$example_database_url"
 
   printf '\n'
-  printf '%s\n' 'Status: launching the Celery timer POC...'
+  printf '%s\n' 'Status: launching the Celery timer example...'
   printf 'Status: using database URL %s\n' "$(m8f_mask_database_url "$example_database_url")"
 
   if [[ "$USE_EXISTING_WORKER" -eq 1 ]]; then

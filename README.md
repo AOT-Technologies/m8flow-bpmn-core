@@ -68,7 +68,7 @@ database, run the following commands:
 git clone https://github.com/AOT-Technologies/m8flow-core.git
 cd m8flow-core
 uv sync
-uv run python examples/parallel_review_poc.py
+uv run python examples/parallel_review.py
 ```
 
 The script imports a BPMN definition, starts a process instance, and drives

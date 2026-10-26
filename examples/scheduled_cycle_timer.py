@@ -9,7 +9,7 @@ from pathlib import Path
 from pprint import pformat
 from typing import Any
 
-from conditional_approval_poc import (
+from conditional_approval import (
     EXAMPLE_KEYCLOAK_DEFAULT_PASSWORD,
     BackendProcessModelDeployment,
     _align_shared_db_tenants_with_keycloak_organizations,
@@ -22,6 +22,7 @@ from conditional_approval_poc import (
     _pause,
     _print_backend_deployment_summary,
     _print_note,
+    _reject_sqlite_flag,
     _remove_temporary_postgres_container,
     _resolve_backend_tenant_root,
     _resolve_database_url,
@@ -64,7 +65,7 @@ PROCESS_GROUP_DESCRIPTION = (
 )
 PROCESS_MODEL_ID = "scheduled-cycle-timer-poc"
 PROCESS_MODEL_IDENTIFIER = f"{PROCESS_GROUP_ID}/{PROCESS_MODEL_ID}"
-PROCESS_MODEL_DISPLAY_NAME = "Scheduled Cycle Timer POC"
+PROCESS_MODEL_DISPLAY_NAME = "Scheduled Cycle Timer Example"
 PRIMARY_PROCESS_ID = "Process_scheduled_cycle_timer_poc"
 PRIMARY_FILE_NAME = "scheduled_cycle_timer_poc.bpmn"
 TIMER_WORKER_ID = "scheduled-cycle-timer-poc-inline-worker"
@@ -80,14 +81,14 @@ DEMO_USERS = {
         "username": "cycle-timer-poc-admin",
         "email": "cycle-timer-poc-admin@example.com",
         "service_id": "cycle-timer-poc-admin-keycloak",
-        "display_name": "Cycle Timer POC Admin",
+        "display_name": "Cycle Timer Example Admin",
         "keycloak_groups": ("Approvers", "Viewers"),
     },
     "operator": {
         "username": "cycle-timer-poc-operator",
         "email": "cycle-timer-poc-operator@example.com",
         "service_id": "cycle-timer-poc-operator-keycloak",
-        "display_name": "Cycle Timer POC Operator",
+        "display_name": "Cycle Timer Example Operator",
         "keycloak_groups": ("Approvers", "Viewers"),
     },
 }
@@ -113,11 +114,15 @@ class RecurringTimerState:
 
 
 def main() -> None:
+    _reject_sqlite_flag(
+        "the cycle reschedule and the next instance are written by separate "
+        "transactions, which SQLite's locking does not allow. Use PostgreSQL."
+    )
     database_url, display_database_url = _resolve_database_url()
     temporary_container_name: str | None = None
     engine: Engine | None = None
 
-    print("m8flow-core scheduled cycle timer POC")
+    print("m8flow-core scheduled cycle timer example")
     print(
         "This example imports a recurring timer-start workflow, persists the "
         "scheduler job, runs an inline poller loop until all configured cycle "
@@ -148,13 +153,13 @@ def main() -> None:
         print()
         print(SECTION_SEPARATOR)
         print("Database setup")
-        print("Connecting to Postgres and creating the schema...")
+        print("Connecting to the database and creating the schema...")
 
         engine = build_engine(database_url)
         try:
             _wait_for_database(engine)
         except RuntimeError as exc:
-            print(f"Status: unable to reach Postgres. {exc}")
+            print(f"Status: unable to reach the database. {exc}")
             raise SystemExit(1) from exc
 
         create_schema(engine)
@@ -370,7 +375,7 @@ def _run_cycle_timer_poc(
     )
     print(
         "The BPMN engine calculates the first due occurred_at at import time, "
-        "and this POC waits through every scheduled occurrence so one run "
+        "and this example waits through every scheduled occurrence so one run "
         "creates all three process instances."
     )
     print(
@@ -405,7 +410,7 @@ def _run_cycle_timer_poc(
         source_bpmn_xml=bpmn_xml,
         properties_json={
             "version": 1,
-            "flow": "scheduled_cycle_timer_poc",
+            "flow": "scheduled_cycle_timer",
             "cycle_expression": cycle_expression,
             "cycle_repeat_count": CYCLE_REPEAT_COUNT,
             "cycle_interval_seconds": CYCLE_INTERVAL_SECONDS,
@@ -701,7 +706,7 @@ def _run_cycle_timer_poc(
     )
 
     _print_note(
-        "The scheduled cycle timer POC completed all configured occurrences. "
+        "The scheduled cycle timer example completed all configured occurrences. "
         "Three process instances were created, the recurring scheduler job "
         "was exhausted, and the generated operator tasks were left in place "
         "for audit."
@@ -778,7 +783,7 @@ def _deploy_cycle_timer_definition_to_m8flow_backend(
     model_dir.mkdir(parents=True, exist_ok=True)
     if bpmn_path.exists():
         warnings.append(
-            "Refreshed the existing scheduled-cycle-timer POC deployment so "
+            "Refreshed the existing scheduled-cycle-timer example deployment so "
             "the UI matches this run's current cycle expression."
         )
 

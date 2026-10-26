@@ -9,7 +9,7 @@ source "$SCRIPT_DIR/_postgres_example_launcher.sh"
 print_usage() {
   cat <<'EOF'
 Usage:
-  ./examples/scheduled_cycle_timer_poc.sh [--database-url URL] [--docker] [--postgres-image IMAGE] [--keep-container]
+  ./examples/service_task_failure_retry.sh [--database-url URL] [--docker] [--postgres-image IMAGE] [--keep-container]
 
 Options:
   --database-url URL      Use an explicit PostgreSQL URL.
@@ -22,7 +22,7 @@ EOF
 main() {
   m8f_init_postgres_launcher_defaults
   m8f_parse_postgres_launcher_args "$@"
-  m8f_run_python_example "$SCRIPT_DIR" "scheduled_cycle_timer_poc.py" "scheduled cycle timer POC"
+  m8f_run_python_example "$SCRIPT_DIR" "service_task_failure_retry.py" "service-task failure retry example"
 }
 
 main "$@"

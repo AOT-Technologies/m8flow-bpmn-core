@@ -8,7 +8,8 @@ name: Publish m8flow-core
 #
 #   channel: release — publishes that version as-is (for example, 1.0.0).
 #                      Requires a dated CHANGELOG entry and an existing
-#                      GitHub Release tagged <version>, with no "v" prefix.
+#                      GitHub Release tagged <version>, with no "v" prefix,
+#                      whose tag points at the commit being built.
 #   channel: beta    — publishes a PEP 440 pre-release derived from it
 #                      (1.0.0 -> 1.0.0b1, then b2, b3 ...). The next beta
 #                      number is resolved from what already exists on PyPI.
@@ -186,15 +187,25 @@ jobs:
 
           print(f"PASS: changelog documents {version}")
 
-      # Stable only: beta versions never get a GitHub Release.
-      - name: Verify GitHub Release exists
+      # Stable only: beta versions never get a GitHub Release. The release tag
+      # must point at the commit being built, or the package and the release
+      # would describe different source.
+      - name: Verify GitHub Release exists and matches this commit
         if: inputs.channel == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.base_version }}
+          REPOSITORY: ${{ github.repository }}
+          BUILD_SHA: ${{ github.sha }}
         run: |
-          gh release view "${{ steps.version.outputs.base_version }}" \
-            --json tagName \
-            --jq '.tagName'
+          tag_name="$(gh release view "$VERSION" --json tagName --jq '.tagName')"
+          tag_sha="$(gh api "repos/$REPOSITORY/commits/$tag_name" --jq '.sha')"
+          if [ "$tag_sha" != "$BUILD_SHA" ]; then
+            echo "ERROR: release tag $tag_name points at $tag_sha, but this run checked out $BUILD_SHA." >&2
+            echo "Dispatch the workflow from the $tag_name tag, or move the tag to this commit." >&2
+            exit 1
+          fi
+          echo "PASS: release tag $tag_name points at $BUILD_SHA"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Test the commit, then build one pure-Python wheel and the source

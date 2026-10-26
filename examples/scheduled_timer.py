@@ -8,7 +8,7 @@ from pathlib import Path
 from pprint import pformat
 from typing import Any
 
-from conditional_approval_poc import (
+from conditional_approval import (
     EXAMPLE_KEYCLOAK_DEFAULT_PASSWORD,
     BackendProcessModelDeployment,
     _align_shared_db_tenants_with_keycloak_organizations,
@@ -66,7 +66,7 @@ PROCESS_GROUP_DESCRIPTION = (
 )
 PROCESS_MODEL_ID = "scheduled-timer-poc"
 PROCESS_MODEL_IDENTIFIER = f"{PROCESS_GROUP_ID}/{PROCESS_MODEL_ID}"
-PROCESS_MODEL_DISPLAY_NAME = "Scheduled Timer POC"
+PROCESS_MODEL_DISPLAY_NAME = "Scheduled Timer Example"
 PRIMARY_PROCESS_ID = "Process_scheduled_timer_poc"
 PRIMARY_FILE_NAME = "scheduled_timer_poc.bpmn"
 TIMER_WORKER_ID = "scheduled-timer-poc-inline-worker"
@@ -82,14 +82,14 @@ DEMO_USERS = {
         "username": "timer-poc-admin",
         "email": "timer-poc-admin@example.com",
         "service_id": "timer-poc-admin-keycloak",
-        "display_name": "Timer POC Admin",
+        "display_name": "Timer Example Admin",
         "keycloak_groups": ("Approvers", "Viewers"),
     },
     "operator": {
         "username": "timer-poc-operator",
         "email": "timer-poc-operator@example.com",
         "service_id": "timer-poc-operator-keycloak",
-        "display_name": "Timer POC Operator",
+        "display_name": "Timer Example Operator",
         "keycloak_groups": ("Approvers", "Viewers"),
     },
 }
@@ -114,18 +114,18 @@ def main() -> None:
     scheduler_execution_mode = _resolve_scheduler_execution_mode()
 
     if scheduler_execution_mode == INLINE_SCHEDULER_EXECUTION_MODE:
-        print("m8flow-core scheduled timer POC")
+        print("m8flow-core scheduled timer example")
         print(
             "This example imports a timer-start workflow, persists the "
             "scheduler job, runs an inline poller loop, and shows the "
             "timer-created process instance that can be audited in m8flow."
         )
     else:
-        print("m8flow-core Celery timer POC")
+        print("m8flow-core Celery timer example")
         print(
             "This example imports the same timer-start workflow, persists the "
             "scheduler job, waits for an external scheduler worker such as "
-            "the Celery POC worker to process it, and then shows the "
+            "the Celery example worker to process it, and then shows the "
             "timer-created process instance that can be audited in m8flow."
         )
     (
@@ -151,13 +151,13 @@ def main() -> None:
         print()
         print(SECTION_SEPARATOR)
         print("Database setup")
-        print("Connecting to Postgres and creating the schema...")
+        print("Connecting to the database and creating the schema...")
 
         engine = build_engine(database_url)
         try:
             _wait_for_database(engine)
         except RuntimeError as exc:
-            print(f"Status: unable to reach Postgres. {exc}")
+            print(f"Status: unable to reach the database. {exc}")
             raise SystemExit(1) from exc
 
         create_schema(engine)
@@ -424,7 +424,7 @@ def _run_timer_poc(
         source_bpmn_xml=bpmn_xml,
         properties_json={
             "version": 1,
-            "flow": "scheduled_timer_poc",
+            "flow": "scheduled_timer",
             "lane_owners": {
                 TASK_LANE_NAME: [context.operator_username],
             },
@@ -664,7 +664,7 @@ def _run_timer_poc(
         ),
     )
     _print_note(
-        "The scheduled timer POC is complete. The database rows were left in "
+        "The scheduled timer example is complete. The database rows were left in "
         "place so they can still be audited."
     )
 
@@ -739,7 +739,7 @@ def _deploy_timer_definition_to_m8flow_backend(
     model_dir.mkdir(parents=True, exist_ok=True)
     if bpmn_path.exists():
         warnings.append(
-            "Refreshed the existing scheduled-timer POC deployment so the UI "
+            "Refreshed the existing scheduled-timer example deployment so the UI "
             "matches this run's due occurred_at."
         )
 
@@ -938,7 +938,7 @@ def _wait_for_external_scheduler(
     print(SECTION_SEPARATOR)
     print("External scheduler wait")
     print(
-        "This run expects a separate worker, such as the Celery scheduler POC "
+        "This run expects a separate worker, such as the Celery scheduler example "
         "worker, to call `api.run_due_scheduler_jobs(...)`. This loop only "
         "polls the database until the timer-created process instance appears."
     )
