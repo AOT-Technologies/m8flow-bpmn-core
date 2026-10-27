@@ -852,7 +852,6 @@ def test_missing_initiator_raises_not_found(session: Session) -> None:
     definition = _import(session, alice, _bpmn(NO_LANE), properties_json=None)
     first_item = _start(session, definition, bob)
     process_instance = first_item.process_instance
-    process_instance.process_initiator_id = 99999
     session.execute(
         text("DELETE FROM work_item_user WHERE work_item_id = :id"),
         {"id": first_item.id},
@@ -861,12 +860,20 @@ def test_missing_initiator_raises_not_found(session: Session) -> None:
 
     from m8flow_core.services.lane_assignment import assign_work_item_potential_owners
 
-    with pytest.raises(api.NotFoundError):
-        assign_work_item_potential_owners(
-            session,
-            process_instance=process_instance,
-            work_item=first_item,
-            lane_name=None,
-            task_data=None,
-            definition_properties=None,
-        )
+    # The user FK forbids persisting a dangling initiator, so point at a
+    # missing user in memory only and restore it before the fixture commits.
+    original_initiator_id = process_instance.process_initiator_id
+    with session.no_autoflush:
+        process_instance.process_initiator_id = 99999
+        try:
+            with pytest.raises(api.NotFoundError):
+                assign_work_item_potential_owners(
+                    session,
+                    process_instance=process_instance,
+                    work_item=first_item,
+                    lane_name=None,
+                    task_data=None,
+                    definition_properties=None,
+                )
+        finally:
+            process_instance.process_initiator_id = original_initiator_id
