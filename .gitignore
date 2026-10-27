@@ -27,3 +27,4 @@ dist/
 !.github/workflows/*.yml
 sample_app/vendor/*.whl
 !sample_app/uv.lock
+node_modules/
