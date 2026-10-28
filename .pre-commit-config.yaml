@@ -21,3 +21,10 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/|sample_app/src/)
+
+      - id: dco-signoff
+        name: DCO signoff
+        entry: uv run --locked python tools/check_dco.py --commit-msg-file
+        language: system
+        stages: [commit-msg]
+        always_run: true

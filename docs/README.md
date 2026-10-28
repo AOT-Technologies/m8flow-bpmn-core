@@ -72,4 +72,15 @@ Background on how the library works and why it's built that way:
 - [About the sample app integration](explanation/sample-app-integration.md):
   what a thin host application needs, and what it found.
 - [About the clean-room review](explanation/clean-room-review.md): how the
-  1.0 models and authorization were checked against spiff-arena.
+  1.0 models, authorization, event vocabulary, lane assignment, and migration
+  baseline were checked against spiff-arena.
+
+## Change these docs
+
+Keep each page to one Diátaxis type, write headings in sentence case, and
+address the reader as "you". If you change the public API, update the
+[API reference](reference/api.md) in the same pull request, as described in
+the [contributing guide](../CONTRIBUTING.md#changing-the-public-api-or-schema).
+
+To report a mistake in the docs, open an issue in the
+[issue tracker](https://github.com/AOT-Technologies/m8flow-core/issues).

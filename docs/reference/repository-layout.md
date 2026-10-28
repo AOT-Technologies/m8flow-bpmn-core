@@ -16,8 +16,9 @@ The repository root holds the following:
 | `examples/` | Runnable example scripts and their launchers. See [Run the examples](../how-to/run-the-examples.md). |
 | `sample_app/` | A Flask host application that uses the library as a wheel dependency. See the [sample app README](../../sample_app/README.md). |
 | `docs/` | This documentation |
-| `.github/` | CI, CodeQL, dependency review, secret-scan, and PyPI publish workflows; Dependabot settings; issue and pull request templates |
-| `.pre-commit-config.yaml` | Local hooks: Ruff, mypy, and Bandit |
+| `.github/` | CI, DCO sign-off, CodeQL, dependency review, secret-scan, and PyPI publish workflows; Dependabot settings; issue and pull request templates |
+| `tools/check_dco.py` | The DCO sign-off check, run by the `commit-msg` hook and testable with `--rev-range` |
+| `.pre-commit-config.yaml` | Local hooks: Ruff, mypy, and Bandit, plus the DCO `commit-msg` check |
 | `.gitleaks.toml` | Secret-scan settings |
 | `Makefile` | Development commands. Run `make help` to list them. |
 | `pyproject.toml` | Package metadata, dependencies, extras, and tool settings |

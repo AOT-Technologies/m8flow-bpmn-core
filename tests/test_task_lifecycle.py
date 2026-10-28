@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy import func, select
+
 from m8flow_core.models.bpmn_process import BpmnProcessModel
 from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
@@ -18,7 +20,7 @@ from m8flow_core.services.authorization import ROLE_USER, ensure_v1_role
 from m8flow_core.services.tasks import claim_task, complete_task, get_pending_tasks
 
 
-def test_task_claim_complete_and_future_task_upsert(session) -> None:
+def test_task_claim_and_complete_marks_future_task_completed(session) -> None:
     tenant = M8flowTenantModel(id="tenant-a", name="Tenant A", slug="tenant-a")
     service_url = f"http://localhost:7002/realms/{tenant.slug}"
     user = UserModel(
@@ -124,28 +126,40 @@ def test_task_claim_complete_and_future_task_upsert(session) -> None:
             m8f_tenant_id=tenant.id,
             work_item_id=human_task.id,
             user_id=user.id,
-            added_by="manual",
+            added_by=None,
         )
     )
     session.flush()
 
-    FutureTaskModel.insert_or_update(
-        session,
-        tenant_id=tenant.id,
-        guid=task.guid,
-        run_at=datetime.fromtimestamp(100, UTC),
-        queued_to_run_at=datetime.fromtimestamp(90, UTC),
+    session.add(
+        FutureTaskModel(
+            m8f_tenant_id=tenant.id,
+            guid=task.guid,
+            run_at=datetime.fromtimestamp(100, UTC),
+            queued_to_run_at=datetime.fromtimestamp(90, UTC),
+            updated_at=datetime.fromtimestamp(100, UTC),
+        )
     )
-    FutureTaskModel.insert_or_update(
-        session,
-        tenant_id=tenant.id,
-        guid=task.guid,
-        run_at=datetime.fromtimestamp(200, UTC),
-        queued_to_run_at=datetime.fromtimestamp(150, UTC),
-    )
+    session.flush()
 
+    seeded_future_task = session.get(FutureTaskModel, task.guid)
+    assert seeded_future_task is not None
+    seeded_future_task.run_at = datetime.fromtimestamp(200, UTC)
+    seeded_future_task.queued_to_run_at = datetime.fromtimestamp(150, UTC)
+    session.flush()
+
+    future_task_count = session.scalar(
+        select(func.count())
+        .select_from(FutureTaskModel)
+        .where(FutureTaskModel.guid == task.guid)
+    )
+    assert future_task_count == 1
     future_task = session.get(FutureTaskModel, task.guid)
     assert future_task is not None
+    assert future_task.queued_to_run_at is not None
+    assert future_task.run_at.tzinfo is not None
+    assert future_task.queued_to_run_at.tzinfo is not None
+    assert future_task.updated_at.tzinfo is not None
     assert future_task.run_at.timestamp() == 200
     assert future_task.queued_to_run_at.timestamp() == 150
     assert future_task.completed is False

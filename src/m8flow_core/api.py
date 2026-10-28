@@ -78,6 +78,7 @@ from m8flow_core.services.connector_proxy_service_tasks import (
     build_connector_proxy_service_task_registry,
     fetch_connector_proxy_command_definitions,
 )
+from m8flow_core.services.lane_assignment import resolve_lane_assignment_id
 from m8flow_core.services.process_instances import (
     create_process_instance,
     error_process_instance,
@@ -121,7 +122,6 @@ from m8flow_core.services.tasks import (
 )
 from m8flow_core.services.workflow_runtime import (
     advance_process_instance_workflow,
-    resolve_lane_assignment_id,
 )
 
 

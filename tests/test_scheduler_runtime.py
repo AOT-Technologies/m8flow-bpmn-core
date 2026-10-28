@@ -522,6 +522,11 @@ def test_run_due_scheduler_jobs_executes_timer_start_job(
     assert process_instances[0].status == api.ProcessInstanceStatus.user_input_required
     assert len(process_instances[0].work_items) == 1
     assert process_instances[0].work_items[0].task_status == "READY"
+    assert process_instances[0].work_items[0].lane_assignment_id is None
+    assert [
+        (assignment.user_id, assignment.added_by)
+        for assignment in process_instances[0].work_items[0].work_item_users
+    ] == [(process_instances[0].process_initiator_id, "process_initiator")]
     assert scheduler_jobs == []
 
 
@@ -1149,7 +1154,7 @@ def _seed_errored_retry_process(
             m8f_tenant_id=tenant.id,
             work_item_id=human_task.id,
             user_id=user.id,
-            added_by="manual",
+            added_by=None,
         )
     )
     session.flush()

@@ -71,13 +71,15 @@ Preserve these unless you are intentionally making a contract change:
 - User-scoped operations must validate tenant membership before acting.
 - `CompleteTaskCommand.task_payload` persists as process metadata.
 - Lane assignment is driven by BPMN lane metadata plus
-  `properties_json["lane_owners"]` on the stored definition.
+  `properties_json["lane_owners"]` and `properties_json["initiator_lanes"]`
+  on the stored definition.
 - Every timestamp is a timezone-aware UTC `datetime`; no public parameter or
   column uses epoch seconds.
 - Claim state lives in `work_item`; authorization targets are exact
   `(resource_type, resource_id)` pairs; JSON payloads are keyed by tenant and
   hash.
-- Released Alembic migrations are immutable.
+- Released Alembic migrations are immutable; the 1.0 baseline `k2l3m4n5o6p7`
+  is the first.
 
 When changing the public contract, update all of:
 

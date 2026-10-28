@@ -34,7 +34,7 @@ _EXPORT_MODULES = {
     "initialize_process_instance_workflow": (
         "m8flow_core.services.workflow_runtime"
     ),
-    "resolve_lane_assignment_id": "m8flow_core.services.workflow_runtime",
+    "resolve_lane_assignment_id": "m8flow_core.services.lane_assignment",
     "claim_task": "m8flow_core.services.tasks",
     "complete_task": "m8flow_core.services.tasks",
     "assign_pending_tasks_for_user": "m8flow_core.services.tasks",

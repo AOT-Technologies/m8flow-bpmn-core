@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -20,13 +21,14 @@ from m8flow_core.models import (
     BpmnProcessDefinitionModel,
     BpmnProcessModel,
     FutureTaskModel,
-    HumanTaskModel,
-    HumanTaskUserModel,
     M8flowTenantModel,
     ProcessInstanceModel,
     TaskDefinitionModel,
     TaskModel,
     UserModel,
+    WorkItemModel,
+    WorkItemUserAddedBy,
+    WorkItemUserModel,
 )
 from m8flow_core.services.authorization import (
     ROLE_ADMIN,
@@ -44,6 +46,8 @@ CONDITIONAL_APPROVAL_LANE_OWNERS = {
     "Manager": ["manager", "reviewer"],
     "Finance": ["james"],
 }
+INITIATOR_LANE = "Requester"
+FOREIGN_TENANT_MESSAGE = "does not belong to tenant"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,8 +59,8 @@ class TenantValidationContext:
     foreign_user: UserModel
     process_instance: ProcessInstanceModel
     foreign_process_instance: ProcessInstanceModel
-    human_task: HumanTaskModel
-    foreign_human_task: HumanTaskModel
+    work_item: WorkItemModel
+    foreign_work_item: WorkItemModel
 
 
 def test_postgres_supports_transaction_control_and_pending_tasks(
@@ -70,7 +74,7 @@ def test_postgres_supports_transaction_control_and_pending_tasks(
             expire_on_commit=False,
         )
         try:
-            tenant, user, process_instance, human_task = _seed_runtime_rows(
+            tenant, user, process_instance, work_item = _seed_runtime_rows(
                 session
             )
 
@@ -81,13 +85,28 @@ def test_postgres_supports_transaction_control_and_pending_tasks(
                     user_id=user.id,
                 ),
             )
-            assert [task.id for task in pending_tasks] == [human_task.id]
+            assert [task.id for task in pending_tasks] == [work_item.id]
+
+            # Derived work item properties lazy-load the task row, so read
+            # them through a Session bound to the same connection.
+            [session_task] = execute_query(
+                session,
+                GetPendingTasksQuery(
+                    tenant_id=tenant.id,
+                    user_id=user.id,
+                ),
+            )
+            assert session_task.task_name == "approve_invoice"
+            assert session_task.lane_name == INITIATOR_LANE
+            assert _assignment_summary(session_task) == [
+                (user.username, WorkItemUserAddedBy.process_initiator.value)
+            ]
 
             claimed_task = execute_command(
                 connection,
                 ClaimTaskCommand(
                     tenant_id=tenant.id,
-                    human_task_id=human_task.id,
+                    work_item_id=work_item.id,
                     user_id=user.id,
                 ),
             )
@@ -98,7 +117,7 @@ def test_postgres_supports_transaction_control_and_pending_tasks(
                 connection,
                 CompleteTaskCommand(
                     tenant_id=tenant.id,
-                    human_task_id=human_task.id,
+                    work_item_id=work_item.id,
                     user_id=user.id,
                 ),
             )
@@ -120,7 +139,7 @@ def test_postgres_supports_transaction_control_and_pending_tasks(
                 session.close()
 
     with Session(bind=postgres_engine) as verify_session:
-        with pytest.raises(LookupError):
+        with pytest.raises(api.NotFoundError):
             execute_query(
                 verify_session,
                 GetProcessInstanceQuery(
@@ -146,7 +165,7 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             dmn_xml = CONDITIONAL_APPROVAL_DMN_PATH.read_text(encoding="utf-8")
 
             definition = api.execute_command(
-                connection,
+                session,
                 api.ImportBpmnProcessDefinitionCommand(
                     tenant_id=tenant.id,
                     bpmn_identifier="conditional-approval-poc",
@@ -162,22 +181,22 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
                     },
                     bpmn_version_control_type="git",
                     bpmn_version_control_identifier="main",
-                    created_at_in_seconds=90,
-                    updated_at_in_seconds=90,
+                    created_at=datetime.fromtimestamp(90, UTC),
+                    updated_at=datetime.fromtimestamp(90, UTC),
                 ),
             )
             assert definition.source_bpmn_xml == bpmn_xml
             assert definition.source_dmn_xml == dmn_xml
 
             process_instance = api.execute_command(
-                connection,
+                session,
                 api.InitializeProcessInstanceFromDefinitionCommand(
                     tenant_id=tenant.id,
                     bpmn_process_definition_id=definition.id,
                     process_initiator_id=users["requester"].id,
                     summary="Postgres conditional approval smoke test",
                     process_version=1,
-                    started_at_in_seconds=100,
+                    started_at=datetime.fromtimestamp(100, UTC),
                     bpmn_process_id=CONDITIONAL_APPROVAL_PROCESS_ID,
                 ),
             )
@@ -194,7 +213,7 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             assert persisted_process_instance.workflow_state_json is not None
 
             submit_tasks = api.execute_query(
-                connection,
+                session,
                 api.GetPendingTasksQuery(
                     tenant_id=tenant.id,
                     user_id=users["requester"].id,
@@ -211,22 +230,25 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             assert submit_task.json_metadata["lane_owners"] == (
                 CONDITIONAL_APPROVAL_LANE_OWNERS
             )
+            assert _assignment_summary(submit_task) == [
+                ("requester", WorkItemUserAddedBy.process_initiator.value)
+            ]
 
             api.execute_command(
-                connection,
+                session,
                 api.ClaimTaskCommand(
                     tenant_id=tenant.id,
-                    human_task_id=submit_task.id,
+                    work_item_id=submit_task.id,
                     user_id=users["requester"].id,
                 ),
             )
             api.execute_command(
-                connection,
+                session,
                 api.CompleteTaskCommand(
                     tenant_id=tenant.id,
-                    human_task_id=submit_task.id,
+                    work_item_id=submit_task.id,
                     user_id=users["requester"].id,
-                    completed_at_in_seconds=110,
+                    completed_at=datetime.fromtimestamp(110, UTC),
                     task_payload={
                         "expense_date": "2026-04-01",
                         "expense_type": "Travel",
@@ -237,7 +259,7 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             )
 
             process_instance = api.execute_query(
-                connection,
+                session,
                 api.GetProcessInstanceQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
@@ -246,17 +268,17 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             assert process_instance.status == (
                 api.ProcessInstanceStatus.user_input_required
             )
-            assert process_instance.end_in_seconds is None
+            assert process_instance.ended_at is None
 
             manager_tasks = api.execute_query(
-                connection,
+                session,
                 api.GetPendingTasksQuery(
                     tenant_id=tenant.id,
                     user_id=users["manager"].id,
                 ),
             )
             reviewer_tasks = api.execute_query(
-                connection,
+                session,
                 api.GetPendingTasksQuery(
                     tenant_id=tenant.id,
                     user_id=users["reviewer"].id,
@@ -270,34 +292,38 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             assert manager_task.task_title == "Review Expense Claim"
             assert manager_task.lane_name == "Manager"
             assert manager_task.lane_assignment_id == api.resolve_lane_assignment_id(
-                "Manager"
+                "Manager", tenant.id
             )
             assert manager_task.json_metadata is not None
             assert manager_task.json_metadata["lane_owners"] == (
                 CONDITIONAL_APPROVAL_LANE_OWNERS
             )
+            assert _assignment_summary(manager_task) == [
+                ("manager", WorkItemUserAddedBy.lane_owner.value),
+                ("reviewer", WorkItemUserAddedBy.lane_owner.value),
+            ]
 
             api.execute_command(
-                connection,
+                session,
                 api.ClaimTaskCommand(
                     tenant_id=tenant.id,
-                    human_task_id=manager_task.id,
+                    work_item_id=manager_task.id,
                     user_id=users["manager"].id,
                 ),
             )
             api.execute_command(
-                connection,
+                session,
                 api.CompleteTaskCommand(
                     tenant_id=tenant.id,
-                    human_task_id=manager_task.id,
+                    work_item_id=manager_task.id,
                     user_id=users["manager"].id,
-                    completed_at_in_seconds=120,
+                    completed_at=datetime.fromtimestamp(120, UTC),
                     task_payload={"decision": "Approved"},
                 ),
             )
 
             process_instance = api.execute_query(
-                connection,
+                session,
                 api.GetProcessInstanceQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
@@ -306,10 +332,10 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             assert process_instance.status == (
                 api.ProcessInstanceStatus.user_input_required
             )
-            assert process_instance.end_in_seconds is None
+            assert process_instance.ended_at is None
 
             finance_tasks = api.execute_query(
-                connection,
+                session,
                 api.GetPendingTasksQuery(
                     tenant_id=tenant.id,
                     user_id=users["finance"].id,
@@ -321,44 +347,47 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             assert finance_task.task_title == "Review Expense Claim (Finance)"
             assert finance_task.lane_name == "Finance"
             assert finance_task.lane_assignment_id == api.resolve_lane_assignment_id(
-                "Finance"
+                "Finance", tenant.id
             )
             assert finance_task.json_metadata is not None
             assert finance_task.json_metadata["lane_owners"] == (
                 CONDITIONAL_APPROVAL_LANE_OWNERS
             )
+            assert _assignment_summary(finance_task) == [
+                ("james", WorkItemUserAddedBy.lane_owner.value)
+            ]
 
             api.execute_command(
-                connection,
+                session,
                 api.ClaimTaskCommand(
                     tenant_id=tenant.id,
-                    human_task_id=finance_task.id,
+                    work_item_id=finance_task.id,
                     user_id=users["finance"].id,
                 ),
             )
             api.execute_command(
-                connection,
+                session,
                 api.CompleteTaskCommand(
                     tenant_id=tenant.id,
-                    human_task_id=finance_task.id,
+                    work_item_id=finance_task.id,
                     user_id=users["finance"].id,
-                    completed_at_in_seconds=130,
+                    completed_at=datetime.fromtimestamp(130, UTC),
                     task_payload={"finance_decision": "Approved"},
                 ),
             )
 
             process_instance = api.execute_query(
-                connection,
+                session,
                 api.GetProcessInstanceQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
                 ),
             )
             assert process_instance.status == api.ProcessInstanceStatus.complete
-            assert process_instance.end_in_seconds == 130
+            assert process_instance.ended_at == datetime.fromtimestamp(130, UTC)
 
             metadata_rows = api.execute_query(
-                connection,
+                session,
                 api.GetProcessInstanceMetadataQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
@@ -376,7 +405,7 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
             }
 
             events = api.execute_query(
-                connection,
+                session,
                 api.GetProcessInstanceEventsQuery(
                     tenant_id=tenant.id,
                     process_instance_id=process_instance.id,
@@ -396,7 +425,7 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
                 session.close()
 
     with Session(bind=postgres_engine) as verify_session:
-        with pytest.raises(LookupError):
+        with pytest.raises(api.NotFoundError):
             api.execute_query(
                 verify_session,
                 api.GetProcessInstanceQuery(
@@ -435,7 +464,7 @@ def test_postgres_rejects_cross_tenant_workflow_and_task_actions(
                 context.foreign_process_instance.id
             ]
 
-            with pytest.raises(PermissionError, match="does not belong to tenant"):
+            with pytest.raises(api.AuthorizationError, match=FOREIGN_TENANT_MESSAGE):
                 api.execute_command(
                     connection,
                     api.InitializeProcessInstanceFromDefinitionCommand(
@@ -446,7 +475,7 @@ def test_postgres_rejects_cross_tenant_workflow_and_task_actions(
                         process_initiator_id=context.foreign_user.id,
                         summary="Cross-tenant workflow start should fail",
                         process_version=1,
-                        started_at_in_seconds=100,
+                        started_at=datetime.fromtimestamp(100, UTC),
                         bpmn_process_id="invoice_approval_poc",
                     ),
                 )
@@ -458,7 +487,7 @@ def test_postgres_rejects_cross_tenant_workflow_and_task_actions(
                     user_id=context.tenant_user.id,
                 ),
             )
-            assert [task.id for task in pending_tasks] == [context.human_task.id]
+            assert [task.id for task in pending_tasks] == [context.work_item.id]
 
             observer_pending_tasks = api.execute_query(
                 connection,
@@ -477,10 +506,10 @@ def test_postgres_rejects_cross_tenant_workflow_and_task_actions(
                 ),
             )
             assert [task.id for task in foreign_pending_tasks] == [
-                context.foreign_human_task.id
+                context.foreign_work_item.id
             ]
 
-            with pytest.raises(PermissionError, match="does not belong to tenant"):
+            with pytest.raises(api.AuthorizationError, match=FOREIGN_TENANT_MESSAGE):
                 api.execute_query(
                     connection,
                     api.GetPendingTasksQuery(
@@ -489,12 +518,12 @@ def test_postgres_rejects_cross_tenant_workflow_and_task_actions(
                     ),
                 )
 
-            with pytest.raises(PermissionError, match="does not belong to tenant"):
+            with pytest.raises(api.AuthorizationError, match=FOREIGN_TENANT_MESSAGE):
                 api.execute_command(
                     connection,
                     api.ClaimTaskCommand(
                         tenant_id=context.tenant.id,
-                        human_task_id=context.human_task.id,
+                        work_item_id=context.work_item.id,
                         user_id=context.foreign_user.id,
                     ),
                 )
@@ -503,21 +532,21 @@ def test_postgres_rejects_cross_tenant_workflow_and_task_actions(
                 connection,
                 api.ClaimTaskCommand(
                     tenant_id=context.tenant.id,
-                    human_task_id=context.human_task.id,
+                    work_item_id=context.work_item.id,
                     user_id=context.tenant_user.id,
                 ),
             )
             assert claimed_task.actual_owner_id == context.tenant_user.id
             assert claimed_task.task_status == "CLAIMED"
 
-            with pytest.raises(PermissionError, match="does not belong to tenant"):
+            with pytest.raises(api.AuthorizationError, match=FOREIGN_TENANT_MESSAGE):
                 api.execute_command(
                     connection,
                     api.CompleteTaskCommand(
                         tenant_id=context.tenant.id,
-                        human_task_id=context.human_task.id,
+                        work_item_id=context.work_item.id,
                         user_id=context.foreign_user.id,
-                        completed_at_in_seconds=120,
+                        completed_at=datetime.fromtimestamp(120, UTC),
                     ),
                 )
 
@@ -525,9 +554,9 @@ def test_postgres_rejects_cross_tenant_workflow_and_task_actions(
                 connection,
                 api.CompleteTaskCommand(
                     tenant_id=context.tenant.id,
-                    human_task_id=context.human_task.id,
+                    work_item_id=context.work_item.id,
                     user_id=context.tenant_user.id,
-                    completed_at_in_seconds=130,
+                    completed_at=datetime.fromtimestamp(130, UTC),
                 ),
             )
             assert completed_task.completed is True
@@ -539,9 +568,16 @@ def test_postgres_rejects_cross_tenant_workflow_and_task_actions(
                 session.close()
 
 
+def _assignment_summary(work_item: WorkItemModel) -> list[tuple[str, str | None]]:
+    return sorted(
+        (assignment.user.username, assignment.added_by)
+        for assignment in work_item.work_item_users
+    )
+
+
 def _seed_runtime_rows(
     session: Session,
-) -> tuple[M8flowTenantModel, UserModel, ProcessInstanceModel, HumanTaskModel]:
+) -> tuple[M8flowTenantModel, UserModel, ProcessInstanceModel, WorkItemModel]:
     tenant = M8flowTenantModel(
         id=f"tenant-{uuid4().hex[:8]}",
         name="Postgres Tenant",
@@ -554,8 +590,8 @@ def _seed_runtime_rows(
         service=service_url,
         service_id="alice-keycloak",
         display_name="Alice",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all([tenant, user])
     session.flush()
@@ -568,15 +604,14 @@ def _seed_runtime_rows(
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash="def-single",
-        full_process_model_hash="def-full",
+        process_xml_digest="postgres-smoke-test-digest",
         bpmn_identifier="postgres-smoke-test",
         bpmn_name="Postgres Smoke Test",
-        properties_json={"version": 1},
+        properties_json={"version": 1, "initiator_lanes": [INITIATOR_LANE]},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=900,
-        updated_at_in_seconds=900,
+        created_at=datetime.fromtimestamp(900, UTC),
+        updated_at=datetime.fromtimestamp(900, UTC),
     )
     session.add(definition)
     session.flush()
@@ -600,8 +635,8 @@ def _seed_runtime_rows(
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at_in_seconds=950,
-        updated_at_in_seconds=950,
+        created_at=datetime.fromtimestamp(950, UTC),
+        updated_at=datetime.fromtimestamp(950, UTC),
     )
     session.add(task_definition)
     session.flush()
@@ -614,8 +649,8 @@ def _seed_runtime_rows(
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at_in_seconds=1_000,
-        updated_at_in_seconds=1_000,
+        created_at=datetime.fromtimestamp(1_000, UTC),
+        updated_at=datetime.fromtimestamp(1_000, UTC),
     )
     session.add(process_instance)
     session.flush()
@@ -627,7 +662,7 @@ def _seed_runtime_rows(
         process_instance_id=process_instance.id,
         task_definition_id=task_definition.id,
         state="READY",
-        properties_json={"task_spec": "Approve Invoice"},
+        properties_json={"task_spec": "Approve Invoice", "lane": INITIATOR_LANE},
         json_data_hash="json-hash-a",
         python_env_data_hash="env-hash-a",
     )
@@ -637,44 +672,37 @@ def _seed_runtime_rows(
     future_task = FutureTaskModel(
         m8f_tenant_id=tenant.id,
         guid=task.guid,
-        run_at_in_seconds=1_050,
-        queued_to_run_at_in_seconds=1_025,
-        updated_at_in_seconds=1_050,
+        run_at=datetime.fromtimestamp(1_050, UTC),
+        queued_to_run_at=datetime.fromtimestamp(1_025, UTC),
+        updated_at=datetime.fromtimestamp(1_050, UTC),
     )
     session.add(future_task)
     session.flush()
 
-    human_task = HumanTaskModel(
+    work_item = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
         task_guid=task.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
-        task_name="approve_invoice",
-        task_title="Approve Invoice",
-        task_type="User Task",
         task_status="READY",
-        process_model_display_name=process_instance.process_model_display_name,
-        bpmn_process_identifier=process_instance.process_model_identifier,
-        lane_name="process initiator",
-        json_metadata={"priority": "high"},
         completed=False,
     )
-    session.add(human_task)
+    session.add(work_item)
     session.flush()
 
     session.add(
-        HumanTaskUserModel(
+        WorkItemUserModel(
             m8f_tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=work_item.id,
             user_id=user.id,
-            added_by="process_initiator",
+            added_by=WorkItemUserAddedBy.process_initiator,
         )
     )
     session.flush()
 
-    return tenant, user, process_instance, human_task
+    return tenant, user, process_instance, work_item
 
 
 def _seed_conditional_approval_users(
@@ -693,8 +721,8 @@ def _seed_conditional_approval_users(
             service=service_url,
             service_id="admin-keycloak",
             display_name="Admin",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "manager": UserModel(
             username="manager",
@@ -702,8 +730,8 @@ def _seed_conditional_approval_users(
             service=service_url,
             service_id="manager-keycloak",
             display_name="Manager",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "reviewer": UserModel(
             username="reviewer",
@@ -711,8 +739,8 @@ def _seed_conditional_approval_users(
             service=service_url,
             service_id="reviewer-keycloak",
             display_name="Reviewer",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "finance": UserModel(
             username="james",
@@ -720,8 +748,8 @@ def _seed_conditional_approval_users(
             service=service_url,
             service_id="finance-keycloak",
             display_name="Finance",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
         "requester": UserModel(
             username="requester",
@@ -729,8 +757,8 @@ def _seed_conditional_approval_users(
             service=service_url,
             service_id="requester-keycloak",
             display_name="Requester",
-            created_at_in_seconds=1,
-            updated_at_in_seconds=1,
+            created_at=datetime.fromtimestamp(1, UTC),
+            updated_at=datetime.fromtimestamp(1, UTC),
         ),
     }
     session.add(tenant)
@@ -782,8 +810,8 @@ def _seed_tenant_validation_context(
         service=tenant_service,
         service_id=f"tenant-user-{uuid4().hex[:8]}-keycloak",
         display_name="Tenant User",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     tenant_observer = UserModel(
         username=f"tenant-observer-{uuid4().hex[:8]}",
@@ -791,8 +819,8 @@ def _seed_tenant_validation_context(
         service=tenant_service,
         service_id=f"tenant-observer-{uuid4().hex[:8]}-keycloak",
         display_name="Tenant Observer",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     foreign_user = UserModel(
         username=tenant_user.username,
@@ -800,8 +828,8 @@ def _seed_tenant_validation_context(
         service=foreign_service,
         service_id=f"foreign-user-{uuid4().hex[:8]}-keycloak",
         display_name="Foreign User",
-        created_at_in_seconds=1,
-        updated_at_in_seconds=1,
+        created_at=datetime.fromtimestamp(1, UTC),
+        updated_at=datetime.fromtimestamp(1, UTC),
     )
     session.add_all(
         [tenant, foreign_tenant, tenant_user, tenant_observer, foreign_user]
@@ -816,8 +844,7 @@ def _seed_tenant_validation_context(
 
     definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=tenant.id,
-        single_process_hash="validation-single",
-        full_process_model_hash="validation-full",
+        process_xml_digest="validation-digest",
         bpmn_identifier="tenant-validation-process",
         bpmn_name="Tenant Validation Process",
         source_bpmn_xml=VALIDATION_BPMN_PATH.read_text(encoding="utf-8"),
@@ -825,8 +852,8 @@ def _seed_tenant_validation_context(
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=900,
-        updated_at_in_seconds=900,
+        created_at=datetime.fromtimestamp(900, UTC),
+        updated_at=datetime.fromtimestamp(900, UTC),
     )
     session.add(definition)
     session.flush()
@@ -850,8 +877,8 @@ def _seed_tenant_validation_context(
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at_in_seconds=950,
-        updated_at_in_seconds=950,
+        created_at=datetime.fromtimestamp(950, UTC),
+        updated_at=datetime.fromtimestamp(950, UTC),
     )
     session.add(task_definition)
     session.flush()
@@ -864,16 +891,15 @@ def _seed_tenant_validation_context(
         bpmn_process_definition_id=definition.id,
         bpmn_process_id=bpmn_process.id,
         status="running",
-        created_at_in_seconds=1_000,
-        updated_at_in_seconds=1_000,
+        created_at=datetime.fromtimestamp(1_000, UTC),
+        updated_at=datetime.fromtimestamp(1_000, UTC),
     )
     session.add(process_instance)
     session.flush()
 
     foreign_definition = BpmnProcessDefinitionModel(
         m8f_tenant_id=foreign_tenant.id,
-        single_process_hash="validation-single-foreign",
-        full_process_model_hash="validation-full-foreign",
+        process_xml_digest="validation-digest-foreign",
         bpmn_identifier="tenant-validation-process-foreign",
         bpmn_name="Tenant Validation Foreign Process",
         source_bpmn_xml=VALIDATION_BPMN_PATH.read_text(encoding="utf-8"),
@@ -881,8 +907,8 @@ def _seed_tenant_validation_context(
         properties_json={"version": 1},
         bpmn_version_control_type="git",
         bpmn_version_control_identifier="main",
-        created_at_in_seconds=901,
-        updated_at_in_seconds=901,
+        created_at=datetime.fromtimestamp(901, UTC),
+        updated_at=datetime.fromtimestamp(901, UTC),
     )
     session.add(foreign_definition)
     session.flush()
@@ -906,8 +932,8 @@ def _seed_tenant_validation_context(
         bpmn_name="Approve Invoice",
         typename="UserTask",
         properties_json={"allowGuest": False},
-        created_at_in_seconds=951,
-        updated_at_in_seconds=951,
+        created_at=datetime.fromtimestamp(951, UTC),
+        updated_at=datetime.fromtimestamp(951, UTC),
     )
     session.add(foreign_task_definition)
     session.flush()
@@ -920,8 +946,8 @@ def _seed_tenant_validation_context(
         bpmn_process_definition_id=foreign_definition.id,
         bpmn_process_id=foreign_bpmn_process.id,
         status="running",
-        created_at_in_seconds=1_001,
-        updated_at_in_seconds=1_001,
+        created_at=datetime.fromtimestamp(1_001, UTC),
+        updated_at=datetime.fromtimestamp(1_001, UTC),
     )
     session.add(foreign_process_instance)
     session.flush()
@@ -940,32 +966,25 @@ def _seed_tenant_validation_context(
     session.add(foreign_task)
     session.flush()
 
-    foreign_human_task = HumanTaskModel(
+    foreign_work_item = WorkItemModel(
         m8f_tenant_id=foreign_tenant.id,
         process_instance_id=foreign_process_instance.id,
         task_guid=foreign_task.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
-        task_name="approve_invoice",
-        task_title="Approve Invoice",
-        task_type="UserTask",
         task_status="READY",
-        process_model_display_name=foreign_process_instance.process_model_display_name,
-        bpmn_process_identifier=foreign_process_instance.process_model_identifier,
-        lane_name="process initiator",
-        json_metadata={"priority": "high"},
         completed=False,
     )
-    session.add(foreign_human_task)
+    session.add(foreign_work_item)
     session.flush()
 
     session.add(
-        HumanTaskUserModel(
+        WorkItemUserModel(
             m8f_tenant_id=foreign_tenant.id,
-            human_task_id=foreign_human_task.id,
+            work_item_id=foreign_work_item.id,
             user_id=foreign_user.id,
-            added_by="process_initiator",
+            added_by=WorkItemUserAddedBy.process_initiator,
         )
     )
     session.flush()
@@ -984,32 +1003,25 @@ def _seed_tenant_validation_context(
     session.add(task)
     session.flush()
 
-    human_task = HumanTaskModel(
+    work_item = WorkItemModel(
         m8f_tenant_id=tenant.id,
         process_instance_id=process_instance.id,
         task_guid=task.guid,
         lane_assignment_id=None,
         completed_by_user_id=None,
         actual_owner_id=None,
-        task_name="approve_invoice",
-        task_title="Approve Invoice",
-        task_type="UserTask",
         task_status="READY",
-        process_model_display_name=process_instance.process_model_display_name,
-        bpmn_process_identifier=process_instance.process_model_identifier,
-        lane_name="process initiator",
-        json_metadata={"priority": "high"},
         completed=False,
     )
-    session.add(human_task)
+    session.add(work_item)
     session.flush()
 
     session.add(
-        HumanTaskUserModel(
+        WorkItemUserModel(
             m8f_tenant_id=tenant.id,
-            human_task_id=human_task.id,
+            work_item_id=work_item.id,
             user_id=tenant_user.id,
-            added_by="process_initiator",
+            added_by=WorkItemUserAddedBy.process_initiator,
         )
     )
     session.flush()
@@ -1022,6 +1034,6 @@ def _seed_tenant_validation_context(
         foreign_user=foreign_user,
         process_instance=process_instance,
         foreign_process_instance=foreign_process_instance,
-        human_task=human_task,
-        foreign_human_task=foreign_human_task,
+        work_item=work_item,
+        foreign_work_item=foreign_work_item,
     )

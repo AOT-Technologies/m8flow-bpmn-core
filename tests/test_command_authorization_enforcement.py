@@ -534,7 +534,7 @@ def _seed_task_context(session: Session) -> TaskContext:
             m8f_tenant_id=tenant.id,
             work_item_id=human_task.id,
             user_id=actor.id,
-            added_by="manual",
+            added_by=None,
         )
     )
     session.flush()

@@ -29,7 +29,9 @@ Run `make help` to list every `make` target.
 ## Install the Git hooks
 
 The repository's pre-commit hooks run Ruff, mypy, and Bandit before each
-commit. To install them, run the following command:
+commit. A `commit-msg` hook rejects any commit without a `Signed-off-by`
+trailer, so commit with `git commit -s`. To install the hooks, run the
+following command:
 
 ```bash
 make precommit-install
@@ -106,9 +108,19 @@ make test-integration
 
 To use a different image, set `M8FLOW_TEST_POSTGRES_IMAGE`.
 
-One more test upgrades a PostgreSQL database through every migration and
-checks timestamps after 2038. It runs only when
+Without Docker, point `M8FLOW_TEST_POSTGRES_URL` at a dedicated, empty
+PostgreSQL database instead. The test then skips the container, creates the
+schema in that database, and drops it again at the end:
+
+```bash
+M8FLOW_TEST_POSTGRES_URL=postgresql+psycopg://<user>:<password>@localhost:5432/m8flow_core_test \
+    make test-integration
+```
+
+The baseline migration tests also run against PostgreSQL when
 `M8FLOW_POSTGRES_UPGRADE_DATABASE_URL` points at a dedicated, empty database.
+They apply the baseline, compare the result with the models, check timestamps
+after 2038, and downgrade again. Without the variable they run on SQLite only.
 
 ## Run the sample app tests
 
@@ -127,17 +139,20 @@ uv run --locked pytest
 
 ## Apply migrations
 
-The Alembic migrations in `alembic/versions/` create the library's tables in
-the database set by `M8FLOW_DATABASE_URL`, which defaults to a SQLite file
-named `m8flow.db`. To apply them, run the following command:
+The Alembic history in `alembic/versions/` starts at the 1.0 baseline,
+`k2l3m4n5o6p7`, and creates the library's tables in the database set by
+`M8FLOW_DATABASE_URL`, which defaults to a SQLite file named `m8flow.db`. To
+apply it, and to confirm the database matches the models, run the following
+commands:
 
 ```bash
 uv run alembic upgrade head
+uv run alembic check
 ```
 
-If you change a model in `src/m8flow_core/models/`, add a migration in
-the same pull request. Never edit a released migration: the history is
-immutable, so old revisions keep the names of the schema they changed.
+If you change a model in `src/m8flow_core/models/`, add a migration on top of
+the current head in the same pull request. Never edit a released migration,
+including the baseline: released revisions are immutable.
 
 ## Build the package
 
