@@ -5,7 +5,9 @@ development environment, the checks a pull request must pass, and the rules
 for changing the library.
 
 By contributing, you agree that your contributions are licensed under the
-project's [Apache License 2.0](LICENSE).
+project's [Apache License 2.0](LICENSE), and you certify the
+[Developer Certificate of Origin (DCO) 1.1](https://developercertificate.org/)
+for each commit. See [Sign off your commits](#sign-off-your-commits).
 
 Read the [code of conduct](CODE_OF_CONDUCT.md) before you take part.
 
@@ -32,8 +34,29 @@ uv sync
 make precommit-install
 ```
 
-The hooks run Ruff, mypy, and Bandit before each commit. [Develop and test](docs/how-to/develop-and-test.md)
+The hooks run Ruff, mypy, and Bandit before each commit, and check each
+commit message for a `Signed-off-by` trailer. [Develop and test](docs/how-to/develop-and-test.md)
 covers the full workflow, including PostgreSQL test runs and migrations.
+
+## Sign off your commits
+
+Every commit must include a `Signed-off-by` trailer that matches the commit
+author or committer. The trailer certifies the
+[Developer Certificate of Origin (DCO) 1.1](https://developercertificate.org/):
+that you have the right to submit the change under the project's license.
+
+To sign off a new commit, the most recent commit, or every commit on your
+branch, use the matching command:
+
+```bash
+git commit -s -m "Describe the change"
+git commit --amend -s
+git rebase --signoff origin/main
+```
+
+The `commit-msg` hook that `make precommit-install` installs rejects a commit
+without a trailer. A DCO workflow checks every commit in a pull request and in
+the merge queue.
 
 ## Checks
 
@@ -48,7 +71,8 @@ your change before you open a pull request:
 | Unit tests, on SQLite and PostgreSQL | `make test` |
 | Sample app lint and tests | See [Run the sample app tests](docs/how-to/develop-and-test.md#run-the-sample-app-tests) |
 
-CI also runs CodeQL, a Gitleaks secret scan, and dependency review. Before a
+CI also runs the DCO sign-off check, CodeQL, a Gitleaks secret scan, and
+dependency review. Before a
 release, also run `make test-integration` (needs Docker) and `make package`.
 Maintainers publish releases as described in
 [Publish a release](docs/how-to/publish-a-release.md).

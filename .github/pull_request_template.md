@@ -15,6 +15,7 @@
 
 ## Checklist
 
+- [ ] Every commit has a `Signed-off-by` trailer (`git commit -s`)
 - [ ] `make lint` and `make test` pass
 - [ ] Tests cover the change
 - [ ] If the public API changed: `api.py`, `docs/reference/api.md`, and `tests/test_api_surface.py` are updated
