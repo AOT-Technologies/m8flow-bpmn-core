@@ -29,7 +29,9 @@ Run `make help` to list every `make` target.
 ## Install the Git hooks
 
 The repository's pre-commit hooks run Ruff, mypy, and Bandit before each
-commit. To install them, run the following command:
+commit. A `commit-msg` hook rejects any commit without a `Signed-off-by`
+trailer, so commit with `git commit -s`. To install the hooks, run the
+following command:
 
 ```bash
 make precommit-install
