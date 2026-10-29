@@ -1,0 +1,199 @@
+# Pinned action SHAs are immutable; update intentionally when upgrading.
+# yamllint disable rule:line-length
+name: GitHub Release
+
+# Step 2 of a release, after "Create release tag". Creates the GitHub Release
+# for the tag, with the version's CHANGELOG section as notes and an SBOM of the
+# runtime dependencies attached. Next, run "Publish m8flow-core" from the tag
+# on the release channel; it refuses to publish until this release exists.
+#
+# The release is published, not a draft: publish.yml looks it up by tag, and
+# the API doesn't resolve draft releases by tag. Review the notes in the
+# CHANGELOG pull request instead.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without a leading v (for example, 1.0.1)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  CYCLONEDX_BOM_VERSION: "7.5.0"
+
+jobs:
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+
+    steps:
+      - name: Validate version format
+        shell: python
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          import os
+          import re
+          import sys
+
+          version = os.environ["INPUT_VERSION"].strip()
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+              print(f"ERROR: {version!r} is not MAJOR.MINOR.PATCH", file=sys.stderr)
+              sys.exit(1)
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"RELEASE_VERSION={version}\n")
+
+          print(f"Preparing release {version}")
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.RELEASE_VERSION }}
+          fetch-depth: 0
+
+      - name: Check release does not already exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${RELEASE_VERSION}" >/dev/null 2>&1; then
+            echo "ERROR: a GitHub Release for ${RELEASE_VERSION} already exists" >&2
+            exit 1
+          fi
+          echo "No release for ${RELEASE_VERSION} yet"
+
+      - name: Validate version and extract release notes
+        shell: python
+        run: |
+          import os
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          version = os.environ["RELEASE_VERSION"]
+          project = tomllib.loads(
+              pathlib.Path("pyproject.toml").read_text(encoding="utf-8")
+          ).get("project", {})
+          actual = project.get("version")
+          if actual != version:
+              print(
+                  f"ERROR: pyproject.toml at tag {version} declares {actual!r}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          changelog = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          heading = re.compile(
+              rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}\s*$",
+              re.MULTILINE,
+          )
+          match = heading.search(changelog)
+          if not match:
+              print(f"ERROR: CHANGELOG.md is missing a dated [{version}] section", file=sys.stderr)
+              sys.exit(1)
+
+          link_pattern = rf"^\[{re.escape(version)}\]: .+/releases/tag/{re.escape(version)}\s*$"
+          if not re.search(link_pattern, changelog, re.MULTILINE):
+              print(f"ERROR: CHANGELOG.md is missing the [{version}] release link", file=sys.stderr)
+              sys.exit(1)
+
+          # The section body runs to the next "## [" heading or the link block.
+          rest = changelog[match.end():]
+          end = re.search(r"^(## \[|\[[^\]]+\]: )", rest, re.MULTILINE)
+          body = rest[: end.start()] if end else rest
+          if not body.strip():
+              print(f"ERROR: the [{version}] CHANGELOG section is empty", file=sys.stderr)
+              sys.exit(1)
+
+          pathlib.Path("release-notes.md").write_text(body.strip() + "\n", encoding="utf-8")
+          print(f"PASS: version and changelog are ready for {version}")
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      # Every optional extra, no dev tools: the set users can install. The SBOM
+      # tool runs from its own environment so it doesn't list itself.
+      - name: Generate SBOM
+        run: |
+          uv sync --locked --all-extras --no-dev
+          uvx --from "cyclonedx-bom==${CYCLONEDX_BOM_VERSION}" \
+            cyclonedx-py environment --output-file sbom.json .venv
+          echo "SBOM generated: sbom.json"
+
+      - name: Create release manifest
+        shell: python
+        run: |
+          import datetime
+          import hashlib
+          import os
+          import pathlib
+          import subprocess
+          import tomllib
+
+          version = os.environ["RELEASE_VERSION"]
+          dist_name = tomllib.loads(
+              pathlib.Path("pyproject.toml").read_text(encoding="utf-8")
+          )["project"]["name"]
+          # The tagged commit that was checked out, not GITHUB_SHA: on
+          # workflow_dispatch that is the tip of the "Use workflow from" ref.
+          sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          sbom_sha = hashlib.sha256(pathlib.Path("sbom.json").read_bytes()).hexdigest()
+          created = datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat()
+
+          lines = [
+              f"Release: {version}",
+              f"Distribution: {dist_name}",
+              f"Commit: {sha}",
+              f"Created: {created}",
+              "Changelog: CHANGELOG.md",
+              "SBOM: sbom.json",
+              f"SBOM-SHA256: {sbom_sha}",
+              "",
+              f"Publish: run publish.yml from tag {version} on the release channel.",
+              "",
+          ]
+          pathlib.Path("release-manifest.txt").write_text("\n".join(lines), encoding="utf-8")
+
+      - name: Upload release artifacts to workflow run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: github-release-${{ env.RELEASE_VERSION }}
+          path: |
+            release-notes.md
+            release-manifest.txt
+            sbom.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${RELEASE_VERSION}" \
+            --verify-tag \
+            --title "${RELEASE_VERSION}" \
+            --notes-file release-notes.md \
+            sbom.json \
+            release-manifest.txt
+
+      - name: Report GitHub Release
+        run: |
+          {
+            echo "### GitHub Release"
+            echo "- Tag: ${RELEASE_VERSION}"
+            echo "- Commit: $(git rev-parse HEAD)"
+            echo "- Assets: sbom.json, release-manifest.txt"
+            echo "- Next: run \"Publish m8flow-core\" from tag ${RELEASE_VERSION} on the release channel"
+          } >> "$GITHUB_STEP_SUMMARY"
