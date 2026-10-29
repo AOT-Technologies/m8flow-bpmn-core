@@ -139,13 +139,16 @@ jobs:
           import hashlib
           import os
           import pathlib
+          import subprocess
           import tomllib
 
           version = os.environ["RELEASE_VERSION"]
           dist_name = tomllib.loads(
               pathlib.Path("pyproject.toml").read_text(encoding="utf-8")
           )["project"]["name"]
-          sha = os.environ["GITHUB_SHA"]
+          # The tagged commit that was checked out, not GITHUB_SHA: on
+          # workflow_dispatch that is the tip of the "Use workflow from" ref.
+          sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
           sbom_sha = hashlib.sha256(pathlib.Path("sbom.json").read_bytes()).hexdigest()
           created = datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat()
 
