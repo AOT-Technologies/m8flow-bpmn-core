@@ -1,87 +1,68 @@
-# Scheduler
+# Sample app scheduler
 
-This document explains how timer polling works in `sample_app/`.
+The sample app fires timers with a polling loop that runs inside the web app
+process, not with Celery. This page explains how the loop starts, what each
+pass does, and its trade-offs.
 
-## Overview
+The loop is in `src/m8flow_sample_app/scheduler.py`, and `app.py` starts it.
 
-The sample app does not use Celery for timers. It runs a simple host-managed
-polling loop inside the web-app process.
+## Startup
 
-That polling loop lives in
-`sample_app/src/m8flow_sample_app/scheduler.py` and is started from
-`sample_app/src/m8flow_sample_app/app.py`.
+When the app starts, it does the following:
 
-## Startup Flow
-
-When the app starts:
-
-1. `create_app()` loads settings.
-2. It runs migrations.
+1. `create_app()` loads the settings.
+2. It runs the migrations.
 3. It seeds tenants, users, permissions, and default secrets.
-4. If `scheduler_enabled` is `true`, it creates a
-   `SampleAppSchedulerPoller`.
-5. The poller starts a daemon background thread.
+4. If `M8FLOW_SAMPLE_APP_SCHEDULER_ENABLED` is `true`, it creates a
+   `SampleAppSchedulerPoller`, which starts a daemon background thread.
 
-## Polling Loop
+## Each pass
 
-The background thread runs `_run_loop()` in `SampleAppSchedulerPoller`.
+The thread runs `SampleAppSchedulerPoller._run_loop()`. Each pass does the
+following:
 
-Each iteration:
-
-1. Reuses a SQLAlchemy engine for the configured database.
+1. Reuses one SQLAlchemy engine for the configured database.
 2. Opens a session through `session_scope(...)`.
-3. Installs the sample-app service-task registry with
+3. Installs the app's service task registry with
    `api.service_task_registry_scope(...)`.
 4. Calls `api.run_due_scheduler_jobs(...)`.
-5. Sleeps for `poll_seconds`.
+5. Sleeps for the poll interval.
 
-The app itself is not deciding which timer is due. The library does that by
-reading the persisted `scheduler_job` rows from the database.
+The app doesn't decide which timer is due. The library reads the stored
+`scheduler_job` rows and runs whatever is due: timer starts, intermediate and
+boundary timers, and scheduled retries, for any workflow.
 
-## What Gets Polled
+## Why it installs the service task registry
 
-The loop is generic. It does not only poll one workflow.
+A timer can advance a workflow into a service task. The loop installs the same
+registry that request handlers use, so a connector behaves the same whether
+the workflow moved because a user completed a task or because a timer fired.
 
-It allows the library to process any due scheduler jobs for the configured
-database, including:
+## Settings
 
-- intermediate timer jobs
-- boundary timer jobs
-- timer-start jobs
-- scheduled retry jobs
+The loop reads the following settings:
 
-## Why The Service Task Registry Is Installed
+| Variable | Default |
+|---|---|
+| `M8FLOW_SAMPLE_APP_SCHEDULER_ENABLED` | `true` |
+| `M8FLOW_SAMPLE_APP_SCHEDULER_POLL_SECONDS` | `1.0` |
+| `M8FLOW_SAMPLE_APP_SCHEDULER_BATCH_LIMIT` | `100` |
+| `M8FLOW_SAMPLE_APP_SCHEDULER_WORKER_ID` | `sample-app-inline-scheduler` |
 
-Timer advancement can continue a workflow into service-task execution.
+## Trade-offs
 
-Because of that, the scheduler loop wraps the cycle in the same
-service-task-registry scope used by request-driven workflow actions. This keeps
-connector behavior consistent whether the workflow advances:
+The loop is deliberately minimal:
 
-- from a user claiming or completing a task
-- or from a timer firing in the background poller
+- It runs in one process, inside the web app.
+- It's enough to demonstrate timers in a host application, but it isn't a
+  production multi-worker scheduler.
+- While the app is down, nothing is polled.
 
-## Configuration
+Because timer state is stored in the database, the loop picks up any overdue
+jobs when the app starts again.
 
-The relevant settings are:
+## Related pages
 
-- `M8FLOW_SAMPLE_APP_SCHEDULER_ENABLED`
-  - default: `true`
-- `M8FLOW_SAMPLE_APP_SCHEDULER_POLL_SECONDS`
-  - default: `1.0`
-- `M8FLOW_SAMPLE_APP_SCHEDULER_BATCH_LIMIT`
-  - default: `100`
-- `M8FLOW_SAMPLE_APP_SCHEDULER_WORKER_ID`
-  - default: `sample-app-inline-scheduler`
-
-## Current Tradeoffs
-
-This is intentionally simple.
-
-- It is single-process and in-process.
-- It is enough for demonstrating host-app timer support.
-- It is not a production-grade multi-worker scheduler.
-- If the sample app process is down, no polling happens until it starts again.
-
-The important part for this sample app is that timer state is persisted in the
-database, so the scheduler can resume work after restart.
+- [Sample app architecture](README.md)
+- [Run timers and scheduled retries](../../docs/how-to/run-timers-and-retries.md)
+- [About scheduling](../../docs/explanation/scheduling.md)

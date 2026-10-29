@@ -1,1 +1,1 @@
-"""Workflow-facing helpers that call m8flow-bpmn-core."""
+"""Workflow-facing helpers that call m8flow-core."""

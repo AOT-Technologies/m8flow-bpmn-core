@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
-from m8flow_bpmn_core.models.bpmn_process_definition import (
+from m8flow_core.models.bpmn_process import BpmnProcessModel
+from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.task import TaskModel
-from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.work_item import WorkItemModel
-from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
-from m8flow_bpmn_core.services.tasks import get_pending_tasks
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.task import TaskModel
+from m8flow_core.models.task_definition import TaskDefinitionModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.work_item import WorkItemModel
+from m8flow_core.models.work_item_user import WorkItemUserModel
+from m8flow_core.services.tasks import get_pending_tasks
 
 
 def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tenant(
@@ -204,19 +204,19 @@ def test_get_pending_tasks_returns_only_uncompleted_tasks_for_the_requested_tena
                 m8f_tenant_id=tenant_a.id,
                 work_item_id=pending_human_task.id,
                 user_id=user.id,
-                added_by="manual",
+                added_by=None,
             ),
             WorkItemUserModel(
                 m8f_tenant_id=tenant_a.id,
                 work_item_id=completed_human_task.id,
                 user_id=user.id,
-                added_by="manual",
+                added_by=None,
             ),
             WorkItemUserModel(
                 m8f_tenant_id=tenant_b.id,
                 work_item_id=other_tenant_human_task.id,
                 user_id=user.id,
-                added_by="manual",
+                added_by=None,
             ),
         ]
     )

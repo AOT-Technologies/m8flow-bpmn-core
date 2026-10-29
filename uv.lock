@@ -482,8 +482,8 @@ wheels = [
 ]
 
 [[package]]
-name = "m8flow-bpmn-core"
-version = "0.2.1"
+name = "m8flow-core"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },

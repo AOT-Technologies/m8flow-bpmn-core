@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select
 
-from m8flow_bpmn_core.models.principal import PrincipalModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel, TenantStatus
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.utils.keycloak import (
+from m8flow_core.models.principal import PrincipalModel
+from m8flow_core.models.tenant import M8flowTenantModel, TenantStatus
+from m8flow_core.models.user import UserModel
+from m8flow_core.utils.keycloak import (
     KeycloakUserSpec,
     ProvisionedKeycloakOrganization,
     ProvisionedKeycloakSharedRealmContext,
@@ -353,7 +353,7 @@ def _configure_sqlite_database(
 
 
 def _prime_m8flow_import_order() -> None:
-    importlib.import_module("m8flow_bpmn_core.api")
+    importlib.import_module("m8flow_core.api")
 
 
 def _shared_audit_context() -> SharedM8flowAuditContext:

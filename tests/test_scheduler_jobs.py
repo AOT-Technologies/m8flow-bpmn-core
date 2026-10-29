@@ -5,15 +5,15 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core.errors import ValidationError
-from m8flow_bpmn_core.models.bpmn_process_definition import (
+from m8flow_core.errors import ValidationError
+from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel, SchedulerJobType
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.services.scheduler_jobs import (
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.scheduler_job import SchedulerJobModel, SchedulerJobType
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.services.scheduler_jobs import (
     build_scheduler_job_key,
     delete_scheduler_job,
     list_due_scheduler_jobs,

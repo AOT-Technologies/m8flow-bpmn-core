@@ -9,21 +9,21 @@ import pytest
 from flask.testing import FlaskClient
 from sqlalchemy import select
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.models.bpmn_process_definition import (
+from m8flow_core import api
+from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.work_item import WorkItemModel
-from m8flow_bpmn_core.models.json_data import JsonDataModel
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventModel
-from m8flow_bpmn_core.models.process_instance_metadata import (
+from m8flow_core.models.work_item import WorkItemModel
+from m8flow_core.models.json_data import JsonDataModel
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.process_instance_event import ProcessInstanceEventModel
+from m8flow_core.models.process_instance_metadata import (
     ProcessInstanceMetadataModel,
 )
-from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
-from m8flow_bpmn_core.models.process_instance import WORKFLOW_STATE_JSON_DATA_KEY
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
+from m8flow_core.models.scheduler_job import SchedulerJobModel
+from m8flow_core.models.process_instance import WORKFLOW_STATE_JSON_DATA_KEY
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
 from m8flow_sample_app.app import create_app
 from m8flow_sample_app.db import session_scope
 from m8flow_sample_app.models import SecretModel

@@ -7,20 +7,20 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
-from m8flow_bpmn_core.models.bpmn_process_definition import (
+from m8flow_core import api
+from m8flow_core.models.bpmn_process import BpmnProcessModel
+from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
-from m8flow_bpmn_core.models.task import TaskModel
-from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.work_item import WorkItemModel
-from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
-from m8flow_bpmn_core.services.authorization import (
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.scheduler_job import SchedulerJobModel
+from m8flow_core.models.task import TaskModel
+from m8flow_core.models.task_definition import TaskDefinitionModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.work_item import WorkItemModel
+from m8flow_core.models.work_item_user import WorkItemUserModel
+from m8flow_core.services.authorization import (
     ROLE_ADMIN,
     ROLE_USER,
     ensure_v1_role,
@@ -534,7 +534,7 @@ def _seed_task_context(session: Session) -> TaskContext:
             m8f_tenant_id=tenant.id,
             work_item_id=human_task.id,
             user_id=actor.id,
-            added_by="manual",
+            added_by=None,
         )
     )
     session.flush()

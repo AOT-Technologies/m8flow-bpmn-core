@@ -4,13 +4,13 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.process_instance_event import ProcessInstanceEventModel
-from m8flow_bpmn_core.models.process_instance_metadata import (
+from m8flow_core import api
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.process_instance_event import ProcessInstanceEventModel
+from m8flow_core.models.process_instance_metadata import (
     ProcessInstanceMetadataModel,
 )
-from m8flow_bpmn_core.models.work_item import WorkItemModel
+from m8flow_core.models.work_item import WorkItemModel
 
 
 @dataclass(frozen=True, slots=True)

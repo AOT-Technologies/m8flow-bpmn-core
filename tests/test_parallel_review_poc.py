@@ -29,12 +29,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.services.authorization import (
+from m8flow_core import api
+from m8flow_core.models.future_task import FutureTaskModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.services.authorization import (
     ROLE_ADMIN,
     ROLE_MANAGER,
     ROLE_USER,
@@ -338,6 +340,90 @@ def test_parallel_review_join_does_not_advance_until_both_branches_complete(
         ),
     )
     assert [t.task_name for t in compliance_pending] == ["Activity_compliance_review"]
+
+
+def test_runtime_materialization_keeps_one_future_task_row_per_task(
+    session: Session,
+) -> None:
+    scenario = SCENARIOS[0]
+    context = _seed_parallel_review_workflow(session, scenario)
+    tenant_id = context.tenant.id
+
+    submit_task = api.execute_query(
+        session,
+        api.GetPendingTasksQuery(
+            tenant_id=tenant_id,
+            user_id=context.users["requester"].id,
+        ),
+    )[0]
+    _assert_materialized_future_task(
+        session,
+        tenant_id=tenant_id,
+        guid=submit_task.task_guid,
+        materialized_at=datetime.fromtimestamp(100, UTC),
+    )
+
+    api.execute_command(
+        session,
+        api.ClaimTaskCommand(
+            tenant_id=tenant_id,
+            work_item_id=submit_task.id,
+            user_id=context.users["requester"].id,
+        ),
+    )
+    api.execute_command(
+        session,
+        api.CompleteTaskCommand(
+            tenant_id=tenant_id,
+            work_item_id=submit_task.id,
+            user_id=context.users["requester"].id,
+            completed_at=datetime.fromtimestamp(110, UTC),
+            task_payload={"order_amount": "1000"},
+        ),
+    )
+
+    submit_future_task = session.get(FutureTaskModel, submit_task.task_guid)
+    assert submit_future_task is not None
+    assert submit_future_task.completed is True
+
+    for reviewer in ("finance_user", "compliance_user"):
+        review_task = api.execute_query(
+            session,
+            api.GetPendingTasksQuery(
+                tenant_id=tenant_id,
+                user_id=context.users[reviewer].id,
+            ),
+        )[0]
+        _assert_materialized_future_task(
+            session,
+            tenant_id=tenant_id,
+            guid=review_task.task_guid,
+            materialized_at=datetime.fromtimestamp(110, UTC),
+        )
+
+
+def _assert_materialized_future_task(
+    session: Session,
+    *,
+    tenant_id: str,
+    guid: str,
+    materialized_at: datetime,
+) -> None:
+    row_count = session.scalar(
+        select(func.count())
+        .select_from(FutureTaskModel)
+        .where(FutureTaskModel.guid == guid)
+    )
+    assert row_count == 1
+    future_task = session.get(FutureTaskModel, guid)
+    assert future_task is not None
+    assert future_task.m8f_tenant_id == tenant_id
+    assert future_task.queued_to_run_at is not None
+    assert future_task.run_at == future_task.queued_to_run_at
+    assert future_task.run_at.timestamp() == materialized_at.timestamp()
+    assert future_task.updated_at.timestamp() == materialized_at.timestamp()
+    assert future_task.completed is False
+    assert future_task.archived_for_process_instance_status is False
 
 
 def _seed_parallel_review_workflow(

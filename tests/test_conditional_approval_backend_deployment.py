@@ -8,20 +8,20 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
-from m8flow_bpmn_core.models.bpmn_process_definition import (
+from m8flow_core.models.bpmn_process import BpmnProcessModel
+from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.process_model_bpmn_version import (
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.process_model_bpmn_version import (
     ProcessModelBpmnVersionModel,
 )
-from m8flow_bpmn_core.models.task import TaskModel
-from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.work_item import WorkItemModel
-from m8flow_bpmn_core.utils.keycloak import (
+from m8flow_core.models.task import TaskModel
+from m8flow_core.models.task_definition import TaskDefinitionModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.work_item import WorkItemModel
+from m8flow_core.utils.keycloak import (
     ProvisionedKeycloakOrganization,
     ProvisionedKeycloakSharedRealmContext,
     ProvisionedKeycloakUser,
@@ -31,7 +31,7 @@ EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"
 if str(EXAMPLES_DIR) not in sys.path:
     sys.path.insert(0, str(EXAMPLES_DIR))
 
-import conditional_approval_poc as example_poc  # noqa: E402
+import conditional_approval as example_poc  # noqa: E402
 
 
 def _lane_owners() -> dict[str, list[str]]:
@@ -334,9 +334,9 @@ def test_confirm_shared_database_usage_uses_docker_fallback_when_declined(
         "_start_temporary_postgres_container",
         lambda: (
             "postgresql+psycopg://postgres@127.0.0.1:55432/"
-            "m8flow_bpmn_core_example",
+            "m8flow_core_example",
             "postgresql+psycopg://postgres@127.0.0.1:55432/"
-            "m8flow_bpmn_core_example",
+            "m8flow_core_example",
             "temp-container-123",
         ),
     )
@@ -350,9 +350,9 @@ def test_confirm_shared_database_usage_uses_docker_fallback_when_declined(
 
     assert selection == (
         "postgresql+psycopg://postgres@127.0.0.1:55432/"
-        "m8flow_bpmn_core_example",
+        "m8flow_core_example",
         "postgresql+psycopg://postgres@127.0.0.1:55432/"
-        "m8flow_bpmn_core_example",
+        "m8flow_core_example",
         "temp-container-123",
     )
 
@@ -367,13 +367,13 @@ def test_confirm_shared_database_usage_skips_prompt_for_non_shared_database(
     )
 
     selection = example_poc._confirm_shared_database_usage(
-        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_bpmn_core_example",
-        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_bpmn_core_example",
+        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_core_example",
+        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_core_example",
     )
 
     assert selection == (
-        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_bpmn_core_example",
-        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_bpmn_core_example",
+        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_core_example",
+        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_core_example",
         None,
     )
     assert prompts == []

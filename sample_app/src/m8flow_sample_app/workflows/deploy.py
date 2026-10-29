@@ -8,8 +8,8 @@ from typing import Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.models.bpmn_process_definition import (
+from m8flow_core import api
+from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
 from m8flow_sample_app.db import sample_app_root

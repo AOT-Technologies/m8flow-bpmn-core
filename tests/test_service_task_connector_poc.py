@@ -7,13 +7,13 @@ from urllib.request import urlopen
 
 import pytest
 
-from m8flow_bpmn_core import api
+from m8flow_core import api
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"
 if str(EXAMPLES_DIR) not in sys.path:
     sys.path.insert(0, str(EXAMPLES_DIR))
 
-import service_task_connector_poc as example_poc  # noqa: E402
+import service_task_connector as example_poc  # noqa: E402
 
 
 class _FakeConnector:
@@ -187,7 +187,7 @@ def test_deploy_service_task_definition_to_m8flow_backend_warns_on_refresh(
     assert refreshed_deployment.deployed is True
     assert refreshed_deployment.already_deployed is False
     assert any(
-        "Refreshed the existing service-task connector POC deployment"
+        "Refreshed the existing service-task connector example deployment"
         in warning
         for warning in refreshed_deployment.warnings
     )

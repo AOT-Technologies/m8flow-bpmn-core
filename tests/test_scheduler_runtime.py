@@ -7,27 +7,27 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
-from m8flow_bpmn_core.models.bpmn_process_definition import (
+from m8flow_core import api
+from m8flow_core.models.bpmn_process import BpmnProcessModel
+from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.future_task import FutureTaskModel
-from m8flow_bpmn_core.models.json_data import JsonDataModel
-from m8flow_bpmn_core.models.process_instance import (
+from m8flow_core.models.future_task import FutureTaskModel
+from m8flow_core.models.json_data import JsonDataModel
+from m8flow_core.models.process_instance import (
     WORKFLOW_STATE_JSON_DATA_KEY,
     ProcessInstanceModel,
 )
-from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
-from m8flow_bpmn_core.models.task import TaskModel
-from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.work_item import WorkItemModel
-from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
-from m8flow_bpmn_core.services import scheduler_runtime
-from m8flow_bpmn_core.services.authorization import ROLE_ADMIN, ensure_v1_role
-from m8flow_bpmn_core.services.scheduler_jobs import (
+from m8flow_core.models.scheduler_job import SchedulerJobModel
+from m8flow_core.models.task import TaskModel
+from m8flow_core.models.task_definition import TaskDefinitionModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.work_item import WorkItemModel
+from m8flow_core.models.work_item_user import WorkItemUserModel
+from m8flow_core.services import scheduler_runtime
+from m8flow_core.services.authorization import ROLE_ADMIN, ensure_v1_role
+from m8flow_core.services.scheduler_jobs import (
     delete_scheduler_job,
     upsert_scheduler_job,
 )
@@ -522,6 +522,11 @@ def test_run_due_scheduler_jobs_executes_timer_start_job(
     assert process_instances[0].status == api.ProcessInstanceStatus.user_input_required
     assert len(process_instances[0].work_items) == 1
     assert process_instances[0].work_items[0].task_status == "READY"
+    assert process_instances[0].work_items[0].lane_assignment_id is None
+    assert [
+        (assignment.user_id, assignment.added_by)
+        for assignment in process_instances[0].work_items[0].work_item_users
+    ] == [(process_instances[0].process_initiator_id, "process_initiator")]
     assert scheduler_jobs == []
 
 
@@ -1149,7 +1154,7 @@ def _seed_errored_retry_process(
             m8f_tenant_id=tenant.id,
             work_item_id=human_task.id,
             user_id=user.id,
-            added_by="manual",
+            added_by=None,
         )
     )
     session.flush()

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from m8flow_bpmn_core.services.work_items import (
+from m8flow_core.services.work_items import (
     WorkItemState,
     claim_work_item,
     close_work_item,

@@ -29,12 +29,12 @@ function Resolve-UvExecutable {
 }
 
 $resolvedDist = Resolve-Path -Path $DistDirectory -ErrorAction Stop
-$wheel = Get-ChildItem -Path $resolvedDist -Filter "m8flow_bpmn_core-*.whl" |
+$wheel = Get-ChildItem -Path $resolvedDist -Filter "m8flow_core-*.whl" |
     Sort-Object LastWriteTimeUtc -Descending |
     Select-Object -First 1
 
 if ($null -eq $wheel) {
-    throw "No m8flow_bpmn_core wheel was found in '$resolvedDist'. Run 'uv build' from the repo root first."
+    throw "No m8flow_core wheel was found in '$resolvedDist'. Run 'uv build' from the repo root first."
 }
 
 if (-not (Test-Path -LiteralPath $VendorDirectory)) {
@@ -43,10 +43,10 @@ if (-not (Test-Path -LiteralPath $VendorDirectory)) {
 
 $destination = Join-Path $VendorDirectory $wheel.Name
 
-Get-ChildItem -Path $VendorDirectory -Filter "m8flow_bpmn_core-*.whl" -ErrorAction SilentlyContinue |
+Get-ChildItem -Path $VendorDirectory -Filter "m8flow_core-*.whl" -ErrorAction SilentlyContinue |
     Remove-Item -Force -ErrorAction SilentlyContinue
 
-$legacyWheelPath = Join-Path $VendorDirectory "m8flow_bpmn_core.whl"
+$legacyWheelPath = Join-Path $VendorDirectory "m8flow_core.whl"
 if (Test-Path -LiteralPath $legacyWheelPath) {
     Remove-Item -LiteralPath $legacyWheelPath -Force
 }

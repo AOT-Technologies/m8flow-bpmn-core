@@ -5,7 +5,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, pool
 
-from m8flow_bpmn_core.models import Base as BpmnCoreBase
+from m8flow_core.models import Base as BpmnCoreBase
 from m8flow_sample_app.models import SampleAppBase
 from m8flow_sample_app.settings import get_settings
 

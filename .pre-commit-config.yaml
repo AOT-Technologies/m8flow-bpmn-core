@@ -13,7 +13,7 @@ repos:
         entry: uv run --locked mypy
         language: system
         pass_filenames: false
-        files: ^src/m8flow_bpmn_core/
+        files: ^src/m8flow_core/
 
       - id: bandit
         name: Bandit

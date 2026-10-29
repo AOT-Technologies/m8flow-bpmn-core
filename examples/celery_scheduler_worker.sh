@@ -167,36 +167,36 @@ resolve_celery_runner() {
 
 configure_environment() {
   if [[ -n "$BROKER_URL" ]]; then
-    export M8FLOW_BPMN_CORE_CELERY_BROKER_URL="$BROKER_URL"
-  elif [[ -z "${M8FLOW_BPMN_CORE_CELERY_BROKER_URL:-}" && -z "${M8FLOW_BACKEND_CELERY_BROKER_URL:-}" ]]; then
-    export M8FLOW_BPMN_CORE_CELERY_BROKER_URL="redis://localhost:6848/0"
+    export M8FLOW_CORE_CELERY_BROKER_URL="$BROKER_URL"
+  elif [[ -z "${M8FLOW_CORE_CELERY_BROKER_URL:-}" && -z "${M8FLOW_BACKEND_CELERY_BROKER_URL:-}" ]]; then
+    export M8FLOW_CORE_CELERY_BROKER_URL="redis://localhost:6848/0"
   fi
 
   if [[ -n "$RESULT_BACKEND" ]]; then
-    export M8FLOW_BPMN_CORE_CELERY_RESULT_BACKEND="$RESULT_BACKEND"
-  elif [[ -z "${M8FLOW_BPMN_CORE_CELERY_RESULT_BACKEND:-}" && -z "${M8FLOW_BACKEND_CELERY_RESULT_BACKEND:-}" ]]; then
-    if [[ -n "${M8FLOW_BPMN_CORE_CELERY_BROKER_URL:-}" ]]; then
-      export M8FLOW_BPMN_CORE_CELERY_RESULT_BACKEND="$M8FLOW_BPMN_CORE_CELERY_BROKER_URL"
+    export M8FLOW_CORE_CELERY_RESULT_BACKEND="$RESULT_BACKEND"
+  elif [[ -z "${M8FLOW_CORE_CELERY_RESULT_BACKEND:-}" && -z "${M8FLOW_BACKEND_CELERY_RESULT_BACKEND:-}" ]]; then
+    if [[ -n "${M8FLOW_CORE_CELERY_BROKER_URL:-}" ]]; then
+      export M8FLOW_CORE_CELERY_RESULT_BACKEND="$M8FLOW_CORE_CELERY_BROKER_URL"
     fi
   fi
 
   if [[ -n "$DATABASE_URL" ]]; then
-    export M8FLOW_BPMN_CORE_CELERY_DATABASE_URL="$DATABASE_URL"
-  elif [[ -z "${M8FLOW_BPMN_CORE_CELERY_DATABASE_URL:-}" && -z "${M8FLOW_EXAMPLE_DATABASE_URL:-}" && -z "${M8FLOW_DATABASE_URL:-}" ]]; then
-    export M8FLOW_BPMN_CORE_CELERY_DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:6843/postgres?connect_timeout=1"
+    export M8FLOW_CORE_CELERY_DATABASE_URL="$DATABASE_URL"
+  elif [[ -z "${M8FLOW_CORE_CELERY_DATABASE_URL:-}" && -z "${M8FLOW_EXAMPLE_DATABASE_URL:-}" && -z "${M8FLOW_DATABASE_URL:-}" ]]; then
+    export M8FLOW_CORE_CELERY_DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:6843/postgres?connect_timeout=1"
   fi
 
   if [[ -n "$QUEUE_NAME" ]]; then
-    export M8FLOW_BPMN_CORE_CELERY_QUEUE="$QUEUE_NAME"
-  elif [[ -z "${M8FLOW_BPMN_CORE_CELERY_QUEUE:-}" ]]; then
-    export M8FLOW_BPMN_CORE_CELERY_QUEUE="m8flow-bpmn-core-poc"
+    export M8FLOW_CORE_CELERY_QUEUE="$QUEUE_NAME"
+  elif [[ -z "${M8FLOW_CORE_CELERY_QUEUE:-}" ]]; then
+    export M8FLOW_CORE_CELERY_QUEUE="m8flow-core-poc"
   fi
 
   if [[ -n "$TENANT_ID" ]]; then
-    export M8FLOW_BPMN_CORE_CELERY_TENANT_ID="$TENANT_ID"
+    export M8FLOW_CORE_CELERY_TENANT_ID="$TENANT_ID"
   fi
 
-  export M8FLOW_BPMN_CORE_CELERY_POLL_SECONDS="$POLL_SECONDS"
+  export M8FLOW_CORE_CELERY_POLL_SECONDS="$POLL_SECONDS"
 }
 
 cleanup() {
@@ -208,13 +208,13 @@ cleanup() {
 }
 
 start_beat() {
-  BEAT_STDOUT_PATH="$(mktemp "${TMPDIR:-/tmp}/m8flow-bpmn-core-celery-beat.XXXXXX.out.log")"
-  BEAT_STDERR_PATH="$(mktemp "${TMPDIR:-/tmp}/m8flow-bpmn-core-celery-beat.XXXXXX.err.log")"
+  BEAT_STDOUT_PATH="$(mktemp "${TMPDIR:-/tmp}/m8flow-core-celery-beat.XXXXXX.out.log")"
+  BEAT_STDERR_PATH="$(mktemp "${TMPDIR:-/tmp}/m8flow-core-celery-beat.XXXXXX.err.log")"
   local beat_schedule_path
-  beat_schedule_path="$(mktemp "${TMPDIR:-/tmp}/m8flow-bpmn-core-celery-beat.XXXXXX.schedule")"
+  beat_schedule_path="$(mktemp "${TMPDIR:-/tmp}/m8flow-core-celery-beat.XXXXXX.schedule")"
 
   printf '%s\n' 'Status: starting a Celery beat helper...'
-  "${CELERY_RUNNER[@]}" -A examples.celery_scheduler_poc:celery_app beat \
+  "${CELERY_RUNNER[@]}" -A examples.celery_scheduler:celery_app beat \
     --loglevel "$LOG_LEVEL" \
     --schedule "$beat_schedule_path" \
     >"$BEAT_STDOUT_PATH" 2>"$BEAT_STDERR_PATH" &
@@ -250,29 +250,29 @@ main() {
   trap cleanup EXIT INT TERM
 
   printf '%s\n' 'Status: starting the Celery scheduler worker helper...'
-  printf '%s\n' 'Status: this script only runs the scheduler poller. Use celery_timer_poc.sh for the full workflow POC.'
-  printf 'Status: broker URL %s\n' "${M8FLOW_BPMN_CORE_CELERY_BROKER_URL:-${M8FLOW_BACKEND_CELERY_BROKER_URL:-}}"
-  printf 'Status: result backend %s\n' "${M8FLOW_BPMN_CORE_CELERY_RESULT_BACKEND:-${M8FLOW_BACKEND_CELERY_RESULT_BACKEND:-}}"
-  if [[ -n "${M8FLOW_BPMN_CORE_CELERY_DATABASE_URL:-}" ]]; then
-    printf 'Status: database URL %s\n' "$(m8f_mask_database_url "$M8FLOW_BPMN_CORE_CELERY_DATABASE_URL")"
+  printf '%s\n' 'Status: this script only runs the scheduler poller. Use celery_timer.sh for the full workflow example.'
+  printf 'Status: broker URL %s\n' "${M8FLOW_CORE_CELERY_BROKER_URL:-${M8FLOW_BACKEND_CELERY_BROKER_URL:-}}"
+  printf 'Status: result backend %s\n' "${M8FLOW_CORE_CELERY_RESULT_BACKEND:-${M8FLOW_BACKEND_CELERY_RESULT_BACKEND:-}}"
+  if [[ -n "${M8FLOW_CORE_CELERY_DATABASE_URL:-}" ]]; then
+    printf 'Status: database URL %s\n' "$(m8f_mask_database_url "$M8FLOW_CORE_CELERY_DATABASE_URL")"
   else
     printf '%s\n' 'Status: database URL inherited from M8FLOW_EXAMPLE_DATABASE_URL or M8FLOW_DATABASE_URL'
   fi
-  printf 'Status: queue %s\n' "$M8FLOW_BPMN_CORE_CELERY_QUEUE"
-  if [[ -n "${M8FLOW_BPMN_CORE_CELERY_TENANT_ID:-}" ]]; then
-    printf 'Status: tenant filter %s\n' "$M8FLOW_BPMN_CORE_CELERY_TENANT_ID"
+  printf 'Status: queue %s\n' "$M8FLOW_CORE_CELERY_QUEUE"
+  if [[ -n "${M8FLOW_CORE_CELERY_TENANT_ID:-}" ]]; then
+    printf 'Status: tenant filter %s\n' "$M8FLOW_CORE_CELERY_TENANT_ID"
   fi
-  printf 'Status: poll interval %ss\n' "$M8FLOW_BPMN_CORE_CELERY_POLL_SECONDS"
+  printf 'Status: poll interval %ss\n' "$M8FLOW_CORE_CELERY_POLL_SECONDS"
 
   if [[ "$SKIP_BEAT" -eq 0 ]]; then
     start_beat
   fi
 
   local worker_exit_code
-  if "${CELERY_RUNNER[@]}" -A examples.celery_scheduler_poc:celery_app worker \
+  if "${CELERY_RUNNER[@]}" -A examples.celery_scheduler:celery_app worker \
     --pool solo \
     --loglevel "$LOG_LEVEL" \
-    -Q "$M8FLOW_BPMN_CORE_CELERY_QUEUE"; then
+    -Q "$M8FLOW_CORE_CELERY_QUEUE"; then
     worker_exit_code=0
   else
     worker_exit_code=$?

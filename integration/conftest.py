@@ -12,24 +12,28 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from m8flow_bpmn_core.db import build_engine, create_schema
-from m8flow_bpmn_core.models import Base
+from m8flow_core.db import build_engine, create_schema
+from m8flow_core.models import Base
 
 POSTGRES_IMAGE = os.getenv("M8FLOW_TEST_POSTGRES_IMAGE", "postgres:16")
 POSTGRES_USER = os.getenv("M8FLOW_TEST_POSTGRES_USER", "postgres")
 POSTGRES_PASSWORD = os.getenv("M8FLOW_TEST_POSTGRES_PASSWORD", "postgres")
-POSTGRES_DB = os.getenv("M8FLOW_TEST_POSTGRES_DB", "m8flow_bpmn_core_test")
+POSTGRES_DB = os.getenv("M8FLOW_TEST_POSTGRES_DB", "m8flow_core_test")
+POSTGRES_URL = os.getenv("M8FLOW_TEST_POSTGRES_URL")
 
 
 @pytest.fixture(scope="session")
 def postgres_engine() -> Iterator[Engine]:
+    if POSTGRES_URL:
+        yield from _engine_for_existing_database(POSTGRES_URL)
+        return
     if shutil.which("docker") is None:
         pytest.skip("Docker CLI is required for the Postgres integration test")
     pytest.importorskip("psycopg")
     if not _docker_daemon_is_available():
         pytest.skip("Docker daemon is not available")
 
-    container_name = f"m8flow-bpmn-core-postgres-{uuid.uuid4().hex[:8]}"
+    container_name = f"m8flow-core-postgres-{uuid.uuid4().hex[:8]}"
     subprocess.run(
         [
             "docker",
@@ -73,6 +77,19 @@ def postgres_engine() -> Iterator[Engine]:
             capture_output=True,
             text=True,
         )
+
+
+def _engine_for_existing_database(database_url: str) -> Iterator[Engine]:
+    """Use a caller-provided, empty Postgres database instead of a container."""
+    pytest.importorskip("psycopg")
+    engine = build_engine(database_url)
+    try:
+        _wait_for_database(engine)
+        create_schema(engine)
+        yield engine
+    finally:
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
 
 
 def _docker_daemon_is_available() -> bool:

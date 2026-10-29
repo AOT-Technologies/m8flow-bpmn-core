@@ -22,40 +22,40 @@ if (-not (Test-Path $celeryExe)) {
 }
 
 if ($BrokerUrl) {
-    $env:M8FLOW_BPMN_CORE_CELERY_BROKER_URL = $BrokerUrl
+    $env:M8FLOW_CORE_CELERY_BROKER_URL = $BrokerUrl
 }
-elseif (-not $env:M8FLOW_BPMN_CORE_CELERY_BROKER_URL -and -not $env:M8FLOW_BACKEND_CELERY_BROKER_URL) {
-    $env:M8FLOW_BPMN_CORE_CELERY_BROKER_URL = "redis://localhost:6848/0"
+elseif (-not $env:M8FLOW_CORE_CELERY_BROKER_URL -and -not $env:M8FLOW_BACKEND_CELERY_BROKER_URL) {
+    $env:M8FLOW_CORE_CELERY_BROKER_URL = "redis://localhost:6848/0"
 }
 
 if ($ResultBackend) {
-    $env:M8FLOW_BPMN_CORE_CELERY_RESULT_BACKEND = $ResultBackend
+    $env:M8FLOW_CORE_CELERY_RESULT_BACKEND = $ResultBackend
 }
-elseif (-not $env:M8FLOW_BPMN_CORE_CELERY_RESULT_BACKEND -and -not $env:M8FLOW_BACKEND_CELERY_RESULT_BACKEND) {
-    if ($env:M8FLOW_BPMN_CORE_CELERY_BROKER_URL) {
-        $env:M8FLOW_BPMN_CORE_CELERY_RESULT_BACKEND = $env:M8FLOW_BPMN_CORE_CELERY_BROKER_URL
+elseif (-not $env:M8FLOW_CORE_CELERY_RESULT_BACKEND -and -not $env:M8FLOW_BACKEND_CELERY_RESULT_BACKEND) {
+    if ($env:M8FLOW_CORE_CELERY_BROKER_URL) {
+        $env:M8FLOW_CORE_CELERY_RESULT_BACKEND = $env:M8FLOW_CORE_CELERY_BROKER_URL
     }
 }
 
 if ($DatabaseUrl) {
-    $env:M8FLOW_BPMN_CORE_CELERY_DATABASE_URL = $DatabaseUrl
+    $env:M8FLOW_CORE_CELERY_DATABASE_URL = $DatabaseUrl
 }
-elseif (-not $env:M8FLOW_BPMN_CORE_CELERY_DATABASE_URL -and -not $env:M8FLOW_EXAMPLE_DATABASE_URL -and -not $env:M8FLOW_DATABASE_URL) {
-    $env:M8FLOW_BPMN_CORE_CELERY_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:6843/postgres?connect_timeout=1"
+elseif (-not $env:M8FLOW_CORE_CELERY_DATABASE_URL -and -not $env:M8FLOW_EXAMPLE_DATABASE_URL -and -not $env:M8FLOW_DATABASE_URL) {
+    $env:M8FLOW_CORE_CELERY_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:6843/postgres?connect_timeout=1"
 }
 
 if ($QueueName) {
-    $env:M8FLOW_BPMN_CORE_CELERY_QUEUE = $QueueName
+    $env:M8FLOW_CORE_CELERY_QUEUE = $QueueName
 }
-elseif (-not $env:M8FLOW_BPMN_CORE_CELERY_QUEUE) {
-    $env:M8FLOW_BPMN_CORE_CELERY_QUEUE = "m8flow-bpmn-core-poc"
+elseif (-not $env:M8FLOW_CORE_CELERY_QUEUE) {
+    $env:M8FLOW_CORE_CELERY_QUEUE = "m8flow-core-poc"
 }
 
 if ($TenantId) {
-    $env:M8FLOW_BPMN_CORE_CELERY_TENANT_ID = $TenantId
+    $env:M8FLOW_CORE_CELERY_TENANT_ID = $TenantId
 }
 
-$env:M8FLOW_BPMN_CORE_CELERY_POLL_SECONDS = $PollSeconds.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+$env:M8FLOW_CORE_CELERY_POLL_SECONDS = $PollSeconds.ToString([System.Globalization.CultureInfo]::InvariantCulture)
 
 function Get-MaskedDatabaseUrl {
     param(
@@ -70,35 +70,35 @@ $beatStdOutPath = $null
 $beatStdErrPath = $null
 
 Write-Host "Status: starting the Celery scheduler worker helper..."
-Write-Host "Status: this script only runs the scheduler poller. Use celery_timer_poc.ps1 for the full workflow POC."
-Write-Host "Status: broker URL $($env:M8FLOW_BPMN_CORE_CELERY_BROKER_URL)"
-Write-Host "Status: result backend $($env:M8FLOW_BPMN_CORE_CELERY_RESULT_BACKEND)"
-if ($env:M8FLOW_BPMN_CORE_CELERY_DATABASE_URL) {
-    Write-Host "Status: database URL $(Get-MaskedDatabaseUrl -DatabaseUrl $env:M8FLOW_BPMN_CORE_CELERY_DATABASE_URL)"
+Write-Host "Status: this script only runs the scheduler poller. Use celery_timer.ps1 for the full workflow example."
+Write-Host "Status: broker URL $($env:M8FLOW_CORE_CELERY_BROKER_URL)"
+Write-Host "Status: result backend $($env:M8FLOW_CORE_CELERY_RESULT_BACKEND)"
+if ($env:M8FLOW_CORE_CELERY_DATABASE_URL) {
+    Write-Host "Status: database URL $(Get-MaskedDatabaseUrl -DatabaseUrl $env:M8FLOW_CORE_CELERY_DATABASE_URL)"
 }
 else {
     Write-Host "Status: database URL inherited from M8FLOW_EXAMPLE_DATABASE_URL or M8FLOW_DATABASE_URL"
 }
-Write-Host "Status: queue $($env:M8FLOW_BPMN_CORE_CELERY_QUEUE)"
-if ($env:M8FLOW_BPMN_CORE_CELERY_TENANT_ID) {
-    Write-Host "Status: tenant filter $($env:M8FLOW_BPMN_CORE_CELERY_TENANT_ID)"
+Write-Host "Status: queue $($env:M8FLOW_CORE_CELERY_QUEUE)"
+if ($env:M8FLOW_CORE_CELERY_TENANT_ID) {
+    Write-Host "Status: tenant filter $($env:M8FLOW_CORE_CELERY_TENANT_ID)"
 }
-Write-Host "Status: poll interval $($env:M8FLOW_BPMN_CORE_CELERY_POLL_SECONDS)s"
+Write-Host "Status: poll interval $($env:M8FLOW_CORE_CELERY_POLL_SECONDS)s"
 
 try {
     if (-not $SkipBeat) {
         $beatStdOutPath = Join-Path ([System.IO.Path]::GetTempPath()) (
-            "m8flow-bpmn-core-celery-beat-$([Guid]::NewGuid().ToString('N')).out.log"
+            "m8flow-core-celery-beat-$([Guid]::NewGuid().ToString('N')).out.log"
         )
         $beatStdErrPath = Join-Path ([System.IO.Path]::GetTempPath()) (
-            "m8flow-bpmn-core-celery-beat-$([Guid]::NewGuid().ToString('N')).err.log"
+            "m8flow-core-celery-beat-$([Guid]::NewGuid().ToString('N')).err.log"
         )
         $beatSchedulePath = Join-Path ([System.IO.Path]::GetTempPath()) (
-            "m8flow-bpmn-core-celery-beat-$([Guid]::NewGuid().ToString('N')).schedule"
+            "m8flow-core-celery-beat-$([Guid]::NewGuid().ToString('N')).schedule"
         )
         $beatArgs = @(
             "-A",
-            "examples.celery_scheduler_poc:celery_app",
+            "examples.celery_scheduler:celery_app",
             "beat",
             "--loglevel",
             $LogLevel,
@@ -135,7 +135,7 @@ try {
         Write-Host "Status: Celery beat stderr log $beatStdErrPath"
     }
 
-    & $celeryExe -A examples.celery_scheduler_poc:celery_app worker --pool solo --loglevel $LogLevel -Q $env:M8FLOW_BPMN_CORE_CELERY_QUEUE
+    & $celeryExe -A examples.celery_scheduler:celery_app worker --pool solo --loglevel $LogLevel -Q $env:M8FLOW_CORE_CELERY_QUEUE
     $workerExitCode = $LASTEXITCODE
     if ($workerExitCode -ne 0) {
         exit $workerExitCode

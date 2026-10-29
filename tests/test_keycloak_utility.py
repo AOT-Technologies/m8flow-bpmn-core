@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from m8flow_bpmn_core.utils.keycloak import service as keycloak_service
+from m8flow_core.utils.keycloak import service as keycloak_service
 
 
 def test_ensure_shared_realm_organizations_and_users_reuses_existing_rows(

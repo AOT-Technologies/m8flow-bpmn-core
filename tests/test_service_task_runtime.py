@@ -9,18 +9,18 @@ from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core import api
-from m8flow_bpmn_core.db import session_scope
-from m8flow_bpmn_core.models.group import GroupModel
-from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
-from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
-from m8flow_bpmn_core.services.authorization import ROLE_ADMIN, ensure_v1_role
-from m8flow_bpmn_core.services.workflow_runtime import (
+from m8flow_core import api
+from m8flow_core.db import session_scope
+from m8flow_core.models.group import GroupModel
+from m8flow_core.models.scheduler_job import SchedulerJobModel
+from m8flow_core.models.task_definition import TaskDefinitionModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.user_group_assignment import UserGroupAssignmentModel
+from m8flow_core.services.authorization import ROLE_ADMIN, ensure_v1_role
+from m8flow_core.services.lane_assignment import find_or_create_lane_group
+from m8flow_core.services.workflow_runtime import (
     _build_workflow,
-    _lane_group,
     _persist_service_task_failure_state_in_independent_session,
     _prepare_process_instance_from_definition_in_session,
     _restore_workflow,
@@ -234,15 +234,15 @@ def test_lane_group_identifier_is_case_insensitive(
 ) -> None:
     tenant, _ = _seed_tenant_and_admin(session)
 
-    upper_case_group = _lane_group(
+    upper_case_group = find_or_create_lane_group(
         session,
-        "Operations",
         tenant_id=tenant.id,
+        lane="Operations",
     )
-    lower_case_group = _lane_group(
+    lower_case_group = find_or_create_lane_group(
         session,
-        "operations",
         tenant_id=tenant.id,
+        lane=" operations ",
     )
 
     assert upper_case_group is not None
@@ -266,10 +266,10 @@ def test_lane_group_reuses_legacy_bare_identifier(
     )
     session.flush()
 
-    resolved_group = _lane_group(
+    resolved_group = find_or_create_lane_group(
         session,
-        "Operations",
         tenant_id=tenant.id,
+        lane="operations",
     )
 
     assert resolved_group is not None
@@ -281,6 +281,55 @@ def test_lane_group_reuses_legacy_bare_identifier(
             UserGroupAssignmentModel.group_id == resolved_group.id,
         )
     ) is not None
+
+
+def test_lane_group_with_mixed_case_identifier_is_normalized(
+    session: Session,
+) -> None:
+    tenant, _ = _seed_tenant_and_admin(session)
+    group_id = api.resolve_lane_assignment_id("Operations", tenant.id)
+    session.add(
+        GroupModel(
+            id=group_id,
+            name=f"{tenant.id.upper()}:Operations",
+            identifier=f"{tenant.id.upper()}:Operations",
+        )
+    )
+    session.flush()
+
+    resolved_group = find_or_create_lane_group(
+        session,
+        tenant_id=tenant.id,
+        lane="operations",
+    )
+
+    assert resolved_group is not None
+    assert resolved_group.id == group_id
+    assert resolved_group.identifier == f"{tenant.id.lower()}:operations"
+    assert resolved_group.name == f"{tenant.id.lower()}:operations"
+
+
+def test_lane_group_with_foreign_identifier_is_not_used(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    tenant, _ = _seed_tenant_and_admin(session)
+    group_id = api.resolve_lane_assignment_id("Operations", tenant.id)
+    session.add(
+        GroupModel(id=group_id, name="other:finance", identifier="other:finance")
+    )
+    session.flush()
+
+    with caplog.at_level("WARNING"):
+        resolved_group = find_or_create_lane_group(
+            session,
+            tenant_id=tenant.id,
+            lane="Operations",
+        )
+
+    assert resolved_group is None
+    assert "other:finance" in caplog.text
+    assert session.get(GroupModel, group_id).identifier == "other:finance"
 
 
 def test_group_membership_assigns_lane_tasks_without_lane_owners(

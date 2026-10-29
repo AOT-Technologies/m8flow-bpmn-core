@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`m8flow-bpmn-core` is an in-process Python library built on top of
+`m8flow-core` is an in-process Python library built on top of
 `SpiffWorkflow`. The goal is to provide a reusable BPMN/DMN workflow core for
 M8Flow in the same general spirit as an embeddable Camunda-style library:
 callers import Python APIs directly and run workflow logic inside their own
@@ -16,32 +16,38 @@ direction explicitly changes.
 
 Read these first before changing behavior:
 
-- `doc/api.md`: public API contract and error semantics
-- `doc/usage.md`: expected integration pattern for callers
-- `doc/examples.md`: runnable examples and supported BPMN patterns
-- `doc/package.md`: build and packaging workflow
-- `doc/gaps.md`: intentionally out-of-scope areas
+- `docs/reference/api.md`: public API contract and error semantics
+- `docs/reference/database-schema.md`: tables and columns that are part of
+  the compatibility contract
+- `docs/how-to/embed-in-your-application.md`: expected integration pattern for
+  callers
+- `docs/how-to/run-the-examples.md`: runnable examples
+- `docs/reference/bpmn-support.md`: supported BPMN patterns
+- `docs/how-to/build-and-install-the-package.md`: build and packaging workflow
+- `docs/reference/limitations.md`: intentionally out-of-scope areas
+- `docs/README.md`: index of every page, organized as tutorials, how-to
+  guides, reference, and explanation
 
 If code and docs disagree, treat that as a bug and bring them back into sync.
 
 ## Architecture
 
-- `src/m8flow_bpmn_core/api.py`
+- `src/m8flow_core/api.py`
   - Stable public entrypoint for downstream consumers.
   - Re-exports commands, queries, errors, enums, and service functions.
-- `src/m8flow_bpmn_core/application/commands.py`
+- `src/m8flow_core/application/commands.py`
   - Write-side command dataclasses.
-- `src/m8flow_bpmn_core/application/queries.py`
+- `src/m8flow_core/application/queries.py`
   - Read-side query dataclasses.
-- `src/m8flow_bpmn_core/application/dispatcher.py`
+- `src/m8flow_core/application/dispatcher.py`
   - `execute_command(...)` and `execute_query(...)`.
   - Accepts either a SQLAlchemy `Session` or `Connection`.
   - When given a `Connection`, it opens a temporary `Session` and does not
     commit or roll back. The caller owns the transaction boundary.
-- `src/m8flow_bpmn_core/services/`
+- `src/m8flow_core/services/`
   - Business logic by concern: process definitions, process instances, tasks,
     tenant-user checks, and SpiffWorkflow runtime integration.
-- `src/m8flow_bpmn_core/models/`
+- `src/m8flow_core/models/`
   - SQLAlchemy ORM models. Public API returns these models directly.
 - `tests/fixtures/`
   - BPMN and DMN fixtures used by tests and examples.
@@ -53,7 +59,7 @@ If code and docs disagree, treat that as a bug and bring them back into sync.
 
 Preserve these unless you are intentionally making a contract change:
 
-- `m8flow_bpmn_core.api` is the public surface.
+- `m8flow_core.api` is the public surface.
 - Commands and queries are separate concepts.
   - Writes go through `execute_command(...)`.
   - Reads go through `execute_query(...)`.
@@ -65,14 +71,25 @@ Preserve these unless you are intentionally making a contract change:
 - User-scoped operations must validate tenant membership before acting.
 - `CompleteTaskCommand.task_payload` persists as process metadata.
 - Lane assignment is driven by BPMN lane metadata plus
-  `properties_json["lane_owners"]` on the stored definition.
+  `properties_json["lane_owners"]` and `properties_json["initiator_lanes"]`
+  on the stored definition.
+- Every timestamp is a timezone-aware UTC `datetime`; no public parameter or
+  column uses epoch seconds.
+- Claim state lives in `work_item`; authorization targets are exact
+  `(resource_type, resource_id)` pairs; JSON payloads are keyed by tenant and
+  hash.
+- Released Alembic migrations are immutable; the 1.0 baseline `k2l3m4n5o6p7`
+  is the first.
 
 When changing the public contract, update all of:
 
-- `src/m8flow_bpmn_core/api.py`
-- `doc/api.md`
-- relevant usage/example docs in `doc/`
-- tests that lock the behavior
+- `src/m8flow_core/api.py`
+- `docs/reference/api.md`, and `docs/reference/database-schema.md` for schema
+  changes
+- relevant how-to guides and examples in `docs/`
+- `CHANGELOG.md`, under `[Unreleased]`
+- tests that lock the behavior, including `tests/test_api_surface.py` and
+  `tests/test_compatibility_contract.py`
 
 ## Current Scope
 
@@ -85,24 +102,28 @@ Supported today:
 - claiming and completing human tasks
 - persisting process metadata and event history
 - lifecycle transitions such as suspend, resume, error, retry, terminate
+- tenant-scoped command authorization (V1 roles) with pluggable policies
+- timer events and scheduled retries through persisted scheduler jobs
+- synchronous BPMN service tasks through pluggable connectors
 
 Explicitly not covered yet:
 
-- RBAC and workflow permission matrices
-- external service task worker infrastructure
-- timer events and scheduling
+- permission checks across the whole API (only eight commands are enforced)
+- external service task worker infrastructure and async connectors
+- multi-worker scheduler coordination
 - tenant management APIs
 - user management APIs
 - BPMN messaging and correlation
 - full operational dashboards and observability control plane
 
-See `doc/gaps.md` before assuming a capability exists.
+See `docs/reference/limitations.md` before assuming a capability exists.
 
 ## Working Conventions
 
 - Python version: 3.12
 - Package layout: `src/`
-- Tooling: `uv`, `pytest`, `ruff`, `alembic`, `hatchling`
+- Tooling: `uv`, `pytest`, `ruff`, `mypy`, `bandit`, `pre-commit`, `alembic`,
+  `hatchling`
 - Keep changes small and aligned with the existing package boundaries.
 - Prefer updating or adding tests with behavior changes.
 - Prefer examples when validating end-to-end workflow behavior.
@@ -112,10 +133,12 @@ Common commands:
 - `uv sync`
 - `uv sync --extra postgresql`
 - `make lint`
+- `make typecheck`
+- `make security`
 - `make test`
 - `make test-integration`
 - `make package`
-- `uv run python examples/parallel_review_poc.py`
+- `uv run python examples/parallel_review.py`
 - `uv run python examples/errors_demo.py`
 
 ## Change Checklist

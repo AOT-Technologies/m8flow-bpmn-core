@@ -1,100 +1,78 @@
-# Sample App Docs
+# Sample app architecture
 
-This folder contains documentation for the `sample_app/` host application that
-uses `m8flow-bpmn-core` as a dependency.
+This page describes how the sample app is put together: its components, its
+built-in workflows, and its two operating modes. To run it, see the
+[sample app README](../README.md).
 
-## Purpose
+## Components
 
-The sample app exists to prove that a thin application can:
+The app is a Flask application with the following parts, under
+`sample_app/`:
 
-- consume `m8flow-bpmn-core` from a built wheel
-- own its own Alembic migration history
-- store workflow definitions in the same database tables the library expects
-- start workflows, claim tasks, complete tasks, and inspect events through the
-  library API
-- run timer-based workflows through an app-managed scheduler loop
-- execute service tasks through the shared connector-proxy direction used by
-  m8flow
+| Path | Role |
+|---|---|
+| `src/m8flow_sample_app/app.py` | Flask app factory. Runs migrations, seeds data, and starts the scheduler on startup. |
+| `src/m8flow_sample_app/db.py` | SQLAlchemy engine and session helpers, and the startup Alembic runner |
+| `src/m8flow_sample_app/settings.py` | Settings, read from `M8FLOW_SAMPLE_APP_*` variables |
+| `src/m8flow_sample_app/models.py` | The app's own tables, such as `secret`, and the combined metadata for Alembic |
+| `src/m8flow_sample_app/seed.py` | Sample tenants, users, role grants, lane owners, and default secrets |
+| `src/m8flow_sample_app/auth.py` | Tenant and user session selection |
+| `src/m8flow_sample_app/keycloak_login.py` | Keycloak redirect and callback sign-in for shared mode |
+| `src/m8flow_sample_app/shared_m8flow.py` | Shared mode detection, Keycloak provisioning, and catalog publishing |
+| `src/m8flow_sample_app/secrets.py` | Tenant-scoped secret storage |
+| `src/m8flow_sample_app/service_tasks.py` | The service task registry, which resolves `M8FLOW_SECRET:<NAME>` parameters before calling the connector proxy |
+| `src/m8flow_sample_app/scheduler.py` | The in-process scheduler loop. See [Scheduler](scheduler.md). |
+| `src/m8flow_sample_app/workflows/` | Thin wrappers around the library's public API |
+| `src/m8flow_sample_app/views/` | Pages for definitions, workflow start, tasks, process instances, and secrets |
+| `src/m8flow_sample_app/web.py`, `ui.py` | Route registration and the shared page layout |
+| `fixtures/` | The built-in BPMN workflows |
+| `alembic/` | The app's migrations, including the library's tables |
+| `scripts/` | Wheel staging and run scripts |
 
-## Main Components
+The `workflows/` wrappers use only the public API:
 
-- `src/m8flow_sample_app/app.py`
-  - Flask app factory, startup migrations, seed wiring, scheduler startup.
-- `src/m8flow_sample_app/db.py`
-  - SQLAlchemy engine/session helpers and programmatic Alembic runner.
-- `src/m8flow_sample_app/seed.py`
-  - Static tenants, users, lane owners, and default secrets.
-- `src/m8flow_sample_app/views/`
-  - HTML routes for process definitions, workflow start, tasks, process
-    instances, and secrets.
-- `src/m8flow_sample_app/workflows/`
-  - Thin wrappers around the library public API.
-- `src/m8flow_sample_app/scheduler.py`
-  - Host-side scheduler poller for timer jobs.
-- `fixtures/sample_app_demo.bpmn`
-  - Reimbursement workflow with conditional Finance review and SMTP service
-    task.
-- `fixtures/sample_app_review_timeout_escalation.bpmn`
-  - Manual-review workflow with an interrupting boundary timer that escalates
-    to a supervisor lane.
+| Wrapper | Library calls |
+|---|---|
+| `deploy.py` | `ImportBpmnProcessDefinitionCommand`, with tenant-specific lane owners |
+| `start.py` | `InitializeProcessInstanceFromDefinitionCommand` |
+| `tasks.py` | `GetPendingTasksQuery`, `ClaimTaskCommand`, and `CompleteTaskCommand` |
+| `instances.py` | `GetProcessInstanceQuery`, `GetProcessInstanceEventsQuery`, `GetProcessInstanceMetadataQuery`, and `ListProcessInstancesQuery` |
 
-## Built-In Workflows
+## Built-in workflows
 
-### Reimbursement Demo
+### Reimbursement demo
 
-- Starts with `Submit Reimbursement Request`
-- Routes amounts over `1000` through `Finance Review`
-- Skips final review when Finance rejects
-- Sends the outcome through the SMTP connector-proxy service task
+Defined in `fixtures/sample_app_demo.bpmn`:
 
-### Timeout Escalation Demo
+- Starts with **Submit Reimbursement Request**.
+- Routes amounts over 1000 through **Finance Review**.
+- Skips the final **Review Request** when Finance rejects.
+- Sends the outcome by email through an SMTP service task on the connector
+  proxy.
 
-- Starts with `Review Submitted Request`
-- Keeps the initial review in the `Operations` lane
-- Uses an interrupting boundary timer with `PT2M`
-- If the review is still open after two minutes, cancels that task and creates
-  `Supervisor Review` in the `Supervisor` lane
+### Timeout escalation demo
 
-## Authentication And Audit Modes
+Defined in `fixtures/sample_app_review_timeout_escalation.bpmn`:
 
-The sample app supports two operating modes:
+- Starts with **Review Submitted Request** in the `Operations` lane.
+- Attaches an interrupting boundary timer with a duration of `PT2M`.
+- If the review is still open after two minutes, cancels it and creates
+  **Supervisor Review** in the `Supervisor` lane.
 
-- standalone mode
-  - local tenant/user picker
-  - useful for isolated local runs
-- shared audit mode
-  - provisions users in the shared Keycloak realm
-  - aligns tenant ids to Keycloak organization ids
-  - publishes BPMN files, plus companion DMN files when present, into the
-    local m8flow backend catalog so models are
-    visible in m8flow UI
+## Operating modes
 
-## Scheduler
+The app runs in one of two modes:
 
-The sample app uses a simple in-process polling loop for timers.
+- **Standalone mode** uses a local tenant and user picker, for isolated runs.
+- **Shared audit mode** runs against a local m8flow stack's database. It
+  creates the sample users in the shared Keycloak realm, aligns tenant IDs
+  with Keycloak organization IDs, and publishes deployed BPMN and DMN files to
+  the m8flow backend's catalog, so the workflows appear in the m8flow UI.
 
-- It is started from `create_app()` during application startup.
-- It runs in a daemon thread inside the sample app process.
-- Every poll cycle it opens a DB session and calls
-  `api.run_due_scheduler_jobs(...)`.
-- The app does not decide which timer fired. The library reads persisted
-  scheduler rows and executes whichever jobs are due.
+[About the sample app integration](../../docs/explanation/sample-app-integration.md#standalone-and-shared-modes)
+explains what shared mode changes and why.
 
-See [scheduler.md](./scheduler.md) for the exact polling flow and settings.
+## Related pages
 
-## Useful Settings
-
-- `M8FLOW_SAMPLE_APP_DATABASE_URL`
-- `M8FLOW_SAMPLE_APP_M8FLOW_AUDIT_MODE`
-- `M8FLOW_SAMPLE_APP_CONNECTOR_PROXY_BASE_URL`
-- `M8FLOW_SAMPLE_APP_CONNECTOR_PROXY_TIMEOUT_SECONDS`
-- `M8FLOW_SAMPLE_APP_SCHEDULER_ENABLED`
-- `M8FLOW_SAMPLE_APP_SCHEDULER_POLL_SECONDS`
-- `M8FLOW_SAMPLE_APP_SCHEDULER_BATCH_LIMIT`
-- `M8FLOW_SAMPLE_APP_SCHEDULER_WORKER_ID`
-
-## Related Docs
-
-- [../README.md](../README.md)
-- [scheduler.md](./scheduler.md)
-- [../../doc/sample_app.md](../../doc/sample_app.md)
+- [Sample app README](../README.md)
+- [Scheduler](scheduler.md)

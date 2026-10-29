@@ -7,22 +7,22 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core.application.commands import (
+from m8flow_core.application.commands import (
     ClaimTaskCommand,
     InitializeProcessInstanceFromDefinitionCommand,
 )
-from m8flow_bpmn_core.errors import AuthorizationError
-from m8flow_bpmn_core.models.group import GroupModel
-from m8flow_bpmn_core.models.permission_assignment import PermissionAssignmentModel
-from m8flow_bpmn_core.models.permission_target import (
+from m8flow_core.errors import AuthorizationError
+from m8flow_core.models.group import GroupModel
+from m8flow_core.models.permission_assignment import PermissionAssignmentModel
+from m8flow_core.models.permission_target import (
     InvalidPermissionTargetError,
     PermissionTargetModel,
 )
-from m8flow_bpmn_core.models.principal import PrincipalModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.user_group_assignment import UserGroupAssignmentModel
-from m8flow_bpmn_core.services.authorization import (
+from m8flow_core.models.principal import PrincipalModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.user_group_assignment import UserGroupAssignmentModel
+from m8flow_core.services.authorization import (
     PROCESS_DEFINITION_IMPORT_COMMAND,
     PROCESS_START_COMMAND,
     PROCESS_SUSPEND_COMMAND,

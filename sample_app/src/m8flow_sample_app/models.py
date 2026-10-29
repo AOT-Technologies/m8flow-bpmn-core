@@ -3,8 +3,8 @@ from __future__ import annotations
 from sqlalchemy import Integer, MetaData, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from m8flow_bpmn_core.models.base import NAMING_CONVENTION
-from m8flow_bpmn_core.models.tenant_scoped import TenantScoped
+from m8flow_core.models.base import NAMING_CONVENTION
+from m8flow_core.models.tenant_scoped import TenantScoped
 
 
 class SampleAppBase(DeclarativeBase):

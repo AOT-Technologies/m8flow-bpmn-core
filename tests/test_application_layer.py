@@ -4,10 +4,10 @@ import hashlib
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
-from m8flow_bpmn_core.application import (
+from m8flow_core.application import (
     ClaimTaskCommand,
     CompleteTaskCommand,
     ErrorProcessInstanceCommand,
@@ -29,21 +29,26 @@ from m8flow_bpmn_core.application import (
     execute_command,
     execute_query,
 )
-from m8flow_bpmn_core.models.bpmn_process import BpmnProcessModel
-from m8flow_bpmn_core.models.bpmn_process_definition import (
+from m8flow_core.errors import BpmnCoreError, NotFoundError, ValidationError
+from m8flow_core.models.bpmn_process import BpmnProcessModel
+from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
-from m8flow_bpmn_core.models.future_task import FutureTaskModel
-from m8flow_bpmn_core.models.process_instance import ProcessInstanceModel
-from m8flow_bpmn_core.models.process_instance_event import ProcessLifecycleEventType
-from m8flow_bpmn_core.models.scheduler_job import SchedulerJobModel
-from m8flow_bpmn_core.models.task import TaskModel
-from m8flow_bpmn_core.models.task_definition import TaskDefinitionModel
-from m8flow_bpmn_core.models.tenant import M8flowTenantModel
-from m8flow_bpmn_core.models.user import UserModel
-from m8flow_bpmn_core.models.work_item import WorkItemModel
-from m8flow_bpmn_core.models.work_item_user import WorkItemUserModel
-from m8flow_bpmn_core.services.authorization import (
+from m8flow_core.models.future_task import FutureTaskModel
+from m8flow_core.models.process_instance import ProcessInstanceModel
+from m8flow_core.models.process_instance_event import (
+    ProcessInstanceEventModel,
+    ProcessLifecycleEventType,
+    TaskEventType,
+)
+from m8flow_core.models.scheduler_job import SchedulerJobModel
+from m8flow_core.models.task import TaskModel
+from m8flow_core.models.task_definition import TaskDefinitionModel
+from m8flow_core.models.tenant import M8flowTenantModel
+from m8flow_core.models.user import UserModel
+from m8flow_core.models.work_item import WorkItemModel
+from m8flow_core.models.work_item_user import WorkItemUserModel
+from m8flow_core.services.authorization import (
     ROLE_ADMIN,
     ensure_v1_role,
 )
@@ -564,6 +569,141 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
     assert imported_definition.id == definition.id
 
 
+RETIRED_EVENT_TYPES = [
+    "process_instance_force_run",
+    "process_instance_migrated",
+    "process_instance_rewound_to_task",
+    "process_instance_suspended_for_error",
+    "task_data_edited",
+    "task_executed_manually",
+    "task_skipped",
+]
+
+
+def _event_count(session: Session, process_instance_id: int) -> int:
+    return len(
+        session.scalars(
+            select(ProcessInstanceEventModel).where(
+                ProcessInstanceEventModel.process_instance_id == process_instance_id
+            )
+        ).all()
+    )
+
+
+@pytest.mark.parametrize(
+    "event_type",
+    [*RETIRED_EVENT_TYPES, "not-a-real-event", "Task_Completed", "", None],
+)
+def test_record_event_rejects_types_outside_vocabulary(
+    session: Session, event_type: object
+) -> None:
+    tenant, user, process_instance, _task, _work_item = _seed_process_instance(session)
+    before = _event_count(session, process_instance.id)
+
+    with pytest.raises(ValidationError) as excinfo:
+        execute_command(
+            session,
+            RecordProcessInstanceEventCommand(
+                tenant_id=tenant.id,
+                process_instance_id=process_instance.id,
+                event_type=event_type,  # type: ignore[arg-type]
+                user_id=user.id,
+            ),
+        )
+
+    assert isinstance(excinfo.value, BpmnCoreError)
+    assert isinstance(excinfo.value, ValueError)
+    assert repr(event_type) in str(excinfo.value)
+    assert not any(isinstance(obj, ProcessInstanceEventModel) for obj in session.new)
+    assert _event_count(session, process_instance.id) == before
+
+
+@pytest.mark.parametrize(
+    ("event_type", "category"),
+    [
+        *((member, "process") for member in ProcessLifecycleEventType),
+        *((member, "task") for member in TaskEventType),
+    ],
+)
+def test_record_event_stores_plain_type_and_derived_category(
+    session: Session,
+    event_type: ProcessLifecycleEventType | TaskEventType,
+    category: str,
+) -> None:
+    tenant, _user, process_instance, task, _work_item = _seed_process_instance(session)
+
+    for value in (event_type, event_type.value):
+        event = execute_command(
+            session,
+            RecordProcessInstanceEventCommand(
+                tenant_id=tenant.id,
+                process_instance_id=process_instance.id,
+                event_type=value,
+                task_guid=task.guid,
+            ),
+        )
+        session.expire(event)
+        assert type(event.event_type) is str
+        assert event.event_type == event_type.value
+        assert event.category == category
+
+
+def test_record_event_checks_process_instance_before_event_type(
+    session: Session,
+) -> None:
+    tenant, _user, _process_instance, _task, _work_item = _seed_process_instance(
+        session
+    )
+
+    with pytest.raises(NotFoundError):
+        execute_command(
+            session,
+            RecordProcessInstanceEventCommand(
+                tenant_id=tenant.id,
+                process_instance_id=999_999,
+                event_type="task_skipped",
+            ),
+        )
+
+
+def test_stored_rows_with_retired_types_read_back_as_stored(
+    session: Session,
+) -> None:
+    tenant, _user, process_instance, task, _work_item = _seed_process_instance(session)
+    session.execute(
+        insert(ProcessInstanceEventModel.__table__).values(
+            m8f_tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+            task_guid=task.guid,
+            event_type="task_skipped",
+            category="task",
+            occurred_at=datetime.fromtimestamp(500, UTC),
+        )
+    )
+    session.flush()
+    session.expire_all()
+
+    events = execute_query(
+        session,
+        GetProcessInstanceEventsQuery(
+            tenant_id=tenant.id, process_instance_id=process_instance.id
+        ),
+    )
+    stored = [event for event in events if event.event_type == "task_skipped"]
+    assert len(stored) == 1
+    assert type(stored[0].event_type) is str
+    assert stored[0].category == "task"
+
+    stored[0].occurred_at = datetime.fromtimestamp(600, UTC)
+    session.flush()
+    session.expire_all()
+    reloaded = session.get(ProcessInstanceEventModel, stored[0].id)
+    assert reloaded is not None
+    assert reloaded.event_type == "task_skipped"
+    assert reloaded.category == "task"
+    assert reloaded.occurred_at.timestamp() == 600
+
+
 def _seed_process_instance(
     session: Session,
 ) -> tuple[
@@ -688,7 +828,7 @@ def _seed_process_instance(
             m8f_tenant_id=tenant.id,
             work_item_id=human_task.id,
             user_id=user.id,
-            added_by="manual",
+            added_by=None,
         )
     )
     session.flush()
