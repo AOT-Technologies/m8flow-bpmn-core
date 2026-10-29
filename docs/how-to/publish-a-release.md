@@ -57,14 +57,26 @@ To publish a release, follow these steps:
    ```
 
 3. Merge those changes to `main`.
-4. Create a GitHub Release with a new tag that is the bare version, such as
-   `1.0.1`, with no `v` prefix, on that commit. m8flow refers to core versions
-   by this tag.
-5. Go to **Actions** > **Publish m8flow-core** and click **Run workflow**.
-6. In **Use workflow from**, choose the tag, such as `1.0.1`.
-7. In **Release channel**, choose `release`, then click **Run workflow**.
+4. Go to **Actions** > **Create release tag**, click **Run workflow**, enter
+   the version, such as `1.0.1`, and click **Run workflow**. The workflow
+   checks that `pyproject.toml` and `CHANGELOG.md` on `main` match the
+   version, then tags the tip of `main` with the bare version, with no `v`
+   prefix. m8flow refers to core versions by this tag.
+5. Go to **Actions** > **GitHub Release**, click **Run workflow**, enter the
+   same version, and click **Run workflow**. The workflow creates the GitHub
+   Release for the tag, with the version's changelog section as release notes
+   and a software bill of materials (`sbom.json`) of the runtime dependencies
+   attached.
+6. Go to **Actions** > **Publish m8flow-core** and click **Run workflow**.
+7. In **Use workflow from**, choose the tag, such as `1.0.1`.
+8. In **Release channel**, choose `release`, then click **Run workflow**.
 
-The workflow stops before uploading anything if a check fails: for example,
+**Create release tag** stops without tagging if the tag already exists or the
+version and changelog don't match. **GitHub Release** stops if a release for
+the version already exists. Because the GitHub Release is published as soon
+as it's created, review the release notes in the changelog pull request.
+
+The publish workflow stops before uploading anything if a check fails: for example,
 if the version is already on PyPI, the changelog entry or link is missing, the
 GitHub Release doesn't exist, the release tag points at a different commit
 than the one you chose in **Use workflow from**, a test fails, or a dependency

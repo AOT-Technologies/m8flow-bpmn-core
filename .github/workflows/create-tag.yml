@@ -1,0 +1,127 @@
+# Pinned action SHAs are immutable; update intentionally when upgrading.
+# yamllint disable rule:line-length
+name: Create release tag
+
+# Step 1 of a release. Tags the tip of main with the bare version (for
+# example, 1.0.1, with no "v" prefix; m8flow refers to core versions by this
+# tag). Next, run "GitHub Release", then "Publish m8flow-core" from the tag on
+# the release channel.
+#
+# Betas are not tagged: publish them straight from a branch on the beta channel.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to tag, without a leading v (for example, 1.0.1)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  create-tag:
+    name: Validate and tag main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Validate version format
+        shell: python
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          import re
+          import os
+          import sys
+
+          version = os.environ["INPUT_VERSION"].strip()
+          # Matches publish.yml: pyproject.toml holds a plain release version
+          # and the beta channel derives pre-releases from it.
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+              print(f"ERROR: {version!r} is not MAJOR.MINOR.PATCH", file=sys.stderr)
+              sys.exit(1)
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"RELEASE_VERSION={version}\n")
+
+          print(f"Version {version} is valid")
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Check tag does not already exist
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/${RELEASE_VERSION}" >/dev/null; then
+            echo "ERROR: tag ${RELEASE_VERSION} already exists" >&2
+            exit 1
+          fi
+          echo "Tag ${RELEASE_VERSION} is available"
+
+      - name: Validate pyproject.toml version
+        shell: python
+        run: |
+          import os
+          import pathlib
+          import sys
+          import tomllib
+
+          version = os.environ["RELEASE_VERSION"]
+          project = tomllib.loads(
+              pathlib.Path("pyproject.toml").read_text(encoding="utf-8")
+          ).get("project", {})
+          actual = project.get("version")
+          if actual != version:
+              print(
+                  f"ERROR: pyproject.toml declares {actual!r}, expected {version!r}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          print(f"PASS: pyproject.toml is at version {version}")
+
+      - name: Validate CHANGELOG entry
+        shell: python
+        run: |
+          import os
+          import pathlib
+          import re
+          import sys
+
+          version = os.environ["RELEASE_VERSION"]
+          changelog = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+
+          heading = re.compile(
+              rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}\s*$",
+              re.MULTILINE,
+          )
+          if not heading.search(changelog):
+              print(f"ERROR: CHANGELOG.md is missing a dated [{version}] section", file=sys.stderr)
+              sys.exit(1)
+
+          link_pattern = rf"^\[{re.escape(version)}\]: .+/releases/tag/{re.escape(version)}\s*$"
+          if not re.search(link_pattern, changelog, re.MULTILINE):
+              print(f"ERROR: CHANGELOG.md is missing the [{version}] release link", file=sys.stderr)
+              sys.exit(1)
+
+          print(f"PASS: CHANGELOG.md has a valid [{version}] entry")
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${RELEASE_VERSION}" -m "Release ${RELEASE_VERSION}"
+          git push origin "refs/tags/${RELEASE_VERSION}"
+          sha="$(git rev-parse HEAD)"
+          echo "Tagged ${sha} as ${RELEASE_VERSION}"
+          {
+            echo "### Release tag"
+            echo "- Tag: ${RELEASE_VERSION}"
+            echo "- Commit: ${sha}"
+            echo "- Next: run \"GitHub Release\" with version ${RELEASE_VERSION}"
+          } >> "$GITHUB_STEP_SUMMARY"
