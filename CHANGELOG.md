@@ -7,6 +7,13 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ## [Unreleased]
 
+### Security
+
+- Updated locked dependencies to resolve open Dependabot advisories:
+  `filelock` 4.2.4, `virtualenv` 21.15.1, `Mako` 1.4.3, `lxml` 6.1.3, and
+  `pydantic-settings` 2.16.2 in `uv.lock`; `Werkzeug` 3.1.9 and `Mako` 1.4.3
+  in `sample_app/uv.lock`. The declared dependency ranges are unchanged.
+
 ## [1.0.0] - 2026-10-22
 
 The first stable release, and the first under the name m8flow-core. Versions
