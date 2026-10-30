@@ -1,7 +1,42 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from m8flow_core.services.lane_assignment import (
+        resolve_lane_assignment_id,
+    )
+    from m8flow_core.services.process_instance_reactivation import (
+        resume_process_instance,
+        retry_process_instance,
+    )
+    from m8flow_core.services.process_instances import (
+        create_process_instance,
+        error_process_instance,
+        get_process_instance_events,
+        get_process_instance_metadata,
+        list_error_process_instances,
+        list_suspended_process_instances,
+        list_terminated_process_instances,
+        record_process_instance_event,
+        schedule_process_instance_retry,
+        suspend_process_instance,
+        terminate_process_instance,
+        upsert_process_instance_metadata,
+    )
+    from m8flow_core.services.scheduler_runtime import (
+        run_due_scheduler_jobs,
+    )
+    from m8flow_core.services.tasks import (
+        claim_task,
+        complete_task,
+        get_pending_tasks,
+    )
+    from m8flow_core.services.workflow_runtime import (
+        advance_process_instance_workflow,
+        initialize_process_instance_workflow,
+    )
 
 __all__ = [
     "advance_process_instance_workflow",
@@ -58,8 +93,12 @@ _EXPORT_MODULES = {
     "schedule_process_instance_retry": (
         "m8flow_core.services.process_instances"
     ),
-    "resume_process_instance": "m8flow_core.services.process_instances",
-    "retry_process_instance": "m8flow_core.services.process_instances",
+    "resume_process_instance": (
+        "m8flow_core.services.process_instance_reactivation"
+    ),
+    "retry_process_instance": (
+        "m8flow_core.services.process_instance_reactivation"
+    ),
     "run_due_scheduler_jobs": "m8flow_core.services.scheduler_runtime",
     "suspend_process_instance": "m8flow_core.services.process_instances",
     "terminate_process_instance": "m8flow_core.services.process_instances",

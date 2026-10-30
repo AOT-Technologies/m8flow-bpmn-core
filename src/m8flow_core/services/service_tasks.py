@@ -166,9 +166,11 @@ class ServiceTaskResult:
 class ServiceTaskConnector(Protocol):
     connector_key: str
 
-    def list_commands(self) -> Sequence[ServiceTaskCommandDefinition]: ...
+    def list_commands(self) -> Sequence[ServiceTaskCommandDefinition]:
+        """Return the commands this connector can execute."""
 
-    def execute(self, request: ServiceTaskRequest) -> ServiceTaskResult: ...
+    def execute(self, request: ServiceTaskRequest) -> ServiceTaskResult:
+        """Run one service task command and return its result."""
 
 
 ServiceTaskRegistryFactory = Callable[[], "ServiceTaskRegistry"]

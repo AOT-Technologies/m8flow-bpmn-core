@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from m8flow_core.application.commands import (
     ClaimTaskCommand,
@@ -29,6 +29,9 @@ from m8flow_core.application.queries import (
     ListSuspendedProcessInstancesQuery,
     ListTerminatedProcessInstancesQuery,
 )
+
+if TYPE_CHECKING:
+    from m8flow_core.application.dispatcher import execute_command, execute_query
 
 
 def __getattr__(name: str) -> Any:

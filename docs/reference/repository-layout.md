@@ -36,6 +36,7 @@ The package is split by responsibility:
 | `application/dispatcher.py` | `execute_command` and `execute_query`, which accept a `Session` or a `Connection` |
 | `services/process_definitions.py` | Importing and validating BPMN and DMN definitions |
 | `services/process_instances.py` | Process instance creation, lifecycle transitions, metadata, and events |
+| `services/process_instance_reactivation.py` | Resume and retry transitions, which call back into the workflow runtime |
 | `services/tasks.py` | Worklists, claim, and completion |
 | `services/work_items.py` | Work item state and potential-owner assignment |
 | `services/workflow_runtime.py` | The SpiffWorkflow integration: starting, restoring, advancing, and saving workflows |

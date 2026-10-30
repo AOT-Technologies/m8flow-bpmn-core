@@ -19,10 +19,10 @@ from m8flow_core.models.scheduler_job import SchedulerJobModel, SchedulerJobType
 from m8flow_core.models.tenant import M8flowTenantModel
 from m8flow_core.models.user import UserModel
 from m8flow_core.services.authorization import ROLE_ADMIN, ensure_v1_role
-from m8flow_core.services.process_instances import (
-    get_process_instance,
+from m8flow_core.services.process_instance_reactivation import (
     retry_process_instance,
 )
+from m8flow_core.services.process_instances import get_process_instance
 from m8flow_core.services.scheduler_jobs import (
     delete_scheduler_job,
     list_due_scheduler_jobs,
