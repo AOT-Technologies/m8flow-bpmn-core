@@ -35,6 +35,10 @@ from m8flow_core.application.queries import (
 from m8flow_core.services.process_definitions import (
     import_bpmn_process_definition,
 )
+from m8flow_core.services.process_instance_reactivation import (
+    resume_process_instance,
+    retry_process_instance,
+)
 from m8flow_core.services.process_instances import (
     create_process_instance,
     error_process_instance,
@@ -46,8 +50,6 @@ from m8flow_core.services.process_instances import (
     list_suspended_process_instances,
     list_terminated_process_instances,
     record_process_instance_event,
-    resume_process_instance,
-    retry_process_instance,
     schedule_process_instance_retry,
     suspend_process_instance,
     terminate_process_instance,

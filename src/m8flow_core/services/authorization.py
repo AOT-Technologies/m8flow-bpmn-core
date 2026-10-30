@@ -109,7 +109,8 @@ class AuthorizationPolicy(Protocol):
         self,
         session: Session,
         request: AuthorizationRequest,
-    ) -> AuthorizationDecision: ...
+    ) -> AuthorizationDecision:
+        """Decide whether ``request`` may run within ``session``."""
 
 
 AuthorizationPolicyFactory = Callable[[], AuthorizationPolicy]

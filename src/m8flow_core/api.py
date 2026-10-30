@@ -79,6 +79,10 @@ from m8flow_core.services.connector_proxy_service_tasks import (
     fetch_connector_proxy_command_definitions,
 )
 from m8flow_core.services.lane_assignment import resolve_lane_assignment_id
+from m8flow_core.services.process_instance_reactivation import (
+    resume_process_instance,
+    retry_process_instance,
+)
 from m8flow_core.services.process_instances import (
     create_process_instance,
     error_process_instance,
@@ -90,8 +94,6 @@ from m8flow_core.services.process_instances import (
     list_suspended_process_instances,
     list_terminated_process_instances,
     record_process_instance_event,
-    resume_process_instance,
-    retry_process_instance,
     schedule_process_instance_retry,
     suspend_process_instance,
     terminate_process_instance,

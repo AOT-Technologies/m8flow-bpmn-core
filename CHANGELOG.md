@@ -7,6 +7,17 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ## [Unreleased]
 
+### Changed
+
+- Resolved CodeQL code-scanning alerts without changing the public API.
+  `resume_process_instance` and `retry_process_instance` moved from
+  `services/process_instances.py` to the new
+  `services/process_instance_reactivation.py`, which breaks the import cycle
+  with `services/workflow_runtime.py`. Both are still exported from
+  `m8flow_core.api` and `m8flow_core.services`. The lazily loaded names in the
+  `m8flow_core.services` and `m8flow_core.application` packages are now also
+  imported under `TYPE_CHECKING`, so static analysis can see them.
+
 ### Security
 
 - Updated locked dependencies to resolve open Dependabot advisories:
