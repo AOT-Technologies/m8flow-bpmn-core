@@ -5,7 +5,7 @@ import hashlib
 import json
 import logging
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -24,6 +24,7 @@ from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session
 
 from m8flow_core.errors import (
+    CallActivityResolutionError,
     InvalidStateError,
     NotFoundError,
     ServiceTaskExecutionError,
@@ -57,6 +58,11 @@ from m8flow_core.models.work_item import WorkItemModel
 from m8flow_core.services.authorization import (
     PROCESS_START_COMMAND,
     require_command_authorization,
+)
+from m8flow_core.services.call_activities import (
+    CallActivityContext,
+    CallActivityDefinition,
+    CallActivityResolver,
 )
 from m8flow_core.services.lane_assignment import (
     assign_work_item_potential_owners,
@@ -214,6 +220,7 @@ def initialize_process_instance_workflow(
     dmn_xml: str | bytes | None = None,
     bpmn_process_id: str | None = None,
     started_at: datetime | None = None,
+    call_activity_resolver: CallActivityResolver | None = None,
 ) -> ProcessInstanceModel:
     process_instance = _load_process_instance(
         session,
@@ -234,6 +241,13 @@ def initialize_process_instance_workflow(
             tenant_id=tenant_id,
             process_instance_id=process_instance.id,
             process_definition_id=process_instance.bpmn_process_definition_id,
+        ),
+        call_activity_resolver=call_activity_resolver,
+        call_activity_context=CallActivityContext(
+            tenant_id=tenant_id,
+            called_element="",
+            parent_process_instance_id=process_instance.id,
+            parent_process_definition_id=process_instance.bpmn_process_definition_id,
         ),
     )
     _seed_runtime_definitions(
@@ -280,6 +294,7 @@ def initialize_process_instance_from_definition(
     process_version: int = 1,
     started_at: datetime | None = None,
     bpmn_process_id: str | None = None,
+    call_activity_resolver: CallActivityResolver | None = None,
 ) -> ProcessInstanceModel:
     ensure_user_belongs_to_tenant(
         session,
@@ -327,6 +342,7 @@ def initialize_process_instance_from_definition(
         dmn_xml=process_definition.source_dmn_xml,
         bpmn_process_id=selected_process_id,
         started_at=started_at,
+        call_activity_resolver=call_activity_resolver,
     )
 
 
@@ -1266,6 +1282,8 @@ def _build_workflow(
     dmn_xml: str | bytes | None,
     bpmn_process_id: str | None,
     service_task_context: ServiceTaskContext | None = None,
+    call_activity_resolver: CallActivityResolver | None = None,
+    call_activity_context: CallActivityContext | None = None,
 ) -> BpmnWorkflow:
     parser = _RuntimeSpiffBpmnParser(
         validator=None,
@@ -1274,6 +1292,12 @@ def _build_workflow(
     parser.add_bpmn_str(
         _coerce_xml_bytes(bpmn_xml),
         filename="runtime-workflow.bpmn",
+    )
+    _load_called_process_definitions(
+        parser,
+        root_process_id=bpmn_process_id,
+        resolver=call_activity_resolver,
+        context=call_activity_context,
     )
     if dmn_xml is not None:
         parser.add_dmn_str(
@@ -1298,6 +1322,127 @@ def _build_workflow(
         subprocess_specs,
         script_engine=_service_task_script_engine(service_task_context),
     )
+
+
+def _load_called_process_definitions(
+    parser: _RuntimeSpiffBpmnParser,
+    *,
+    root_process_id: str | None,
+    resolver: CallActivityResolver | None,
+    context: CallActivityContext | None,
+) -> None:
+    """Resolve recursive external call references into Spiff's parser."""
+    root_ids = parser.get_process_ids()
+    if root_process_id is None:
+        if len(root_ids) != 1:
+            raise ValidationError(
+                "A BPMN process id must be supplied when the file contains "
+                "multiple executable processes"
+            )
+        root_process_id = root_ids[0]
+    pending = [root_process_id]
+    inspected: set[str] = set()
+    while pending:
+        process_id = pending.pop()
+        if process_id in inspected:
+            continue
+        inspected.add(process_id)
+        process_parser = parser.get_process_parser(process_id)
+        if process_parser is None:
+            raise CallActivityResolutionError(
+                f"Called process {process_id!r} was not found in the resolved BPMN"
+            )
+        for called_element in process_parser.called_element_ids():
+            if not isinstance(called_element, str) or not called_element.strip():
+                raise CallActivityResolutionError(
+                    f"Call activity in process {process_id!r} has no calledElement"
+                )
+            if parser.get_process_parser(called_element) is None:
+                if resolver is None:
+                    raise CallActivityResolutionError(
+                        f"Call activity references {called_element!r}, but no "
+                        "call_activity_resolver was supplied"
+                    )
+                if context is None:
+                    raise ValidationError(
+                        "Call-activity resolver requires tenant and parent context"
+                    )
+                resolution_context = CallActivityContext(
+                    tenant_id=context.tenant_id,
+                    called_element=called_element,
+                    parent_process_instance_id=context.parent_process_instance_id,
+                    parent_process_definition_id=context.parent_process_definition_id,
+                )
+                try:
+                    result = resolver(resolution_context)
+                except CallActivityResolutionError:
+                    raise
+                except Exception as exc:
+                    raise CallActivityResolutionError(
+                        f"Resolver failed for calledElement {called_element!r} "
+                        f"in tenant {context.tenant_id!r}: {exc}"
+                    ) from exc
+                if result is None:
+                    raise CallActivityResolutionError(
+                        f"No child process definition for calledElement "
+                        f"{called_element!r} in tenant {context.tenant_id!r}"
+                    )
+                if isinstance(result, CallActivityDefinition):
+                    definitions = [result]
+                elif isinstance(result, Sequence) and not isinstance(
+                    result, (str, bytes, bytearray)
+                ):
+                    definitions = list(result)
+                else:
+                    raise CallActivityResolutionError(
+                        f"Resolver returned an invalid result for calledElement "
+                        f"{called_element!r}; return one definition or a sequence"
+                    )
+                if not definitions:
+                    raise CallActivityResolutionError(
+                        f"No child process definition for calledElement "
+                        f"{called_element!r} in tenant {context.tenant_id!r}"
+                    )
+                if len(definitions) != 1:
+                    raise CallActivityResolutionError(
+                        f"Ambiguous child process definition for calledElement "
+                        f"{called_element!r} in tenant {context.tenant_id!r}: "
+                        f"resolver returned {len(definitions)} definitions"
+                    )
+                definition = definitions[0]
+                if not isinstance(definition, CallActivityDefinition):
+                    raise CallActivityResolutionError(
+                        f"Resolver returned an invalid definition for "
+                        f"calledElement {called_element!r}"
+                    )
+                if definition.process_id != called_element:
+                    raise CallActivityResolutionError(
+                        f"Resolved process id {definition.process_id!r} does not "
+                        f"match calledElement {called_element!r}"
+                    )
+                try:
+                    parser.add_bpmn_str(
+                        _coerce_xml_bytes(definition.bpmn_xml),
+                        filename=f"called-process-{called_element}.bpmn",
+                    )
+                    if definition.process_id not in parser.get_process_ids():
+                        raise CallActivityResolutionError(
+                            f"Resolved BPMN does not contain executable process "
+                            f"{definition.process_id!r}"
+                        )
+                    if definition.dmn_xml is not None:
+                        parser.add_dmn_str(
+                            _coerce_xml_bytes(definition.dmn_xml),
+                            filename=f"called-process-{called_element}.dmn",
+                        )
+                except CallActivityResolutionError:
+                    raise
+                except Exception as exc:
+                    raise CallActivityResolutionError(
+                        f"Resolved definition for calledElement "
+                        f"{called_element!r} is invalid: {exc}"
+                    ) from exc
+            pending.append(called_element)
 
 
 def _restore_workflow(
@@ -1389,7 +1534,6 @@ def _sync_process_definition_from_workflow(
     if not isinstance(serialized_process_identifier, str):
         raise ValidationError("Serialized workflow spec is missing its name")
 
-    task_specs = serialized_spec.get("task_specs")
     spec_payload = dict(serialized_spec)
     spec_payload.pop("task_specs", None)
 
@@ -1406,19 +1550,47 @@ def _sync_process_definition_from_workflow(
     process_definition.properties_json = merged_properties
     process_definition.updated_at = occurred_at
 
+    _sync_serialized_task_specs(
+        session,
+        serialized_spec,
+        tenant_id=process_instance.m8f_tenant_id,
+        process_definition_id=process_definition.id,
+        occurred_at=occurred_at,
+    )
+    subprocess_specs = serialized_workflow.get("subprocess_specs")
+    if isinstance(subprocess_specs, Mapping):
+        for subprocess_spec in subprocess_specs.values():
+            if isinstance(subprocess_spec, Mapping):
+                _sync_serialized_task_specs(
+                    session,
+                    subprocess_spec,
+                    tenant_id=process_instance.m8f_tenant_id,
+                    process_definition_id=process_definition.id,
+                    occurred_at=occurred_at,
+                )
+
+
+def _sync_serialized_task_specs(
+    session: Session,
+    serialized_spec: Mapping[str, Any],
+    *,
+    tenant_id: str,
+    process_definition_id: int,
+    occurred_at: datetime,
+) -> None:
+    task_specs = serialized_spec.get("task_specs")
     if not isinstance(task_specs, Mapping):
         raise ValidationError("Serialized workflow spec is missing task specs")
     for task_name, task_spec_payload in task_specs.items():
-        if not isinstance(task_spec_payload, Mapping):
-            continue
-        _upsert_task_definition_from_payload(
-            session,
-            tenant_id=process_instance.m8f_tenant_id,
-            process_definition_id=process_definition.id,
-            task_identifier=str(task_name),
-            task_spec_payload=task_spec_payload,
-            occurred_at=occurred_at,
-        )
+        if isinstance(task_spec_payload, Mapping):
+            _upsert_task_definition_from_payload(
+                session,
+                tenant_id=tenant_id,
+                process_definition_id=process_definition_id,
+                task_identifier=str(task_name),
+                task_spec_payload=task_spec_payload,
+                occurred_at=occurred_at,
+            )
 
 
 def _sync_bpmn_process_from_workflow(
@@ -1468,9 +1640,6 @@ def _sync_task_models_from_workflow(
     serialized_workflow: Mapping[str, Any],
     occurred_at: datetime,
 ) -> None:
-    serialized_tasks = serialized_workflow.get("tasks")
-    if not isinstance(serialized_tasks, Mapping):
-        raise ValidationError("Serialized workflow is missing task rows")
     if process_instance.bpmn_process_definition_id is None:
         raise ValidationError(
             "Process instance is missing a BPMN process definition"
@@ -1487,9 +1656,10 @@ def _sync_task_models_from_workflow(
         ).all()
     }
 
-    for task_guid, task_payload in serialized_tasks.items():
-        if not isinstance(task_payload, Mapping):
-            continue
+    serialized_task_rows = list(_iter_serialized_task_rows(serialized_workflow))
+    if not serialized_task_rows:
+        raise ValidationError("Serialized workflow is missing task rows")
+    for task_guid, task_payload in serialized_task_rows:
         task_spec_identifier = task_payload.get("task_spec")
         if not isinstance(task_spec_identifier, str):
             raise ValidationError(
@@ -1508,6 +1678,25 @@ def _sync_task_models_from_workflow(
             task_payload=task_payload,
             occurred_at=occurred_at,
         )
+
+
+def _iter_serialized_task_rows(
+    serialized_workflow: Mapping[str, Any],
+) -> Sequence[tuple[str, Mapping[str, Any]]]:
+    rows: list[tuple[str, Mapping[str, Any]]] = []
+    serialized_tasks = serialized_workflow.get("tasks")
+    if isinstance(serialized_tasks, Mapping):
+        rows.extend(
+            (str(task_guid), task_payload)
+            for task_guid, task_payload in serialized_tasks.items()
+            if isinstance(task_payload, Mapping)
+        )
+    subprocesses = serialized_workflow.get("subprocesses")
+    if isinstance(subprocesses, Mapping):
+        for subprocess in subprocesses.values():
+            if isinstance(subprocess, Mapping):
+                rows.extend(_iter_serialized_task_rows(subprocess))
+    return rows
 
 
 def _upsert_task_definition(

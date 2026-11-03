@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "m8flow-core"
-version = "1.0.0"
+version = "1.0.0b3"
 description = "An embeddable BPMN and DMN workflow engine for Python applications, the workflow core of m8flow."
 readme = "README.md"
 license = "Apache-2.0"

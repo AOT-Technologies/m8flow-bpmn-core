@@ -130,6 +130,7 @@ It takes the following fields:
 | `process_version` | `int` | No | Default `1` |
 | `started_at` | `datetime \| None` | No | |
 | `bpmn_process_id` | `str \| None` | No | Required only when the definition has several executable processes |
+| `call_activity_resolver` | `CallActivityResolver \| None` | No | Resolves external `calledElement` references in the starting tenant |
 
 Returns `ProcessInstanceModel`, already advanced to its first wait state or to
 completion.
@@ -143,6 +144,52 @@ Raises:
   ambiguous.
 - `ServiceTaskExecutionError` if the workflow reaches a service task and the
   connector fails.
+- `CallActivityResolutionError` if a called process is missing, ambiguous, or
+  invalid. A BPMN model with a call activity requires a resolver unless that
+  process is included in the same parser input.
+
+`CallActivityResolver` is a callable that receives a `CallActivityContext`
+containing the current `tenant_id`, the exact `called_element`, and the parent
+process instance and definition IDs. It returns one `CallActivityDefinition`,
+`None` when no matching definition exists in that tenant, or a sequence of
+definitions. A sequence with more than one entry is reported as ambiguous.
+Each definition contains `process_id`, `bpmn_xml`, and optional `dmn_xml`;
+`process_id` must exactly match `calledElement` and be an executable process in
+the returned BPMN. The host must scope its lookup by `context.tenant_id`.
+
+```python
+def resolve_child(context: api.CallActivityContext):
+    row = repository.find_process(
+        tenant_id=context.tenant_id,
+        process_id=context.called_element,
+    )
+    if row is None:
+        return None
+    return api.CallActivityDefinition(
+        process_id=context.called_element,
+        bpmn_xml=row.bpmn_xml,
+        dmn_xml=row.dmn_xml,
+    )
+
+command = api.InitializeProcessInstanceFromDefinitionCommand(
+    tenant_id=tenant_id,
+    bpmn_process_definition_id=definition_id,
+    process_initiator_id=user_id,
+    call_activity_resolver=resolve_child,
+)
+instance = api.execute_command(session, command)
+```
+
+SpiffWorkflow runs the resolved child as a nested workflow. Its snapshot is
+stored with the parent instance, including while the child waits for a human
+task, so normal task completion resumes the parent without requiring the
+resolver again. Spiff's BPMN input/output specifications control data copied
+into and out of the child; absent child input/output specifications, Spiff
+copies all task data. A child failure fails the parent workflow, and cancelling
+the call activity cancels its running child. Child human tasks belong to the
+parent instance and use the parent definition's lane assignment properties;
+separate child instance IDs and child-specific assignment properties aren't
+modeled.
 
 ### `InitializeProcessInstanceWorkflowCommand`
 
@@ -158,6 +205,7 @@ It takes the following fields:
 | `bpmn_process_id` | `str \| None` | No |
 | `started_at` | `datetime \| None` | No |
 | `dmn_xml` | `str \| bytes \| None` | No |
+| `call_activity_resolver` | `CallActivityResolver \| None` | No |
 
 Returns `ProcessInstanceModel`.
 
@@ -168,6 +216,8 @@ Raises:
 - `ValidationError` if the BPMN or DMN fails to parse or validate.
 - `ServiceTaskExecutionError` if the workflow reaches a service task and the
   connector fails.
+- `CallActivityResolutionError` if a called process is missing, ambiguous, or
+  invalid.
 
 ### `CreateProcessInstanceCommand`
 
@@ -586,6 +636,7 @@ BpmnCoreError
 |  `- InvalidStateError       (also ValueError)
 |- AuthorizationError         (also PermissionError)
 |- NotFoundError              (also LookupError)
+|  `- CallActivityResolutionError (also ValueError; subclass of ValidationError)
 `- ServiceTaskExecutionError  (also RuntimeError)
 ```
 
@@ -597,6 +648,7 @@ The following table shows when each error is raised:
 | `InvalidStateError` | The entity's state doesn't allow the operation, such as claiming a completed work item or suspending a terminated instance | Task and lifecycle commands |
 | `AuthorizationError` | The user isn't in the tenant, lacks the command permission, isn't a potential owner, or doesn't own the claim | Any call that takes a `user_id` |
 | `NotFoundError` | The entity doesn't exist in the tenant | Any call that loads a user, work item, instance, or definition |
+| `CallActivityResolutionError` | A called process is missing, ambiguous, or invalid | Initialize a workflow containing a call activity |
 | `ServiceTaskExecutionError` | A BPMN service task failed in its connector | Initialize, complete-task, retry, and scheduler calls |
 
 `examples/errors_demo.py` raises each error for real. See

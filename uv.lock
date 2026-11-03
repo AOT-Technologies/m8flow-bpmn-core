@@ -513,7 +513,7 @@ wheels = [
 
 [[package]]
 name = "m8flow-core"
-version = "1.0.0"
+version = "1.0.0b3"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
