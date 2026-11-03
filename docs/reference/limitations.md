@@ -129,7 +129,8 @@ The following BPMN features aren't tested in the library:
 - **Call activities**, where one process runs another reusable process as a
   child and waits for it.
 - **Event subprocesses**, triggered by events inside a running parent process,
-  often for cancellation or exception handling.
+  often for cancellation or exception handling. Only non-interrupting timer
+  event subprocesses are covered.
 - **Compensation**, BPMN's way of undoing completed work, such as cancelling
   hotel and flight bookings when a later step fails.
 - **Error and escalation boundary events**, for typed business errors such as

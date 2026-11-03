@@ -2182,7 +2182,13 @@ def _collect_waiting_timer_payloads(
         event_definition = getattr(task.task_spec, "event_definition", None)
         if not isinstance(event_definition, TimerEventDefinition):
             continue
-        is_start_event = type(task.task_spec).__name__ == "StartEvent"
+        # Only the top-level process's start events start new instances. An
+        # event subprocess's timer start runs inside a live instance, so it is
+        # scheduled like an intermediate timer.
+        is_start_event = (
+            type(task.task_spec).__name__ == "StartEvent"
+            and task.workflow is workflow
+        )
         if start_event_type_name == "exclude" and is_start_event:
             continue
         if start_event_type_name == "only" and not is_start_event:

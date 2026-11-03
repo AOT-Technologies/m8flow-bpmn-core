@@ -18,6 +18,13 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
   `m8flow_core.services` and `m8flow_core.application` packages are now also
   imported under `TYPE_CHECKING`, so static analysis can see them.
 
+### Fixed
+
+- A timer start event inside an event subprocess is now scheduled as a timer
+  of the running instance. Before, importing the definition scheduled it as a
+  process timer start, which started extra instances, and the running instance
+  fired it only when another timer woke it. Needs SpiffWorkflow 3.2.0 or later.
+
 ### Security
 
 - Updated locked dependencies to resolve open Dependabot advisories:
