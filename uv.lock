@@ -554,7 +554,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7,<3.0" },
     { name = "pydantic-settings", specifier = ">=2.3,<3.0" },
     { name = "pymysql", marker = "extra == 'mysql'", specifier = ">=1.1,<2.0" },
-    { name = "spiffworkflow", specifier = ">=3.1.2,<4.0" },
+    { name = "spiffworkflow", specifier = ">=3.2.0,<4.0" },
     { name = "sqlalchemy", specifier = ">=2.0,<3.0" },
 ]
 provides-extras = ["postgresql", "mysql", "celery"]
@@ -1137,14 +1137,14 @@ wheels = [
 
 [[package]]
 name = "spiffworkflow"
-version = "3.1.2"
+version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "lxml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bd/0a/264c97a01da82142759498c29b0f32b5b48aee669982dce8616281434e3e/spiffworkflow-3.1.2.tar.gz", hash = "sha256:edbfc7bfc88b14080e5581562a02f843b00f3e4441bf9db8051cce58ddb049ed", size = 148075, upload-time = "2025-10-20T18:58:47.965Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b8/df/36f30280a852e81759b15dc72892492b7ce92dff5a942c51c00012c1edca/spiffworkflow-3.2.0.tar.gz", hash = "sha256:42bc2b52b9829e84ef5947615208973f3812c0a6d716fb2cd0f2a295425db107", size = 153675, upload-time = "2026-08-10T16:11:27.928Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/ef/06058beb3e41cfd31c670d94de39611c718f9f60c4ee3ccc0cad875531e1/spiffworkflow-3.1.2-py3-none-any.whl", hash = "sha256:e1891820acbc52d2738e04ec253e5cb7844b75c21e112ce0f72b7353cebbfb8a", size = 268641, upload-time = "2025-10-20T18:58:46.497Z" },
+    { url = "https://files.pythonhosted.org/packages/4f/cc/710605b7208629dbd7ecef72905c0a6b79708192815822ed18b12007437c/spiffworkflow-3.2.0-py3-none-any.whl", hash = "sha256:fd2c4d3c2674e9e6b15c4db262b1a09f0ca11ce6638f8cceef0997f42aa5cb96", size = 275267, upload-time = "2026-08-10T16:11:26.541Z" },
 ]
 
 [[package]]
