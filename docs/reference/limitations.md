@@ -54,6 +54,10 @@ is saved durably and can be retried.
 
 Missing:
 
+- **Independent recovery writes for signal workflows.** Signal-bearing
+  workflows keep service failures, publications, and receipts in the caller's
+  transaction. Commit a failure state to retain it; rollback restores all of
+  them together.
 - **Durable failures after task completion.** A service task that fails after
   `CompleteTaskCommand` shares your transaction, so a rollback undoes the
   failure state too.
@@ -106,7 +110,10 @@ Missing:
 
 ## Messaging and correlation
 
-The library doesn't support BPMN messaging.
+The library supports tenant-scoped BPMN signal publication. Hosts run one
+signal delivery loop per tenant; multi-worker signal delivery and external
+broker delivery are not supported. See [Publish signals](../how-to/publish-signals.md).
+BPMN message correlation remains unsupported.
 
 Missing:
 
@@ -114,8 +121,7 @@ Missing:
   as `invoice.received` instead of an explicit start command.
 - **Intermediate message events**, such as sending `payment.requested` and
   waiting for `payment.confirmed` before continuing.
-- **Signal events**, which broadcast to every listening instance at once.
-- **Correlation keys and subscriptions**, which match an inbound payload such
+- **Message correlation keys and subscriptions**, which match an inbound payload such
   as `order_id=123` to the instance waiting for it.
 - **Inbound message routing**, an entry point that turns a webhook or event-bus
   message into "resume this instance at this catch event".
@@ -129,8 +135,8 @@ The following BPMN features aren't tested in the library:
 - **Call activities**, where one process runs another reusable process as a
   child and waits for it.
 - **Event subprocesses**, triggered by events inside a running parent process,
-  often for cancellation or exception handling. Only non-interrupting timer
-  event subprocesses are covered.
+  often for cancellation or exception handling. Non-interrupting timer and
+  interrupting/non-interrupting signal event subprocesses are covered.
 - **Compensation**, BPMN's way of undoing completed work, such as cancelling
   hotel and flight bookings when a later step fails.
 - **Error and escalation boundary events**, for typed business errors such as
@@ -138,8 +144,7 @@ The following BPMN features aren't tested in the library:
   covered; these aren't.
 - **Multi-instance activities**, which run a task once per item in a
   collection, in sequence or in parallel.
-- **Non-interrupting events**, which start side work, such as a reminder task,
-  without cancelling the current path.
+- **Other non-interrupting events**, beyond the tested timer and signal forms.
 
 ## Operations and observability
 

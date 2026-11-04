@@ -59,6 +59,63 @@ with the same arguments, such as `api.claim_task(...)` or
 
 ## Commands
 
+### Signal publication and delivery
+
+The following signal commands are frozen, slotted dataclasses. Their field
+order is the order shown below; `tenant_id` is always first.
+
+| Command | Fields, in order | Returns |
+|---|---|---|
+| `PublishSignalCommand` | `tenant_id: str`, `signal_name: str`, `user_id: int`, `occurrence_id: str`, `payload: Any = None`, `published_at: datetime \| None = None` | `SignalPublicationModel` |
+| `RunSignalDeliveriesCommand` | `tenant_id: str`, `limit: int = 100`, `now: datetime \| None = None` | `list[SignalDeliveryModel]` |
+
+`PublishSignalCommand` validates publisher membership, then requires
+`SIGNAL_PUBLISH_COMMAND` (`"signal.publish"`) with `execute` permission on the
+exact tenant resource. Managers and admins receive that permission by default.
+The runner is a trusted host operation. Both commands preserve caller-owned
+transactions, including when dispatched with a `Connection`.
+
+Signal names match exactly and case-sensitively within the tenant. Name and
+occurrence ID must be non-blank strings of at most 255 characters. The payload
+must be JSON serializable, including JSON null; non-finite numbers are rejected.
+Supplied times must be timezone-aware and are normalized to UTC.
+
+An identical occurrence ID, publisher, signal name, and payload returns the
+original publication and its original recipients. Conflicting reuse raises
+`ValidationError`. Zero recipients is successful publication. BPMN throws use
+the same registry with internally generated execution identities and record
+local delivery immediately. Other instances and Signal Starts require the
+runner; publication does not execute them inline.
+
+The runner snapshots a bounded batch of due candidates. All subscriptions for
+one occurrence in one recipient instance are processed as an atomic group,
+which can contain multiple returned receipts. Newly emitted occurrences are
+left for a later runner call. Suspended recipients are held until resume.
+Failed attempts before consumption remain pending and retry after 30 seconds;
+post-consumption workflow errors are stored on the recipient without repeating
+the signal. Ended targets are skipped. Receipts expose status, attempt count,
+retry/delivery timestamps, error details, and resulting process instance ID.
+
+These operations raise `NotFoundError` for a missing tenant or queried
+occurrence, `AuthorizationError` for publisher membership/permission failures,
+and `ValidationError` for invalid inputs or conflicting occurrence IDs. A
+non-positive runner limit raises `ValidationError`. Individual recipient
+execution failures are recorded on receipts and do not abort other recipients.
+
+Signal queries, dispatched only through `execute_query`, are:
+
+| Query | Fields | Returns |
+|---|---|---|
+| `GetSignalPublicationQuery` | `tenant_id: str`, `occurrence_id: str` | `SignalPublicationModel` |
+| `ListSignalDeliveriesQuery` | `tenant_id: str`, `occurrence_id: str` | `list[SignalDeliveryModel]`, in receipt ID order |
+
+Matching public functions are `publish_signal`, `run_signal_deliveries`,
+`get_signal_publication`, and `list_signal_deliveries`. Each takes a `Session`
+or `Connection` followed by the command/query fields as keyword arguments.
+See [Publish signals](../how-to/publish-signals.md) for the embedding loop,
+definition version policy, recovery, and payload examples, and the
+[database reference](database-schema.md#signal-registry) for model columns.
+
 ### `ImportBpmnProcessDefinitionCommand`
 
 Stores BPMN XML, and optional DMN XML, as a process definition. Validation

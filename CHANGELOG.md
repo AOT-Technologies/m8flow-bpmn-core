@@ -7,6 +7,24 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ## [Unreleased]
 
+### Added
+
+- Durable tenant-scoped BPMN signal publication, subscription indexing, and
+  idempotent delivery receipts. Intermediate/end throws broadcast to waiting
+  intermediate catches, boundary events, event subprocesses, and Signal Start
+  definitions. Local handlers react immediately; hosts run queued deliveries
+  with `RunSignalDeliveriesCommand` or `run_signal_deliveries`.
+- `PublishSignalCommand`, `RunSignalDeliveriesCommand`,
+  `GetSignalPublicationQuery`, `ListSignalDeliveriesQuery`, matching service
+  functions, and `SIGNAL_PUBLISH_COMMAND`. Managers and admins can publish with
+  the new tenant-scoped permission. An additive Alembic revision
+  `l3m4n5o6p7q8` introduces the four signal registry tables.
+- An in-memory SQLite signal broadcast example and embedding guide.
+- Signal-bearing workflows keep instance creation, service-failure recovery,
+  publication, and consumption in the caller's transaction. Rollback restores
+  them together; commit an error state to retain it.
+
+
 ### Changed
 
 - Resolved CodeQL code-scanning alerts without changing the public API.
@@ -21,6 +39,24 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
   Earlier versions never set up event subprocesses.
 
 ### Fixed
+
+- Removed cyclic imports introduced by signal publication. Engine construction,
+  workflow-state persistence, and signal indexing now form lower-level internal
+  modules; Spiff signal throws use an injected publisher callback. Public API
+  exports and persisted workflow formats are unchanged.
+- Added sample-app revision `20261104_0003` for the signal registry and its
+  composite parent indexes. The app now upgrades existing databases and adopts
+  existing signal tables without changing the host's Alembic version state.
+  This fixes sample-app startup and CI failures on missing signal tables.
+
+
+- Unmatched signal throws are covered by regressions: publication succeeds
+  without a catcher and downstream execution continues (BPMN-03). Signal end
+  events now publish instead of silently behaving as none end events.
+- Non-interrupting signal boundaries re-arm for repeated occurrences;
+  interrupting signal event subprocesses cancel competing scope execution.
+  Tasks in signal-triggered subprocesses are persisted and materialized.
+
 
 - A timer start event inside an event subprocess is now scheduled as a timer
   of the running instance. Before, importing the definition scheduled it as a

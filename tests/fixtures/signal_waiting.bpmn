@@ -1,0 +1,7 @@
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+      xmlns:spiffworkflow="http://spiffworkflow.org/bpmn/schema/1.0/core"
+      targetNamespace="urn:signals">
+      <signal id="sig" name="Notice"><extensionElements>
+      <spiffworkflow:variableName>received</spiffworkflow:variableName>
+      </extensionElements></signal>
+      <process id="wait" isExecutable="true"><startEvent id="start"/><sequenceFlow id="start_catch" sourceRef="start" targetRef="catch"/><intermediateCatchEvent id="catch"><signalEventDefinition signalRef="sig"/></intermediateCatchEvent><sequenceFlow id="catch_after" sourceRef="catch" targetRef="after"/><scriptTask id="after" scriptFormat="python"><script>after_catch = True</script></scriptTask><sequenceFlow id="after_end" sourceRef="after" targetRef="end"/><endEvent id="end"/></process></definitions>

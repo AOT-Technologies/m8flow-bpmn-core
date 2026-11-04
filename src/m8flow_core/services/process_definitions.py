@@ -68,6 +68,9 @@ def import_bpmn_process_definition(
         bpmn_xml_text=source_bpmn_xml_text,
         dmn_xml_text=source_dmn_xml_text,
     )
+    from m8flow_core.services.signal_registry import validate_signal_source
+
+    validate_signal_source(source_bpmn_xml_text, source_dmn_xml_text)
     resolved_process_xml_digest = (
         process_xml_digest
         if process_xml_digest is not None
@@ -159,6 +162,13 @@ def import_bpmn_process_definition(
         process_definition=definition,
         occurred_at=snapshot_timestamp,
     )
+    from m8flow_core.services.signal_registry import (
+        _ensure_registry,
+        sync_definition_signals,
+    )
+
+    _ensure_registry(session, tenant_id, snapshot_timestamp)
+    sync_definition_signals(session, definition, snapshot_timestamp)
     enroll_definition_lane_owners(
         session,
         tenant_id=tenant_id,

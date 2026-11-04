@@ -11,6 +11,7 @@ The repository has the following examples:
 
 | Script | What it shows | Database |
 |---|---|---|
+| `signal_broadcast.py` | One signal reaches three waiting instances and one Signal Start exactly once | In-memory SQLite |
 | `parallel_review.py` | A purchase order through a parallel gateway, script tasks, and an exclusive gateway, across three lanes | In-memory SQLite |
 | `errors_demo.py` | Every public error class, raised for real | In-memory SQLite |
 | `conditional_approval.py` | An approval with an exclusive gateway, a DMN decision, lane assignment, and command permission checks | PostgreSQL or SQLite |
@@ -33,6 +34,7 @@ and print each step. To run them, use the following commands:
 ```bash
 uv run python examples/parallel_review.py
 uv run python examples/errors_demo.py
+uv run python examples/signal_broadcast.py
 ```
 
 In `parallel_review.py`, change `SCENARIO` near the top of the file to

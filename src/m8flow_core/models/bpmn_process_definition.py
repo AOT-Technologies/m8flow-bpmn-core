@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from m8flow_core.models.base import Base
@@ -17,6 +17,7 @@ PROCESS_MODEL_IDENTIFIER_PROPERTY_KEY = "__m8f_process_model_identifier"
 class BpmnProcessDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "bpmn_process_definition"
     __table_args__ = (
+        Index("m8f_definition_tenant_id_key", "m8f_tenant_id", "id", unique=True),
         UniqueConstraint(
             "m8f_tenant_id",
             "process_xml_digest",

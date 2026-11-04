@@ -27,6 +27,11 @@ The following elements are supported:
 |---|---|
 | Start event (none) | |
 | End event (none) | |
+| Signal intermediate/end throw | Publishes successfully with zero or more listeners; local delivery is immediate |
+| Signal intermediate catch | Receives matching publications while waiting |
+| Signal boundary event | Interrupting and repeatable non-interrupting handlers |
+| Signal start event | Creates one instance per matching active start subscription and occurrence |
+| Signal event subprocess | Interrupting and repeatable non-interrupting starts, including nested scopes and human tasks |
 | Sequence flow with condition expression | Python expressions evaluated against task data |
 | User task | Becomes a human task that users claim and complete |
 | Manual task | Becomes a human task, like a user task |
@@ -40,7 +45,10 @@ The following elements are supported:
 | Timer start event | `timeDate`, or a finite recurring `timeCycle` such as `R3/PT20S`. Each firing creates a new process instance. |
 | Timer intermediate catch event | The instance waits until the scheduler fires the timer |
 | Interrupting timer boundary event | `timeDate` or `timeDuration`, such as `PT2M`. Cancels the attached task and continues on the timeout path. |
-| Non-interrupting timer event subprocess | A `subProcess` with `triggeredByEvent="true"` and a timer start event with `isInterrupting="false"`. The scheduler fires it inside the running instance, and the main path keeps going. Needs SpiffWorkflow 3.2.0 or later. Human tasks inside it don't become work items yet. |
+| Non-interrupting timer event subprocess | A `subProcess` with `triggeredByEvent="true"` and a timer start event with `isInterrupting="false"`. The scheduler fires it inside the running instance, and the main path keeps going. Needs SpiffWorkflow 3.2.0 or later. |
+
+Signals need a host-run delivery loop for recipients outside the throwing
+instance. See [Publish and deliver BPMN signals](../how-to/publish-signals.md).
 
 Timers need a scheduler loop. See
 [Run timers and scheduled retries](../how-to/run-timers-and-retries.md).
@@ -88,12 +96,13 @@ names that exist in the BPMN, and none of them may also be a key in
 
 The following elements and behaviors aren't covered:
 
-- Message events, signal events, and message correlation
+- Message events and message correlation
 - Call activities
-- Event subprocesses, other than non-interrupting timer ones
+- Event subprocesses, other than the documented timer and signal forms
 - Compensation
 - Error and escalation boundary events
-- Non-interrupting boundary events
+- Non-interrupting boundary events other than signals
+- Compound Multiple/Parallel Multiple events and event-based gateways
 - Multi-instance activities
 - Asynchronous service tasks that complete through a callback
 
