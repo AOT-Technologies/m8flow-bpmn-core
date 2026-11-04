@@ -17,6 +17,8 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
   `m8flow_core.api` and `m8flow_core.services`. The lazily loaded names in the
   `m8flow_core.services` and `m8flow_core.application` packages are now also
   imported under `TYPE_CHECKING`, so static analysis can see them.
+- SpiffWorkflow 3.2.0 is now the minimum supported version, up from 3.1.2.
+  Earlier versions never set up event subprocesses.
 
 ### Fixed
 
