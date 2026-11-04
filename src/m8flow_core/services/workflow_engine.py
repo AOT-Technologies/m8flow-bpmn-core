@@ -25,12 +25,13 @@ from m8flow_core.services.signal_runtime import (
     signal_parser_overrides,
 )
 
+_WORKFLOW_STATE_SERIALIZER_VERSION = "5"
+
 _WORKFLOW_SERIALIZER = BpmnWorkflowSerializer(
     registry=BpmnWorkflowSerializer.configure(SPIFF_CONFIG),
-    version="5",
+    version=_WORKFLOW_STATE_SERIALIZER_VERSION,
 )
 configure_signal_serializer(_WORKFLOW_SERIALIZER.registry)
-_WORKFLOW_STATE_SERIALIZER_VERSION = "5"
 
 
 class _NoopDMNEngine:

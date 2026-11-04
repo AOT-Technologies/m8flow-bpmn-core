@@ -40,6 +40,11 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ### Fixed
 
+- Removed unused runtime compatibility imports and made the signal service
+  facade's exports explicit. Workflow serializer configuration now uses the
+  shared version constant, addressing the remaining CodeQL unused-symbol
+  alerts without changing the public API or serialized format.
+
 - Removed cyclic imports introduced by signal publication. Engine construction,
   workflow-state persistence, and signal indexing now form lower-level internal
   modules; Spiff signal throws use an injected publisher callback. Public API

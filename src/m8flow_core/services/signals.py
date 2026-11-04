@@ -33,6 +33,14 @@ from m8flow_core.services.signal_registry import (
     publish_signal as publish_signal,
 )
 
+# These service entrypoints intentionally remain available from this facade.
+__all__ = [
+    "get_signal_publication",
+    "list_signal_deliveries",
+    "publish_signal",
+    "run_signal_deliveries",
+]
+
 
 def run_signal_deliveries(
     session: Session,
