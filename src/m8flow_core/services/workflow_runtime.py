@@ -1559,7 +1559,7 @@ def _sync_process_definition_from_workflow(
     )
     subprocess_specs = serialized_workflow.get("subprocess_specs")
     if isinstance(subprocess_specs, Mapping):
-        for subprocess_spec in subprocess_specs.values():
+        for subprocess_name, subprocess_spec in subprocess_specs.items():
             if isinstance(subprocess_spec, Mapping):
                 _sync_serialized_task_specs(
                     session,
@@ -1567,6 +1567,7 @@ def _sync_process_definition_from_workflow(
                     tenant_id=process_instance.m8f_tenant_id,
                     process_definition_id=process_definition.id,
                     occurred_at=occurred_at,
+                    task_identifier_prefix=str(subprocess_name),
                 )
 
 
@@ -1577,18 +1578,27 @@ def _sync_serialized_task_specs(
     tenant_id: str,
     process_definition_id: int,
     occurred_at: datetime,
+    task_identifier_prefix: str | None = None,
 ) -> None:
     task_specs = serialized_spec.get("task_specs")
     if not isinstance(task_specs, Mapping):
         raise ValidationError("Serialized workflow spec is missing task specs")
     for task_name, task_spec_payload in task_specs.items():
         if isinstance(task_spec_payload, Mapping):
+            task_identifier = str(task_name)
+            database_identifier = (
+                f"{task_identifier_prefix}::{task_identifier}"
+                if task_identifier_prefix is not None
+                else task_identifier
+            )
+            persisted_payload = dict(task_spec_payload)
+            persisted_payload["__m8f_task_identifier"] = task_identifier
             _upsert_task_definition_from_payload(
                 session,
                 tenant_id=tenant_id,
                 process_definition_id=process_definition_id,
-                task_identifier=str(task_name),
-                task_spec_payload=task_spec_payload,
+                task_identifier=database_identifier,
+                task_spec_payload=persisted_payload,
                 occurred_at=occurred_at,
             )
 
@@ -1659,12 +1669,7 @@ def _sync_task_models_from_workflow(
     serialized_task_rows = list(_iter_serialized_task_rows(serialized_workflow))
     if not serialized_task_rows:
         raise ValidationError("Serialized workflow is missing task rows")
-    for task_guid, task_payload in serialized_task_rows:
-        task_spec_identifier = task_payload.get("task_spec")
-        if not isinstance(task_spec_identifier, str):
-            raise ValidationError(
-                f"Serialized task {task_guid!r} is missing its task spec identifier"
-            )
+    for _task_guid, task_spec_identifier, task_payload in serialized_task_rows:
         task_definition = task_definitions.get(task_spec_identifier)
         if task_definition is None:
             raise ValidationError(
@@ -1682,20 +1687,43 @@ def _sync_task_models_from_workflow(
 
 def _iter_serialized_task_rows(
     serialized_workflow: Mapping[str, Any],
-) -> Sequence[tuple[str, Mapping[str, Any]]]:
-    rows: list[tuple[str, Mapping[str, Any]]] = []
+    *,
+    identifier_prefix: str | None = None,
+) -> Sequence[tuple[str, str, Mapping[str, Any]]]:
+    rows: list[tuple[str, str, Mapping[str, Any]]] = []
     serialized_tasks = serialized_workflow.get("tasks")
     if isinstance(serialized_tasks, Mapping):
-        rows.extend(
-            (str(task_guid), task_payload)
-            for task_guid, task_payload in serialized_tasks.items()
-            if isinstance(task_payload, Mapping)
-        )
+        for task_guid, task_payload in serialized_tasks.items():
+            if not isinstance(task_payload, Mapping):
+                continue
+            task_spec_name = task_payload.get("task_spec")
+            if not isinstance(task_spec_name, str):
+                raise ValidationError(
+                    f"Serialized task {task_guid!r} is missing its task spec identifier"
+                )
+            task_definition_identifier = (
+                f"{identifier_prefix}::{task_spec_name}"
+                if identifier_prefix is not None
+                else task_spec_name
+            )
+            rows.append(
+                (str(task_guid), task_definition_identifier, task_payload)
+            )
     subprocesses = serialized_workflow.get("subprocesses")
     if isinstance(subprocesses, Mapping):
         for subprocess in subprocesses.values():
             if isinstance(subprocess, Mapping):
-                rows.extend(_iter_serialized_task_rows(subprocess))
+                subprocess_name = subprocess.get("spec")
+                if not isinstance(subprocess_name, str):
+                    raise ValidationError(
+                        "Serialized subprocess is missing its spec identifier"
+                    )
+                rows.extend(
+                    _iter_serialized_task_rows(
+                        subprocess,
+                        identifier_prefix=subprocess_name,
+                    )
+                )
     return rows
 
 
@@ -1705,22 +1733,38 @@ def _upsert_task_definition(
     tenant_id: str,
     process_definition_id: int,
     task_spec: object,
+    task_identifier_prefix: str | None = None,
     occurred_at: datetime,
 ) -> TaskDefinitionModel:
     task_spec_payload = _WORKFLOW_SERIALIZER.to_dict(task_spec)
     if not isinstance(task_spec_payload, Mapping):
         raise ValidationError("Task spec serializer did not produce a dictionary")
-    task_identifier = getattr(task_spec, "name", None)
-    if not isinstance(task_identifier, str) or not task_identifier:
+    source_task_identifier = getattr(task_spec, "name", None)
+    if not isinstance(source_task_identifier, str) or not source_task_identifier:
         raise ValidationError("Task spec is missing its serialized identifier")
+    task_identifier = (
+        f"{task_identifier_prefix}::{source_task_identifier}"
+        if task_identifier_prefix is not None
+        else source_task_identifier
+    )
+    serialized_payload = dict(task_spec_payload)
+    serialized_payload["__m8f_task_identifier"] = source_task_identifier
     return _upsert_task_definition_from_payload(
         session,
         tenant_id=tenant_id,
         process_definition_id=process_definition_id,
         task_identifier=task_identifier,
-        task_spec_payload=task_spec_payload,
+        task_spec_payload=serialized_payload,
         occurred_at=occurred_at,
     )
+
+
+def _task_definition_identifier_prefix(workflow: object | None) -> str | None:
+    if workflow is None or getattr(workflow, "parent_workflow", None) is None:
+        return None
+    spec = getattr(workflow, "spec", None)
+    spec_name = getattr(spec, "name", None)
+    return spec_name if isinstance(spec_name, str) and spec_name else None
 
 
 def _upsert_task_definition_from_payload(
@@ -1740,6 +1784,7 @@ def _upsert_task_definition_from_payload(
         )
     )
     serialized_payload = dict(task_spec_payload)
+    serialized_payload.setdefault("__m8f_task_identifier", task_identifier)
     task_name = serialized_payload.get("bpmn_name")
     task_typename = serialized_payload.get("typename")
     if not isinstance(task_typename, str) or not task_typename:
@@ -1959,6 +2004,9 @@ def _materialize_single_manual_task(
         tenant_id=process_instance.m8f_tenant_id,
         process_definition_id=process_instance.bpmn_process_definition_id,
         task_spec=task.task_spec,
+        task_identifier_prefix=_task_definition_identifier_prefix(
+            getattr(task, "workflow", None)
+        ),
         occurred_at=occurred_at,
     )
     task_model = _upsert_task_model(
@@ -2371,7 +2419,13 @@ def _collect_waiting_timer_payloads(
         event_definition = getattr(task.task_spec, "event_definition", None)
         if not isinstance(event_definition, TimerEventDefinition):
             continue
-        is_start_event = type(task.task_spec).__name__ == "StartEvent"
+        # Only the top-level process's start events start new instances. An
+        # event subprocess's timer start runs inside a live instance, so it is
+        # scheduled like an intermediate timer.
+        is_start_event = (
+            type(task.task_spec).__name__ == "StartEvent"
+            and task.workflow is workflow
+        )
         if start_event_type_name == "exclude" and is_start_event:
             continue
         if start_event_type_name == "only" and not is_start_event:

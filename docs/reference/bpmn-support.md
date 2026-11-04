@@ -41,6 +41,7 @@ The following elements are supported:
 | Timer intermediate catch event | The instance waits until the scheduler fires the timer |
 | Interrupting timer boundary event | `timeDate` or `timeDuration`, such as `PT2M`. Cancels the attached task and continues on the timeout path. |
 | Call activity | Resolves `calledElement` through the host-supplied tenant-aware resolver. The child runs in the parent snapshot and parent execution resumes on child completion. See the [resolver contract](api.md#initializeprocessinstancefromdefinitioncommand). |
+| Non-interrupting timer event subprocess | A `subProcess` with `triggeredByEvent="true"` and a timer start event with `isInterrupting="false"`. The scheduler fires it inside the running instance, and the main path keeps going. Needs SpiffWorkflow 3.2.0 or later. Human tasks inside it don't become work items yet. |
 
 Timers need a scheduler loop. See
 [Run timers and scheduled retries](../how-to/run-timers-and-retries.md).
@@ -89,7 +90,7 @@ names that exist in the BPMN, and none of them may also be a key in
 The following elements and behaviors aren't covered:
 
 - Message events, signal events, and message correlation
-- Event subprocesses
+- Event subprocesses, other than non-interrupting timer ones
 - Compensation
 - Error and escalation boundary events
 - Non-interrupting boundary events

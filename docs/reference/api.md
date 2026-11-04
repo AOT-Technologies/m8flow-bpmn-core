@@ -633,10 +633,10 @@ a built-in exception, so you can catch either:
 ```text
 BpmnCoreError
 |- ValidationError            (also ValueError)
-|  `- InvalidStateError       (also ValueError)
+|  |- InvalidStateError       (also ValueError)
+|  `- CallActivityResolutionError (also ValueError)
 |- AuthorizationError         (also PermissionError)
 |- NotFoundError              (also LookupError)
-|  `- CallActivityResolutionError (also ValueError; subclass of ValidationError)
 `- ServiceTaskExecutionError  (also RuntimeError)
 ```
 

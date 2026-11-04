@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "m8flow-core"
-version = "1.0.0b3"
+version = "1.0.0"
 description = "An embeddable BPMN and DMN workflow engine for Python applications, the workflow core of m8flow."
 readme = "README.md"
 license = "Apache-2.0"
@@ -26,7 +26,7 @@ dependencies = [
   "pydantic>=2.7,<3.0",
   "pydantic-settings>=2.3,<3.0",
   "SQLAlchemy>=2.0,<3.0",
-  "spiffworkflow>=3.1.2,<4.0",
+  "spiffworkflow>=3.2.0,<4.0",
 ]
 
 [project.optional-dependencies]

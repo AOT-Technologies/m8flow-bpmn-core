@@ -5,10 +5,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from m8flow_core import api
 from m8flow_core.errors import CallActivityResolutionError
+from m8flow_core.models.task_definition import TaskDefinitionModel
 from m8flow_core.models.tenant import M8flowTenantModel
 from m8flow_core.models.user import UserModel
 from m8flow_core.services.authorization import ROLE_ADMIN, ensure_v1_role
@@ -133,6 +135,44 @@ def test_call_activity_waits_in_child_then_parent_completes(session: Session) ->
     assert len(resolver_contexts) == 1
 
 
+def test_child_task_id_does_not_overwrite_parent_task_definition(
+    session: Session,
+) -> None:
+    tenant, user = _seed(session)
+    child_xml = CHILD_BPMN.replace("child_wait", "call_child")
+    _, instance = _start(
+        session,
+        tenant,
+        user,
+        lambda _context: api.CallActivityDefinition("child_process", child_xml),
+    )
+
+    definitions = session.scalars(
+        select(TaskDefinitionModel).where(
+            TaskDefinitionModel.m8f_tenant_id == tenant.id,
+            TaskDefinitionModel.bpmn_process_definition_id
+            == instance.bpmn_process_definition_id,
+            TaskDefinitionModel.bpmn_identifier.in_(
+                ["call_child", "child_process::call_child"]
+            ),
+        )
+    ).all()
+    actual_names = {
+        definition.bpmn_identifier: definition.bpmn_name
+        for definition in definitions
+    }
+    assert actual_names == {
+        "call_child": "Call child",
+        "child_process::call_child": "Child approval",
+    }
+    [work_item] = api.execute_query(
+        session,
+        api.GetPendingTasksQuery(tenant_id=tenant.id, user_id=user.id),
+    )
+    assert work_item.task_name == "call_child"
+    assert work_item.task_title == "Child approval"
+
+
 def test_call_activity_passes_inputs_and_returns_child_outputs(
     session: Session,
 ) -> None:
@@ -149,12 +189,7 @@ def test_call_activity_passes_inputs_and_returns_child_outputs(
     assert instance.status == api.ProcessInstanceStatus.complete
     serialized = json.loads(instance.workflow_state_json)
     assert "hello mapped" in json.dumps(serialized)
-    call_task_data = [
-        task["data"]
-        for task in serialized["tasks"].values()
-        if task.get("task_spec") == "call_child"
-    ]
-    assert call_task_data[0]["child_output"] == "hello mapped"
+    assert serialized["data"]["child_output"] == "hello mapped"
 
 
 @pytest.mark.parametrize(
