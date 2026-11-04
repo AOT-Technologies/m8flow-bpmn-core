@@ -21,6 +21,7 @@ from m8flow_core.application.commands import (
     ImportBpmnProcessDefinitionCommand,
     InitializeProcessInstanceFromDefinitionCommand,
     InitializeProcessInstanceWorkflowCommand,
+    PublishSignalCommand,
     RecordProcessInstanceEventCommand,
     ResumeProcessInstanceCommand,
     RetryProcessInstanceCommand,
@@ -46,6 +47,7 @@ from m8flow_core.models.user import UserModel
 from m8flow_core.models.user_group_assignment import UserGroupAssignmentModel
 from m8flow_core.services.tenant_users import tenant_identifiers_for
 
+SIGNAL_PUBLISH_COMMAND = "signal.publish"
 TASK_CLAIM_COMMAND = "task.claim"
 TASK_COMPLETE_COMMAND = "task.complete"
 PROCESS_START_COMMAND = "process.start"
@@ -117,6 +119,10 @@ AuthorizationPolicyFactory = Callable[[], AuthorizationPolicy]
 
 
 COMMAND_AUTHORIZATION_SPECS: dict[type[object], CommandAuthorizationSpec] = {
+    PublishSignalCommand: CommandAuthorizationSpec(
+        command_key=SIGNAL_PUBLISH_COMMAND, permission=PermissionAction.execute.value,
+        resource_type=RESOURCE_TENANT, actor_field_name="user_id",
+    ),
     ClaimTaskCommand: CommandAuthorizationSpec(
         command_key=TASK_CLAIM_COMMAND,
         permission=PermissionAction.execute.value,
@@ -212,10 +218,12 @@ V1_BASIC_ROLE_COMMAND_KEYS: dict[str, tuple[str, ...]] = {
         TASK_COMPLETE_COMMAND,
     ),
     ROLE_MANAGER: (
+        SIGNAL_PUBLISH_COMMAND,
         TASK_CLAIM_COMMAND,
         TASK_COMPLETE_COMMAND,
     ),
     ROLE_ADMIN: (
+        SIGNAL_PUBLISH_COMMAND,
         PROCESS_START_COMMAND,
         TASK_CLAIM_COMMAND,
         TASK_COMPLETE_COMMAND,

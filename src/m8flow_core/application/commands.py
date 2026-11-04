@@ -11,6 +11,23 @@ from m8flow_core.models.process_instance_event import (
 
 
 @dataclass(frozen=True, slots=True)
+class PublishSignalCommand:
+    tenant_id: str
+    signal_name: str
+    user_id: int
+    occurrence_id: str
+    payload: Any = None
+    published_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RunSignalDeliveriesCommand:
+    tenant_id: str
+    limit: int = 100
+    now: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ClaimTaskCommand:
     tenant_id: str
     work_item_id: int

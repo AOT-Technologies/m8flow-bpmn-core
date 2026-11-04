@@ -131,3 +131,12 @@ factory, such as the policy class itself.
 - [Authorization hooks in the API reference](../reference/api.md#authorization-hooks)
 - [Limitations](../reference/limitations.md#authorization): the commands
   that aren't permission-checked yet
+
+## Authorize signal publication
+
+`PublishSignalCommand` checks tenant membership and the `signal.publish`
+command with `execute` permission against the exact `(tenant, tenant_id)`
+resource. `SIGNAL_PUBLISH_COMMAND` is exported by `m8flow_core.api`. The manager
+and admin role defaults include this grant. Re-run `ensure_v1_role` to add it
+to existing role groups. BPMN throws are workflow behavior; the host-owned
+signal delivery runner is a trusted operation without an acting user.

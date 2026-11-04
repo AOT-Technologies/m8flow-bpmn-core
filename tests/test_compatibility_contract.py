@@ -14,7 +14,9 @@ from m8flow_core.application.commands import (
     ImportBpmnProcessDefinitionCommand,
     InitializeProcessInstanceFromDefinitionCommand,
     InitializeProcessInstanceWorkflowCommand,
+    PublishSignalCommand,
     RecordProcessInstanceEventCommand,
+    RunSignalDeliveriesCommand,
     UpsertProcessInstanceMetadataCommand,
 )
 from m8flow_core.application.queries import (
@@ -22,7 +24,9 @@ from m8flow_core.application.queries import (
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
+    GetSignalPublicationQuery,
     ListProcessInstancesQuery,
+    ListSignalDeliveriesQuery,
 )
 from m8flow_core.errors import ValidationError
 from m8flow_core.models.base import Base
@@ -46,6 +50,15 @@ from m8flow_core.models.work_item import WorkItemModel
 from m8flow_core.services.work_items import WorkItemState
 
 EXPECTED_COMMAND_FIELDS = {
+    PublishSignalCommand: [
+        "tenant_id",
+        "signal_name",
+        "user_id",
+        "occurrence_id",
+        "payload",
+        "published_at",
+    ],
+    RunSignalDeliveriesCommand: ["tenant_id", "limit", "now"],
     ClaimTaskCommand: ["tenant_id", "work_item_id", "user_id"],
     CompleteTaskCommand: [
         "tenant_id",
@@ -117,6 +130,8 @@ EXPECTED_COMMAND_FIELDS = {
 }
 
 EXPECTED_QUERY_FIELDS = {
+    GetSignalPublicationQuery: ["tenant_id", "occurrence_id"],
+    ListSignalDeliveriesQuery: ["tenant_id", "occurrence_id"],
     GetPendingTasksQuery: ["tenant_id", "user_id"],
     GetProcessInstanceEventsQuery: ["tenant_id", "process_instance_id"],
     GetProcessInstanceMetadataQuery: ["tenant_id", "process_instance_id"],
@@ -173,9 +188,7 @@ def test_native_occurred_at_attributes_are_additive() -> None:
         "created_at",
         "updated_at",
     }.issubset(ProcessInstanceModel.__mapper__.attrs.keys())
-    assert {"created_at", "updated_at"}.issubset(
-        WorkItemModel.__mapper__.attrs.keys()
-    )
+    assert {"created_at", "updated_at"}.issubset(WorkItemModel.__mapper__.attrs.keys())
     assert "occurred_at" in ProcessInstanceEventModel.__mapper__.attrs
 
 
@@ -200,6 +213,10 @@ def test_schema_table_names_are_compatible_baseline() -> None:
         "process_instance_event",
         "process_instance_metadata",
         "scheduler_job",
+        "signal_publication",
+        "signal_subscription",
+        "signal_delivery",
+        "signal_registry_state",
     }
     assert expected_tables.issubset(Base.metadata.tables)
 
@@ -309,9 +326,7 @@ def test_retired_event_types_are_not_enum_members(event_type: str) -> None:
 
 def test_task_state_validation_uses_spiff_names_and_preserves_termination() -> None:
     assert TaskModel(state=TaskState.READY).state == "READY"
-    assert TaskModel(state="COMPLETED").state == TaskState.get_name(
-        TaskState.COMPLETED
-    )
+    assert TaskModel(state="COMPLETED").state == TaskState.get_name(TaskState.COMPLETED)
     assert TaskModel(state=M8F_TERMINATED_TASK_STATE).state == (
         M8F_TERMINATED_TASK_STATE
     )
