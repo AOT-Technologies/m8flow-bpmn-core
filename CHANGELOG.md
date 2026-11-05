@@ -37,6 +37,9 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ### Fixed
 
+- Added the compensation journal tables to the sample app's migration chain,
+  so tenant realignment can run against databases migrated by the app.
+- Removed import cycles in compensation persistence and process termination.
 - A timer start event inside an event subprocess is now scheduled as a timer
   of the running instance. Before, importing the definition scheduled it as a
   process timer start, which started extra instances, and the running instance

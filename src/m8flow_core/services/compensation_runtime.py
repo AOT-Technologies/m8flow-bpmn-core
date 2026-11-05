@@ -31,6 +31,10 @@ from m8flow_core.models.compensation import (
 )
 from m8flow_core.models.json_data import JsonDataModel
 from m8flow_core.models.process_instance_event import TaskEventType
+from m8flow_core.services.process_instances import (
+    get_process_instance,
+    record_process_instance_event,
+)
 
 
 def coordinator(workflow: Any) -> CompensationCoordinator | None:
@@ -392,8 +396,6 @@ class CompensationCoordinator:
             self._persist(session, instance, occurred_at)
 
     def _persist(self, session: Session, instance: Any, occurred_at: datetime) -> None:
-        from m8flow_core.services.process_instances import record_process_instance_event
-
         tenant_id = instance.m8f_tenant_id
         for model, collection, identity in (
             (CompensationScopeModel, "scopes", "scope_id"),
@@ -454,8 +456,6 @@ def get_process_instance_compensations(
     tenant_id: str,
     process_instance_id: int,
 ) -> list[CompensationRecordModel]:
-    from m8flow_core.services.process_instances import get_process_instance
-
     get_process_instance(
         session, tenant_id=tenant_id, process_instance_id=process_instance_id
     )

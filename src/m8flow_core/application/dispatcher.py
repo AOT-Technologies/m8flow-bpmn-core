@@ -41,6 +41,7 @@ from m8flow_core.services.process_instance_reactivation import (
     resume_process_instance,
     retry_process_instance,
 )
+from m8flow_core.services.process_instance_termination import terminate_process_instance
 from m8flow_core.services.process_instances import (
     create_process_instance,
     error_process_instance,
@@ -54,7 +55,6 @@ from m8flow_core.services.process_instances import (
     record_process_instance_event,
     schedule_process_instance_retry,
     suspend_process_instance,
-    terminate_process_instance,
     upsert_process_instance_metadata,
 )
 from m8flow_core.services.tasks import (

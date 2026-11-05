@@ -11,6 +11,9 @@ if TYPE_CHECKING:
         resume_process_instance,
         retry_process_instance,
     )
+    from m8flow_core.services.process_instance_termination import (
+        terminate_process_instance,
+    )
     from m8flow_core.services.process_instances import (
         create_process_instance,
         error_process_instance,
@@ -22,7 +25,6 @@ if TYPE_CHECKING:
         record_process_instance_event,
         schedule_process_instance_retry,
         suspend_process_instance,
-        terminate_process_instance,
         upsert_process_instance_metadata,
     )
     from m8flow_core.services.scheduler_runtime import (
@@ -101,7 +103,9 @@ _EXPORT_MODULES = {
     ),
     "run_due_scheduler_jobs": "m8flow_core.services.scheduler_runtime",
     "suspend_process_instance": "m8flow_core.services.process_instances",
-    "terminate_process_instance": "m8flow_core.services.process_instances",
+    "terminate_process_instance": (
+        "m8flow_core.services.process_instance_termination"
+    ),
     "upsert_process_instance_metadata": (
         "m8flow_core.services.process_instances"
     ),
