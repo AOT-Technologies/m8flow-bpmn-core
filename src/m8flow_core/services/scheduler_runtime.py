@@ -314,6 +314,9 @@ def _build_scheduler_batch_error(
         f"{len(batch_errors)} scheduler jobs failed in one batch: {error_details}"
     )
     summary_error.__cause__ = batch_errors[0][1]
+    summary_error.compensation_recovery_flushed = all(
+        error.compensation_recovery_flushed for _, error in batch_errors
+    )
     return summary_error
 
 

@@ -9,9 +9,22 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ### Added
 
+- BPMN Transaction cancellation stops active work and timers, runs recorded
+  compensation handlers, and follows the attached Cancel Boundary Event once.
+  `validate_compensation_bpmn` lets hosts check supported forms before saving.
+
 - BPMN call activities through the tenant-aware `CallActivityResolver` API.
   Called child workflows are stored inside the parent workflow snapshot and
   their human tasks use the existing parent process instance worklist.
+- BPMN compensation boundary events, associations, task/subprocess handlers,
+  intermediate throws and end events, targeted compensation, both wait modes,
+  and durable reverse completion ordering with nested scope isolation.
+- Tenant-scoped compensation journals and progress query, compensation lifecycle
+  events, connector idempotency context, and retry of failed undo handlers.
+- Additive Alembic revision `l3m4n5o6p7q8` and a restartable compensation example.
+  Compensation checkpoints use caller-owned transactions; callers must commit
+  captured failures to retain them for retry. Legacy compensation snapshots
+  without completion journals cannot continue compensation.
 
 ### Changed
 
@@ -28,6 +41,9 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ### Fixed
 
+- Added the compensation journal tables to the sample app's migration chain,
+  so tenant realignment can run against databases migrated by the app.
+- Removed import cycles in compensation persistence and process termination.
 - A timer start event inside an event subprocess is now scheduled as a timer
   of the running instance. Before, importing the definition scheduled it as a
   process timer start, which started extra instances, and the running instance

@@ -131,8 +131,11 @@ The following BPMN features aren't tested in the library:
 - **Event subprocesses**, triggered by events inside a running parent process,
   often for cancellation or exception handling. Only non-interrupting timer
   event subprocesses are covered.
-- **Compensation**, BPMN's way of undoing completed work, such as cancelling
-  hotel and flight bookings when a later step fails.
+- **Advanced compensation combinations.** Boundary handlers and scoped
+  throws/end events are supported. Compensation event subprocesses, loop and
+  multi-instance integration, call activities, nested cancellable Transactions,
+  and automatic compensation from BPMN errors are outside this release. Compensation
+  models requiring them are rejected. See [Run compensation handlers](../how-to/run-compensation.md).
 - **Error and escalation boundary events**, for typed business errors such as
   a service task raising `INSUFFICIENT_FUNDS`. Timer boundary events are
   covered; these aren't.
@@ -164,3 +167,12 @@ ORM models directly:
 
 - [BPMN support](bpmn-support.md)
 - [Public API reference](api.md)
+
+## Compensation recovery boundary
+
+Restart skips committed handler completions. Compensation does not independently
+commit progress, including failed handlers; callers must catch and commit a
+failure to retain that recovery point. External side effects before an uncertain
+commit can repeat and need connector idempotency. Existing single-poller and
+single-instance-writer constraints still apply. There is no multi-worker
+coordination or automatic retry/backoff policy for compensation.

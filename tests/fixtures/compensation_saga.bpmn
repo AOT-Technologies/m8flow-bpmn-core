@@ -1,0 +1,38 @@
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+        xmlns:spiff="http://spiffworkflow.org/bpmn/schema/1.0/core"
+        targetNamespace="urn:compensation">
+<process id="saga" isExecutable="true">
+<startEvent id="start"/>
+<scriptTask id="inventory">
+<script>inventory_receipt = "reservation-42"</script>
+</scriptTask>
+<sequenceFlow id="f_start_inventory" sourceRef="start" targetRef="inventory"/>
+<boundaryEvent id="b_inventory" attachedToRef="inventory" cancelActivity="false">
+      <compensateEventDefinition/>
+</boundaryEvent>
+      <association id="assoc_inventory" sourceRef="b_inventory" targetRef="undo_inventory"/>
+<userTask id="undo_inventory" name="Undo inventory" isForCompensation="true"/>
+<scriptTask id="payment">
+<script>payment_receipt = "charge-42"</script>
+</scriptTask>
+<sequenceFlow id="f_inventory_payment" sourceRef="inventory" targetRef="payment"/>
+<boundaryEvent id="b_payment" attachedToRef="payment" cancelActivity="false">
+      <compensateEventDefinition/>
+</boundaryEvent>
+      <association id="assoc_payment" sourceRef="b_payment" targetRef="undo_payment"/>
+<userTask id="undo_payment" name="Undo payment" isForCompensation="true"/>
+<scriptTask id="shipment">
+<script>shipment_receipt = "shipment-42"</script>
+</scriptTask>
+<sequenceFlow id="f_payment_shipment" sourceRef="payment" targetRef="shipment"/>
+<boundaryEvent id="b_shipment" attachedToRef="shipment" cancelActivity="false">
+      <compensateEventDefinition/>
+</boundaryEvent>
+      <association id="assoc_shipment" sourceRef="b_shipment" targetRef="undo_shipment"/>
+<userTask id="undo_shipment" name="Undo shipment" isForCompensation="true"/>
+<endEvent id="compensate">
+<compensateEventDefinition waitForCompletion="true"/>
+</endEvent>
+<sequenceFlow id="f_shipment_compensate" sourceRef="shipment" targetRef="compensate"/>
+</process>
+</definitions>

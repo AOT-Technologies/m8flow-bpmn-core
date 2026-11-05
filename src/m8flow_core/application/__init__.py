@@ -21,6 +21,7 @@ from m8flow_core.application.commands import (
 )
 from m8flow_core.application.queries import (
     GetPendingTasksQuery,
+    GetProcessInstanceCompensationsQuery,
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
@@ -40,12 +41,14 @@ def __getattr__(name: str) -> Any:
         return getattr(dispatcher, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
+
 __all__ = [
     "ClaimTaskCommand",
     "CompleteTaskCommand",
     "CreateProcessInstanceCommand",
     "ErrorProcessInstanceCommand",
     "GetPendingTasksQuery",
+    "GetProcessInstanceCompensationsQuery",
     "GetProcessInstanceEventsQuery",
     "GetProcessInstanceMetadataQuery",
     "GetProcessInstanceQuery",

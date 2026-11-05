@@ -190,6 +190,15 @@ def complete_task(
         raise InvalidStateError("Task must be claimed before completion")
     if item.actual_owner_id != user_id:
         raise AuthorizationError("User does not own this task")
+    process_instance = session.get(ProcessInstanceModel, item.process_instance_id)
+    if (
+        process_instance is not None
+        and process_instance.status == ProcessInstanceStatus.suspended.value
+        and "m8f_compensation" in (process_instance.workflow_state_json or "")
+    ):
+        raise InvalidStateError(
+            "Cannot complete a task while compensation is suspended"
+        )
     completed_at = completed_at or datetime.now(UTC)
     _persist_task_payload(
         session,
@@ -210,7 +219,6 @@ def complete_task(
         future_task = session.get(FutureTaskModel, completed_guid)
         if future_task is not None:
             future_task.completed = True
-    process_instance = session.get(ProcessInstanceModel, item.process_instance_id)
     if process_instance is not None:
         process_instance.task_updated_at = completed_at
         if process_instance.workflow_state_json is not None:
@@ -263,13 +271,16 @@ def _load_work_item(
 def _user_is_assigned(
     session: Session, tenant_id: str, work_item_id: int, user_id: int
 ) -> bool:
-    return session.scalar(
-        select(WorkItemUserModel).where(
-            WorkItemUserModel.m8f_tenant_id == tenant_id,
-            WorkItemUserModel.work_item_id == work_item_id,
-            WorkItemUserModel.user_id == user_id,
+    return (
+        session.scalar(
+            select(WorkItemUserModel).where(
+                WorkItemUserModel.m8f_tenant_id == tenant_id,
+                WorkItemUserModel.work_item_id == work_item_id,
+                WorkItemUserModel.user_id == user_id,
+            )
         )
-    ) is not None
+        is not None
+    )
 
 
 def _persist_task_payload(

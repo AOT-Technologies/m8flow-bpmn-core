@@ -81,7 +81,7 @@ reaches you, and the failed state survives your rollback so you can retry:
        alt="A connector fails; the library commits the failed state separately, raises the error, and you roll back; a later retry reruns the task and continues.">
 </p>
 
-So the library saves a narrow recovery state in its own transaction, separate
+For workflows without compensation, the library saves a narrow recovery state in its own transaction, separate
 from the caller's, on these paths:
 
 - starting a process instance
@@ -134,3 +134,14 @@ SQLite.
 - [Call external services from service tasks](../how-to/call-external-services.md)
 - [Service task hooks in the API reference](../reference/api.md#service-task-hooks)
 - [Limitations](../reference/limitations.md#service-tasks)
+
+## Compensation handlers
+
+Service tasks used as compensation handlers retain the connector interface and
+`ServiceTaskExecutionError`. Their context metadata identifies the original
+activity, compensation scope and run, and an idempotency key. Compensation
+workflows persist handler state, their completion journal, and audit events in
+the caller's transaction on every path, including start, timer wake-up, and
+retry. They do not use the autonomous failure checkpoint described above.
+Committed undo completions survive restart; uncertain external effects need
+connector-side deduplication. See [Run compensation handlers](../how-to/run-compensation.md).

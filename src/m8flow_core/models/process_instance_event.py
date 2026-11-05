@@ -39,6 +39,9 @@ class TaskEventType(StrEnum):
     Member order is not part of the public contract.
     """
 
+    compensation_started = "compensation_started"
+    compensation_completed = "compensation_completed"
+    compensation_failed = "compensation_failed"
     task_completed = "task_completed"
     task_failed = "task_failed"
     task_cancelled = "task_cancelled"
