@@ -133,8 +133,8 @@ The following BPMN features aren't tested in the library:
   event subprocesses are covered.
 - **Advanced compensation combinations.** Boundary handlers and scoped
   throws/end events are supported. Compensation event subprocesses, loop and
-  multi-instance integration, call activities, transaction cancellation, and
-  automatic compensation from BPMN errors are not supported. Compensation
+  multi-instance integration, call activities, nested cancellable Transactions,
+  and automatic compensation from BPMN errors are outside this release. Compensation
   models requiring them are rejected. See [Run compensation handlers](../how-to/run-compensation.md).
 - **Error and escalation boundary events**, for typed business errors such as
   a service task raising `INSUFFICIENT_FUNDS`. Timer boundary events are

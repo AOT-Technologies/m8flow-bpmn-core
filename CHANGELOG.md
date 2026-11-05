@@ -9,6 +9,10 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ### Added
 
+- BPMN Transaction cancellation stops active work and timers, runs recorded
+  compensation handlers, and follows the attached Cancel Boundary Event once.
+  `validate_compensation_bpmn` lets hosts check supported forms before saving.
+
 - BPMN call activities through the tenant-aware `CallActivityResolver` API.
   Called child workflows are stored inside the parent workflow snapshot and
   their human tasks use the existing parent process instance worklist.

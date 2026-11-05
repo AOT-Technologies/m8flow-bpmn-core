@@ -13,6 +13,9 @@ from typing import Any, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from SpiffWorkflow.bpmn.serializer.helpers.encoder import create_encoder
+from SpiffWorkflow.bpmn.specs.defaults import BoundaryEvent
+from SpiffWorkflow.bpmn.specs.event_definitions.simple import CancelEventDefinition
+from SpiffWorkflow.bpmn.util import BpmnEvent
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
 from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import select
@@ -193,17 +196,87 @@ class CompensationCoordinator:
         return cast(dict[str, Any], json.loads(json.dumps(clean, cls=self._encoder)))
 
     def trigger(self, task: Any) -> dict[str, Any]:
-        key = str(task.id)
-        if key in self.state["runs"]:
-            return cast(dict[str, Any], self.state["runs"][key])
+        existing = self.state["runs"].get(str(task.id))
+        if existing is not None:
+            return cast(dict[str, Any], existing)
         scope = self.scope(task.workflow)
         scope["data"] = self.encode_payload(task.data)
         selected = self._eligible(scope["scope_id"], task.task_spec.activity_ref)
-        run = {
+        return self._begin_run(
+            task, scope["scope_id"], selected, task.task_spec.wait_for_completion
+        )
+
+    def cancel_transaction(self, task: Any) -> None:
+        transaction_workflow = task.workflow
+        transaction = transaction_workflow.parent_workflow.tasks[
+            transaction_workflow.parent_task_id
+        ]
+        scope = self.scope(transaction_workflow)
+        if any(
+            run.get("cancel_boundary_guid") and run["scope_id"] == scope["scope_id"]
+            for run in self.state["runs"].values()
+        ):
+            return
+        boundaries = [
+            sibling
+            for sibling in transaction.parent.children
+            if isinstance(sibling.task_spec, BoundaryEvent)
+        ]
+        boundary = next(
+            (
+                sibling
+                for sibling in boundaries
+                if isinstance(sibling.task_spec.event_definition, CancelEventDefinition)
+            ),
+            None,
+        )
+        if boundary is None or boundary.state != TaskState.WAITING:
+            raise InvalidStateError(
+                "The Transaction Cancel Boundary Event is not waiting"
+            )
+
+        scope["data"] = self.encode_payload(task.data)
+        active = transaction_workflow.get_tasks(
+            state=TaskState.READY | TaskState.WAITING | TaskState.STARTED
+        )
+        selected = self._eligible(scope["scope_id"], None)
+        stopped_scopes = {scope["scope_id"]}
+        for token in active:
+            child_scope = token.workflow.top_workflow.subprocesses.get(token.id)
+            if child_scope is not None and not child_scope.completed:
+                scope_id = self.scope(child_scope)["scope_id"]
+                stopped_scopes.add(scope_id)
+                selected.extend(self._eligible(scope_id, None))
+        selected.sort(key=lambda record: record["completion_sequence"], reverse=True)
+        pending_runs = [
+            key
+            for key, run in self.state["runs"].items()
+            if run["scope_id"] in stopped_scopes and run["status"] == "running"
+        ]
+        run = self._begin_run(task, scope["scope_id"], selected, True)
+        run.update(
+            cancel_boundary_guid=str(boundary.id),
+            pending_runs=pending_runs,
+            status="running",
+        )
+        # Keep the Cancel End started so the subprocess cannot finish normally.
+        # The attached boundary will interrupt it after the undo work succeeds.
+        for token in active:
+            if token is not task and token.has_state(TaskState.NOT_FINISHED_MASK):
+                token.cancel()
+        for sibling in boundaries:
+            if sibling is not boundary and sibling.state == TaskState.WAITING:
+                sibling.cancel()
+
+    def _begin_run(
+        self, task: Any, scope_id: str, selected: list[dict[str, Any]], wait: bool
+    ) -> dict[str, Any]:
+        key = str(task.id)
+        run: dict[str, Any] = {
             "run_id": str(uuid5(NAMESPACE_URL, "m8flow:compensation:" + key)),
             "throw_task_guid": key,
-            "scope_id": scope["scope_id"],
-            "wait_for_completion": task.task_spec.wait_for_completion,
+            "scope_id": scope_id,
+            "wait_for_completion": wait,
             "status": "running" if selected else "completed",
             "records": [],
         }
@@ -284,6 +357,11 @@ class CompensationCoordinator:
             for run in list(self.state["runs"].values()):
                 if run["status"] != "running":
                     continue
+                if any(
+                    self.state["runs"][key]["status"] != "completed"
+                    for key in run.get("pending_runs", ())
+                ):
+                    continue
                 pending = [
                     self.state["records"][key]
                     for key in run["records"]
@@ -291,7 +369,12 @@ class CompensationCoordinator:
                 ]
                 if not pending:
                     run["status"] = "completed"
-                    if run["wait_for_completion"]:
+                    if boundary_guid := run.get("cancel_boundary_guid"):
+                        boundary = runtime_task(self.workflow, UUID(boundary_guid))
+                        event = BpmnEvent(boundary.task_spec.event_definition)
+                        boundary.task_spec.catch(boundary, event)
+                        boundary.task_spec._update(boundary)
+                    elif run["wait_for_completion"]:
                         throw = runtime_task(
                             self.workflow, UUID(run["throw_task_guid"])
                         )

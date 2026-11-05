@@ -4,10 +4,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from m8flow_core import api
-from m8flow_core.models import M8flowTenantModel, UserModel
+from m8flow_core.models import M8flowTenantModel, SchedulerJobModel, UserModel
 from m8flow_core.services.authorization import ROLE_ADMIN, ensure_v1_role
 from m8flow_core.services.compensation_runtime import coordinator
 from m8flow_core.services.workflow_runtime import (
@@ -131,6 +132,176 @@ def records(session: Session, instance_id: int) -> list:
     return api.execute_query(
         session, api.GetProcessInstanceCompensationsQuery("comp", instance_id)
     )
+
+
+def transaction_xml(*, normal_end: bool = False) -> str:
+    end_definition = "" if normal_end else "<cancelEventDefinition/>"
+    transaction = f"""
+      <transaction id="order">
+        <startEvent id="tx_start"/>
+        <scriptTask id="reserve"><script>reserved = True</script></scriptTask>
+        <scriptTask id="charge"><script>charged = True</script></scriptTask>
+        {binding("reserve", "undo_reserve")}
+        {binding("charge", "undo_charge")}
+        <scriptTask id="undo_reserve" isForCompensation="true">
+          <script>assert operator_fixed, 'Repair required'</script>
+        </scriptTask>
+        <userTask id="undo_charge" name="Refund charge" isForCompensation="true"/>
+        <parallelGateway id="split"/>
+        <userTask id="cancel_request" name="Cancel order"/>
+        <userTask id="active" name="Ship order"/>
+        <endEvent id="cancel">{end_definition}</endEvent>
+        <endEvent id="shipped"/>
+        {flow("tx_start", "reserve")}{flow("reserve", "charge")}
+        {flow("charge", "split")}
+        {flow("split", "cancel_request")}{flow("split", "active")}
+        {flow("cancel_request", "cancel")}{flow("active", "shipped")}
+      </transaction>"""
+    return definitions(f"""
+      <process id="saga" isExecutable="true">
+        <startEvent id="start"/>{transaction}
+        <boundaryEvent id="boundary" attachedToRef="order">
+          <cancelEventDefinition/>
+        </boundaryEvent>
+        <userTask id="after_cancel" name="After cancel"/>
+        <userTask id="after_success" name="After success"/>
+        <endEvent id="end"/>
+        {flow("start", "order")}{flow("order", "after_success")}
+        {flow("boundary", "after_cancel")}{flow("after_cancel", "end")}
+        {flow("after_success", "end")}
+      </process>""")
+
+
+def test_transaction_cancel_waits_for_compensation_and_retries_after_reload(engine):
+    with Session(engine) as session:
+        instance_id, user_id = start(session, transaction_xml())
+        assert {item.task_title for item in pending(session)} == {
+            "Cancel order",
+            "Ship order",
+        }
+        finish(session, user_id, "Cancel order")
+        assert [item.task_title for item in pending(session)] == ["Refund charge"]
+        with pytest.raises(
+            api.CompensationExecutionError, match="undo_reserve"
+        ) as failure:
+            finish(session, user_id, "Refund charge")
+        assert failure.value.compensation_recovery_flushed
+        assert [record.status for record in records(session, instance_id)] == [
+            "failed",
+            "completed",
+        ]
+        session.commit()
+
+    with Session(engine) as session:
+        assert pending(session) == []
+        api.execute_command(
+            session,
+            api.UpsertProcessInstanceMetadataCommand(
+                "comp",
+                instance_id,
+                "operator_fixed",
+                "true",
+                datetime.now(UTC),
+            ),
+        )
+        api.execute_command(
+            session, api.RetryProcessInstanceCommand("comp", instance_id, user_id)
+        )
+        assert [item.task_title for item in pending(session)] == ["After cancel"]
+        assert [record.attempts for record in records(session, instance_id)] == [2, 1]
+        session.commit()
+
+    with Session(engine) as session:
+        assert [item.task_title for item in pending(session)] == ["After cancel"]
+        finish(session, user_id, "After cancel")
+        assert pending(session) == []
+        assert (
+            api.execute_query(
+                session, api.GetProcessInstanceQuery("comp", instance_id)
+            ).status
+            == "complete"
+        )
+
+
+def test_transaction_normal_completion_skips_compensation(session):
+    instance_id, user_id = start(session, transaction_xml(normal_end=True))
+    finish(session, user_id, "Cancel order")
+    finish(session, user_id, "Ship order")
+    assert [item.task_title for item in pending(session)] == ["After success"]
+    assert all(record.status == "available" for record in records(session, instance_id))
+
+
+@pytest.mark.parametrize(
+    "before, after",
+    [
+        ('attachedToRef="order"', 'attachedToRef="active"'),
+        (
+            'id="boundary" attachedToRef="order"',
+            'id="boundary" attachedToRef="order" cancelActivity="false"',
+        ),
+        ('<transaction id="order">', '<subProcess id="order">'),
+        ('<endEvent id="cancel">', '<intermediateThrowEvent id="cancel">'),
+    ],
+)
+def test_invalid_transaction_cancel_models(before, after):
+    xml = transaction_xml().replace(before, after)
+    if after.startswith("<subProcess"):
+        xml = xml.replace("</transaction>", "</subProcess>")
+    if after.startswith("<intermediateThrowEvent"):
+        xml = xml.replace(
+            "<cancelEventDefinition/></endEvent>",
+            "<cancelEventDefinition/></intermediateThrowEvent>",
+        )
+    with pytest.raises(api.ValidationError, match="Cancel"):
+        api.validate_compensation_bpmn(xml)
+
+
+def test_transaction_cancel_removes_waiting_timer(session):
+    xml = transaction_xml().replace(
+        '<endEvent id="shipped"/>',
+        '<endEvent id="shipped"/><endEvent id="timed_out"/>'
+        '<boundaryEvent id="timeout" attachedToRef="active">'
+        "<timerEventDefinition><timeDuration>PT1H</timeDuration></timerEventDefinition>"
+        "</boundaryEvent>" + flow("timeout", "timed_out"),
+    )
+    instance_id, user_id = start(session, xml)
+    jobs = select(SchedulerJobModel).where(
+        SchedulerJobModel.process_instance_id == instance_id
+    )
+    assert session.scalar(jobs) is not None
+    finish(session, user_id, "Cancel order")
+    assert session.scalar(jobs) is None
+    assert [item.task_title for item in pending(session)] == ["Refund charge"]
+
+
+def test_cancel_boundary_only_catches_its_own_transaction(session):
+    transactions = []
+    for name in ("one", "two"):
+        transactions.append(f'''
+          <transaction id="{name}">
+            <startEvent id="start_{name}"/>
+            <userTask id="request_{name}" name="Cancel {name}"/>
+            <endEvent id="cancel_{name}"><cancelEventDefinition/></endEvent>
+            {flow(f"start_{name}", f"request_{name}")}
+            {flow(f"request_{name}", f"cancel_{name}")}
+          </transaction>
+          <boundaryEvent id="boundary_{name}" attachedToRef="{name}">
+            <cancelEventDefinition/>
+          </boundaryEvent>
+          <userTask id="after_{name}" name="After {name}"/>
+          {flow("fork", name)}{flow(f"boundary_{name}", f"after_{name}")}
+          {flow(name, "end")}{flow(f"after_{name}", "end")}
+        ''')
+    xml = definitions(f"""
+      <process id="saga" isExecutable="true">
+        <startEvent id="start"/><parallelGateway id="fork"/><endEvent id="end"/>
+        {flow("start", "fork")}{"".join(transactions)}
+      </process>""")
+    _, user_id = start(session, xml)
+    finish(session, user_id, "Cancel one")
+    assert {item.task_title for item in pending(session)} == {"After one", "Cancel two"}
+    finish(session, user_id, "Cancel two")
+    assert {item.task_title for item in pending(session)} == {"After one", "After two"}
 
 
 def test_reverse_order_survives_new_session(engine) -> None:

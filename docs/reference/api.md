@@ -562,6 +562,7 @@ the workflow runtime:
 | Function | Description |
 |---|---|
 | `advance_process_instance_workflow(session, *, tenant_id, process_instance_id, completed_task_guid, completed_at=None)` | Restores an initialized workflow, completes the given runtime task GUID, advances the process, and saves the new state |
+| `validate_compensation_bpmn(source_bpmn_xml)` | Checks compensation bindings and Transaction Cancel Event placement in BPMN XML (`str` or `bytes`). Raises `ValidationError` for unsupported forms. Imports also check executable specs and optional DMN. |
 | `resolve_lane_assignment_id(lane_name, tenant_id=None)` | Converts a lane name into the stable positive integer that m8flow uses as a lane group ID. With `tenant_id`, the group is qualified as `<tenant_id>:<lane_name>`, so equal lane names in different tenants never share a group. |
 | `assign_pending_tasks_for_user(session, *, tenant_id, user_id)` | Adds the user, labelled `lane_assignment`, as a potential owner of every incomplete work item in the tenant whose lane group they currently belong to and that they don't already own, for example after you sync directory membership. Returns only the newly assigned work items, ordered by ID, or `[]` when there is nothing to add. It doesn't claim, change task status, consult `lane_owners`, or touch work items without a lane group. Raises `NotFoundError` if the user doesn't exist and `AuthorizationError` if the user isn't in the tenant; nothing is written in either case. |
 
@@ -630,6 +631,10 @@ raises `ValidationError`. Rows that already hold another string, such as
 The label never affects who can claim or complete a work item.
 
 ## Errors
+
+If a compensation handler fails after core flushes the recovery checkpoint,
+the raised error has `compensation_recovery_flushed=True`. Commit the caller's
+transaction to retain the checkpoint for `RetryProcessInstanceCommand`.
 
 Every public error is a subclass of `BpmnCoreError`. Each one also subclasses
 a built-in exception, so you can catch either:

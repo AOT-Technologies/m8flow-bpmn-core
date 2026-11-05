@@ -12,6 +12,7 @@ from uuid import UUID
 
 from defusedxml import ElementTree
 from SpiffWorkflow.bpmn.script_engine.python_engine import PythonScriptEngine
+from SpiffWorkflow.bpmn.serializer.default.task_spec import EventConverter
 from SpiffWorkflow.bpmn.serializer.workflow import BpmnWorkflowSerializer
 from SpiffWorkflow.bpmn.specs.event_definitions.timer import TimerEventDefinition
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
@@ -71,6 +72,7 @@ from m8flow_core.services.compensation_parser import (
     CompensationEnd,
     CompensationEventConverter,
     CompensationThrow,
+    TransactionCancelEnd,
 )
 from m8flow_core.services.compensation_runtime import (
     CompensationCoordinator,
@@ -118,6 +120,7 @@ _WORKFLOW_SERIALIZER = BpmnWorkflowSerializer(
             **SPIFF_CONFIG,
             CompensationThrow: CompensationEventConverter,
             CompensationEnd: CompensationEventConverter,
+            TransactionCancelEnd: EventConverter,
         }
     ),
     version="5",
@@ -1061,7 +1064,7 @@ def _run_workflow_with_service_task_failure_handling(
             coordinator(workflow).run()
         else:
             workflow.run_all(halt_on_manual=True)
-    except (ServiceTaskExecutionError, CompensationExecutionError):
+    except (ServiceTaskExecutionError, CompensationExecutionError) as exc:
         if (
             autonomous_failure_state_persistence
             and not coordinator(workflow)
@@ -1083,6 +1086,11 @@ def _run_workflow_with_service_task_failure_handling(
             workflow=workflow,
             occurred_at=occurred_at,
         )
+        comp = coordinator(workflow)
+        if comp is not None and any(
+            run["status"] == "failed" for run in comp.state["runs"].values()
+        ):
+            exc.compensation_recovery_flushed = True
         raise
 
 
@@ -1818,9 +1826,7 @@ def _iter_serialized_task_rows(
                 if identifier_prefix is not None
                 else task_spec_name
             )
-            rows.append(
-                (str(task_guid), task_definition_identifier, task_payload)
-            )
+            rows.append((str(task_guid), task_definition_identifier, task_payload))
     subprocesses = serialized_workflow.get("subprocesses")
     if isinstance(subprocesses, Mapping):
         for subprocess in subprocesses.values():
