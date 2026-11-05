@@ -37,6 +37,10 @@ class NotFoundError(BpmnCoreError, LookupError):
     """The requested entity does not exist for the supplied tenant."""
 
 
+class CompensationExecutionError(BpmnCoreError, RuntimeError):
+    """A non-connector compensation handler failed during execution."""
+
+
 class ServiceTaskExecutionError(BpmnCoreError, RuntimeError):
     """A BPMN service task failed while invoking a registered connector."""
 
@@ -44,6 +48,7 @@ class ServiceTaskExecutionError(BpmnCoreError, RuntimeError):
 __all__ = [
     "AuthorizationError",
     "BpmnCoreError",
+    "CompensationExecutionError",
     "InvalidStateError",
     "NotFoundError",
     "ServiceTaskExecutionError",

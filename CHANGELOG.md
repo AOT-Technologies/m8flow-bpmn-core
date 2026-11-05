@@ -7,6 +7,18 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ## [Unreleased]
 
+### Added
+
+- BPMN compensation boundary events, associations, task/subprocess handlers,
+  intermediate throws and end events, targeted compensation, both wait modes,
+  and durable reverse completion ordering with nested scope isolation.
+- Tenant-scoped compensation journals and progress query, compensation lifecycle
+  events, connector idempotency context, and retry of failed undo handlers.
+- Additive Alembic revision `l3m4n5o6p7q8` and a restartable compensation example.
+  Compensation checkpoints use caller-owned transactions; callers must commit
+  captured failures to retain them for retry. Legacy compensation snapshots
+  without completion journals cannot continue compensation.
+
 ### Changed
 
 - Resolved CodeQL code-scanning alerts without changing the public API.

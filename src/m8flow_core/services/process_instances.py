@@ -428,6 +428,9 @@ def terminate_process_instance(
     process_instance.status = ProcessInstanceStatus.terminated.value
     process_instance.ended_at = occurred_at
     process_instance.updated_at = occurred_at
+    from m8flow_core.services.workflow_runtime import _cancel_compensation
+
+    _cancel_compensation(session, process_instance, occurred_at)
     _close_process_instance_runtime_state(
         session,
         process_instance,

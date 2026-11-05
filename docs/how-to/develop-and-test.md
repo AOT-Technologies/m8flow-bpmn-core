@@ -119,8 +119,9 @@ M8FLOW_TEST_POSTGRES_URL=postgresql+psycopg://<user>:<password>@localhost:5432/m
 
 The baseline migration tests also run against PostgreSQL when
 `M8FLOW_POSTGRES_UPGRADE_DATABASE_URL` points at a dedicated, empty database.
-They apply the baseline, compare the result with the models, check timestamps
-after 2038, and downgrade again. Without the variable they run on SQLite only.
+They apply Alembic head, verify the upgrade from the baseline preserves
+existing data, compare the result with the models, check timestamps after
+2038, and downgrade again. Without the variable they run on SQLite only.
 
 ## Run the sample app tests
 

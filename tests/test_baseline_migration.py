@@ -19,6 +19,7 @@ from m8flow_core.models.user import UserModel
 from m8flow_core.settings import get_settings
 
 BASELINE_REVISION = "k2l3m4n5o6p7"
+HEAD_REVISION = "l3m4n5o6p7q8"
 
 POSTGRES_URL = os.getenv("M8FLOW_POSTGRES_UPGRADE_DATABASE_URL", "")
 
@@ -94,14 +95,18 @@ def _table_names(database_url: str) -> set[str]:
         engine.dispose()
 
 
-def test_migration_history_is_a_single_baseline() -> None:
+def test_migration_history_preserves_baseline_and_adds_compensation() -> None:
     script = ScriptDirectory.from_config(_alembic_config())
 
     revisions = list(script.walk_revisions())
 
-    assert [revision.revision for revision in revisions] == [BASELINE_REVISION]
-    assert script.get_heads() == [BASELINE_REVISION]
-    assert revisions[0].down_revision is None
+    assert [revision.revision for revision in revisions] == [
+        HEAD_REVISION,
+        BASELINE_REVISION,
+    ]
+    assert script.get_heads() == [HEAD_REVISION]
+    assert revisions[0].down_revision == BASELINE_REVISION
+    assert revisions[1].down_revision is None
 
 
 _DATABASES = [
@@ -133,7 +138,7 @@ def test_baseline_upgrade_matches_models_and_downgrade_removes_tables(
         with engine.connect() as connection:
             assert (
                 connection.scalar(sa.text("SELECT version_num FROM alembic_version"))
-                == BASELINE_REVISION
+                == HEAD_REVISION
             )
             inspector = sa.inspect(connection)
             for table_name, expected in NAMED_CHECK_CONSTRAINTS.items():
@@ -175,6 +180,37 @@ def test_baseline_schema_round_trips_post_2038_utc_timestamps(
             session.refresh(user)
             assert user.created_at == timestamp
             assert user.updated_at == timestamp
+    finally:
+        engine.dispose()
+        command.downgrade(config, "base")
+
+
+@pytest.mark.parametrize("migration_database", _DATABASES, indirect=True)
+def test_additive_upgrade_preserves_baseline_data(migration_database: str) -> None:
+    config = _alembic_config()
+    command.upgrade(config, BASELINE_REVISION)
+    engine = sa.create_engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    'INSERT INTO "user" (username, service, service_id) '
+                    "VALUES ('existing-user', 'migration-test', 'existing-user')"
+                )
+            )
+        command.upgrade(config, "head")
+        assert _schema_diff(migration_database) == []
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    sa.text('SELECT username FROM "user" WHERE service_id = :key'),
+                    {"key": "existing-user"},
+                )
+                == "existing-user"
+            )
+        command.downgrade(config, BASELINE_REVISION)
+        assert "compensation_record" not in _table_names(migration_database)
+        assert "process_instance" in _table_names(migration_database)
     finally:
         engine.dispose()
         command.downgrade(config, "base")

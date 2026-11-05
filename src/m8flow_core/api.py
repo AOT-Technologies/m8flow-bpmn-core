@@ -20,6 +20,7 @@ from m8flow_core.application import (
     CreateProcessInstanceCommand,
     ErrorProcessInstanceCommand,
     GetPendingTasksQuery,
+    GetProcessInstanceCompensationsQuery,
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
@@ -44,11 +45,13 @@ from m8flow_core.application.dispatcher import _session_scope
 from m8flow_core.errors import (
     AuthorizationError,
     BpmnCoreError,
+    CompensationExecutionError,
     InvalidStateError,
     NotFoundError,
     ServiceTaskExecutionError,
     ValidationError,
 )
+from m8flow_core.models.compensation import CompensationStatus
 from m8flow_core.models.process_instance import ProcessInstanceStatus
 from m8flow_core.models.process_instance_event import (
     ProcessInstanceEventCategory,
@@ -72,6 +75,7 @@ from m8flow_core.services.authorization import (
     authorization_policy_scope,
     set_default_authorization_policy_factory,
 )
+from m8flow_core.services.compensation_runtime import get_process_instance_compensations
 from m8flow_core.services.connector_proxy_service_tasks import (
     ConnectorProxyServiceTaskConnector,
     build_connector_proxy_service_task_connectors,
@@ -144,6 +148,7 @@ def run_due_scheduler_jobs(
             tenant_id=tenant_id,
         )
 
+
 __all__ = [
     "AuthorizationError",
     "AuthorizationDecision",
@@ -151,6 +156,9 @@ __all__ = [
     "AuthorizationPolicyFactory",
     "AuthorizationRequest",
     "BpmnCoreError",
+    "CompensationExecutionError",
+    "CompensationStatus",
+    "get_process_instance_compensations",
     "ClaimTaskCommand",
     "CompleteTaskCommand",
     "ConnectorProxyServiceTaskConnector",
@@ -158,6 +166,7 @@ __all__ = [
     "DatabaseAuthorizationPolicy",
     "ErrorProcessInstanceCommand",
     "GetPendingTasksQuery",
+    "GetProcessInstanceCompensationsQuery",
     "GetProcessInstanceEventsQuery",
     "GetProcessInstanceMetadataQuery",
     "GetProcessInstanceQuery",

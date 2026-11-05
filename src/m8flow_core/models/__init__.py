@@ -3,6 +3,12 @@ from m8flow_core.models.bpmn_process import BpmnProcessModel
 from m8flow_core.models.bpmn_process_definition import (
     BpmnProcessDefinitionModel,
 )
+from m8flow_core.models.compensation import (
+    CompensationRecordModel,
+    CompensationRunModel,
+    CompensationScopeModel,
+    CompensationStatus,
+)
 from m8flow_core.models.future_task import FutureTaskModel
 from m8flow_core.models.group import GroupModel
 from m8flow_core.models.json_data import JsonDataModel
@@ -51,6 +57,10 @@ from m8flow_core.models.work_item_user import (
 
 __all__ = [
     "Base",
+    "CompensationRecordModel",
+    "CompensationRunModel",
+    "CompensationScopeModel",
+    "CompensationStatus",
     "BpmnProcessDefinitionModel",
     "BpmnProcessModel",
     "FutureTaskModel",

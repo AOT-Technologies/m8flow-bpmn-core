@@ -108,3 +108,12 @@ The library doesn't ship its own Celery dispatcher yet.
 - [`run_due_scheduler_jobs` in the API reference](../reference/api.md#scheduler)
 - [Run the examples](run-the-examples.md): the timer, cycle, boundary timer,
   and retry examples
+
+## Retry compensation
+
+The existing immediate and scheduled retry commands also resume failed
+compensation handlers. Completed undo handlers remain completed and the
+remaining reverse order is preserved. Compensation failure state is saved in
+your transaction, so commit a captured failure before scheduling a later retry.
+The scheduler also wakes timers inside compensation handler subprocesses.
+See [Run compensation handlers](run-compensation.md).
