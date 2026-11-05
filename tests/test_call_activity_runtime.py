@@ -91,6 +91,18 @@ def _start(
     return definition, instance
 
 
+def test_call_activity_rejects_child_with_compensation(session: Session) -> None:
+    tenant, user = _seed(session)
+    child_bpmn = (FIXTURES / "compensation_saga.bpmn").read_text(encoding="utf-8")
+    child_bpmn = child_bpmn.replace('id="saga"', 'id="child_process"', 1)
+
+    def resolver(_context: api.CallActivityContext) -> api.CallActivityDefinition:
+        return api.CallActivityDefinition("child_process", child_bpmn)
+
+    with pytest.raises(CallActivityResolutionError, match="uses compensation"):
+        _start(session, tenant, user, resolver)
+
+
 def test_call_activity_waits_in_child_then_parent_completes(session: Session) -> None:
     tenant, user = _seed(session)
     resolver_contexts: list[api.CallActivityContext] = []

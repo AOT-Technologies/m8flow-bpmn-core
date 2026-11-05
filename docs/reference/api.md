@@ -156,6 +156,8 @@ definitions. A sequence with more than one entry is reported as ambiguous.
 Each definition contains `process_id`, `bpmn_xml`, and optional `dmn_xml`;
 `process_id` must exactly match `calledElement` and be an executable process in
 the returned BPMN. The host must scope its lookup by `context.tenant_id`.
+Resolving a called process that uses compensation raises
+`CallActivityResolutionError`.
 
 ```python
 def resolve_child(context: api.CallActivityContext):
@@ -337,7 +339,7 @@ Raises:
 - `NotFoundError` if the process instance doesn't exist, or `user_id` is set
   and the user doesn't exist.
 - `AuthorizationError` if `user_id` is set and the user isn't in the tenant.
-- `ValidationError` if `event_type` isn't one of the ten event types listed
+- `ValidationError` if `event_type` isn't one of the thirteen event types listed
   under [Enums](#enums). This includes the retired event type strings, unknown
   or wrongly cased strings, empty strings, and `None`. Nothing is persisted.
 
@@ -435,6 +437,7 @@ All queries are read-only. The following table lists each one:
 |---|---|---|---|
 | `GetProcessInstanceQuery` | `tenant_id`, `process_instance_id` | `ProcessInstanceModel` | `NotFoundError` if the instance doesn't exist |
 | `GetPendingTasksQuery` | `tenant_id`, `user_id: int \| None` | `list[WorkItemModel]`, ordered by ID; only the user's work items when `user_id` is set | `NotFoundError` or `AuthorizationError` if `user_id` is set and the user doesn't exist or isn't in the tenant |
+| `GetProcessInstanceCompensationsQuery` | `tenant_id`, `process_instance_id` | `list[CompensationRecordModel]`, ordered by completion sequence | `NotFoundError` if the instance does not exist in the tenant |
 | `GetProcessInstanceEventsQuery` | `tenant_id`, `process_instance_id` | `list[ProcessInstanceEventModel]`, ordered by `occurred_at` and ID | `NotFoundError` if the instance doesn't exist |
 | `GetProcessInstanceMetadataQuery` | `tenant_id`, `process_instance_id` | `list[ProcessInstanceMetadataModel]`, ordered by key and ID | `NotFoundError` if the instance doesn't exist |
 | `ListProcessInstancesQuery` | `tenant_id`, `status: ProcessInstanceStatus \| str \| None` | `list[ProcessInstanceModel]`, ordered by ID | None |
@@ -589,8 +592,9 @@ instance. It has seven values:
 - `process_instance_completed`
 - `process_instance_terminated`
 
-`TaskEventType` covers the outcome of a single task. It has three values:
-`task_completed`, `task_failed`, and `task_cancelled`.
+`TaskEventType` covers task and compensation-handler outcomes. Its values are
+`task_completed`, `task_failed`, `task_cancelled`, `compensation_started`,
+`compensation_completed`, and `compensation_failed`.
 
 The member order of either enum isn't part of the contract; compare values as
 a set. Each member equals its stored string value.
@@ -637,6 +641,7 @@ BpmnCoreError
 |  `- CallActivityResolutionError (also ValueError)
 |- AuthorizationError         (also PermissionError)
 |- NotFoundError              (also LookupError)
+|- CompensationExecutionError (also RuntimeError)
 `- ServiceTaskExecutionError  (also RuntimeError)
 ```
 
@@ -649,7 +654,51 @@ The following table shows when each error is raised:
 | `AuthorizationError` | The user isn't in the tenant, lacks the command permission, isn't a potential owner, or doesn't own the claim | Any call that takes a `user_id` |
 | `NotFoundError` | The entity doesn't exist in the tenant | Any call that loads a user, work item, instance, or definition |
 | `CallActivityResolutionError` | A called process is missing, ambiguous, or invalid | Initialize a workflow containing a call activity |
+| `CompensationExecutionError` | A non-connector undo handler failed | Initialize, complete-task, retry, and scheduler calls |
 | `ServiceTaskExecutionError` | A BPMN service task failed in its connector | Initialize, complete-task, retry, and scheduler calls |
 
-`examples/errors_demo.py` raises each error for real. See
+`examples/errors_demo.py` demonstrates validation, lookup, tenant, and state
+errors through public calls. See
 [Run the examples](../how-to/run-the-examples.md#run-the-sqlite-examples).
+
+## Compensation
+
+`GetProcessInstanceCompensationsQuery` is a frozen, slotted query with required
+`tenant_id: str` first and `process_instance_id: int` second. The matching
+service is `get_process_instance_compensations(session, *, tenant_id,
+process_instance_id)`. It returns all registered occurrences, including those
+not yet selected by a throw, ordered by ascending `completion_sequence`.
+
+Stable `CompensationRecordModel` attributes are `id`, `process_instance_id`,
+`source_task_guid`, `activity_id`, `scope_id`, `completion_sequence`,
+`handler_id`, `handler_task_guid`, `run_id`, `throw_task_guid`, `status`,
+`attempts`, `failure_details`, `created_at`, and `updated_at`. Handler/run/throw
+identifiers are nullable before invocation. An implicit subprocess record has
+no `handler_id`; its child handlers implement default compensation.
+
+`CompensationStatus` values are `available`, `queued`, `running`, `completed`,
+`failed`, and `cancelled`. `TaskEventType` additionally accepts
+`compensation_started`, `compensation_completed`, and `compensation_failed`;
+these events have category `task` and identify the handler through `task_guid`.
+A retry adds another started event and increments the record's `attempts`.
+
+For service calls inside compensation, `ServiceTaskContext.metadata` includes
+`compensation`, a mapping with `source_task_guid`, `scope_id`, `run_id`, and
+`idempotency_key`. The key remains stable when retrying the same invocation.
+Use it for connector-side deduplication of uncertain external operations.
+
+`CompensationExecutionError(BpmnCoreError, RuntimeError)` reports a
+non-connector handler execution failure. Connector failures keep their existing
+`ServiceTaskExecutionError` type. Either failure stops compensation and marks
+the instance `error`; existing retry commands resume it. Start, initialization,
+task completion, retry, and scheduler operations can encounter these errors.
+Malformed/unsupported compensation models raise `ValidationError` at import or
+initialization. Continuing a legacy compensation instance without a completion
+journal raises `InvalidStateError`. Completing a suspended compensation task
+also raises `InvalidStateError` before changing its payload or completion state.
+
+Compensation changes use the caller's transaction on every execution path.
+Catch and commit a handler failure to retain it for retry; rollback discards
+that transaction's compensation progress. This differs from the autonomous
+failure recovery used by non-compensation service-task workflows. See
+[Run compensation handlers](../how-to/run-compensation.md).

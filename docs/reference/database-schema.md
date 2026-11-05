@@ -1,11 +1,11 @@
 # Database schema
 
 This page lists the tables that m8flow-core's ORM models define. The library
-ships the models in `m8flow_core.models` and, in `alembic/versions/`, a single
-Alembic baseline revision that creates them. The baseline, `k2l3m4n5o6p7`, has
-no parent and is the current head. It builds the whole 1.0 schema on an empty
-database; see [Upgrade to 1.0](../how-to/upgrade-to-1.0.md) for existing
-databases.
+ships the models in `m8flow_core.models` and, in `alembic/versions/`, an immutable
+Alembic baseline plus additive revisions. The baseline, `k2l3m4n5o6p7`, has
+no parent and builds the 1.0 schema on an empty database. The compensation
+revision `l3m4n5o6p7q8` is the current head. See
+[Upgrade to 1.0](../how-to/upgrade-to-1.0.md) for existing databases.
 
 Table and column names are part of the compatibility contract, because host
 applications such as m8flow share the database. Renaming or removing one is a
@@ -69,3 +69,28 @@ them with the referencing row's tenant and the hash together.
 - [Upgrade to 1.0](../how-to/upgrade-to-1.0.md): what changed from 0.x
 - [About the workflow data model](../explanation/workflow-data-model.md)
 - [Public API reference](api.md)
+
+## Compensation journal
+
+Revision `l3m4n5o6p7q8` adds three tenant-owned tables. Each has `id`,
+`m8f_tenant_id`, `process_instance_id`, `created_at`, and `updated_at`.
+
+| Table | Model | Additional columns |
+|---|---|---|
+| `compensation_scope` | `CompensationScopeModel` | `scope_id`, nullable `parent_scope_id`, `activity_id`, `completed`, `data_hash` |
+| `compensation_run` | `CompensationRunModel` | `run_id`, `throw_task_guid`, `scope_id`, `wait_for_completion`, `status` |
+| `compensation_record` | `CompensationRecordModel` | `source_task_guid`, `activity_id`, `scope_id`, `completion_sequence`, nullable `handler_id`, `handler_task_guid`, `run_id`, `throw_task_guid`, `failure_details`, `workflow_state_hash`; required `status`, `attempts`, `data_hash` |
+
+Scope IDs identify runtime occurrences. Completion sequences are strictly
+increasing within an instance and determine reverse compensation order.
+Uniqueness constraints cover tenant/instance/scope, tenant/instance/throw,
+tenant/instance/source occurrence, and tenant/instance/completion sequence.
+All three tables reference tenant and process-instance rows and index those
+foreign keys. Timestamps are timezone-aware UTC values.
+
+`data_hash` and `workflow_state_hash` refer to `json_data` using both tenant
+and hash, without hash-only foreign keys. The owning workflow snapshot carries
+the complete recovery image, including private handler specifications, active
+handler trees, scopes, and journal state. Journal tables provide its queryable
+projection. Snapshot, projection, work items, and events are persisted together
+in the caller's transaction; restarting uses committed progress.

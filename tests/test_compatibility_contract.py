@@ -19,6 +19,7 @@ from m8flow_core.application.commands import (
 )
 from m8flow_core.application.queries import (
     GetPendingTasksQuery,
+    GetProcessInstanceCompensationsQuery,
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
@@ -119,6 +120,7 @@ EXPECTED_COMMAND_FIELDS = {
 }
 
 EXPECTED_QUERY_FIELDS = {
+    GetProcessInstanceCompensationsQuery: ["tenant_id", "process_instance_id"],
     GetPendingTasksQuery: ["tenant_id", "user_id"],
     GetProcessInstanceEventsQuery: ["tenant_id", "process_instance_id"],
     GetProcessInstanceMetadataQuery: ["tenant_id", "process_instance_id"],
@@ -175,9 +177,7 @@ def test_native_occurred_at_attributes_are_additive() -> None:
         "created_at",
         "updated_at",
     }.issubset(ProcessInstanceModel.__mapper__.attrs.keys())
-    assert {"created_at", "updated_at"}.issubset(
-        WorkItemModel.__mapper__.attrs.keys()
-    )
+    assert {"created_at", "updated_at"}.issubset(WorkItemModel.__mapper__.attrs.keys())
     assert "occurred_at" in ProcessInstanceEventModel.__mapper__.attrs
 
 
@@ -215,7 +215,14 @@ PROCESS_EVENT_TYPES = {
     "process_instance_completed",
     "process_instance_terminated",
 }
-TASK_EVENT_TYPES = {"task_completed", "task_failed", "task_cancelled"}
+TASK_EVENT_TYPES = {
+    "task_completed",
+    "task_failed",
+    "task_cancelled",
+    "compensation_started",
+    "compensation_completed",
+    "compensation_failed",
+}
 RETIRED_EVENT_TYPES = [
     "process_instance_force_run",
     "process_instance_migrated",
@@ -311,9 +318,7 @@ def test_retired_event_types_are_not_enum_members(event_type: str) -> None:
 
 def test_task_state_validation_uses_spiff_names_and_preserves_termination() -> None:
     assert TaskModel(state=TaskState.READY).state == "READY"
-    assert TaskModel(state="COMPLETED").state == TaskState.get_name(
-        TaskState.COMPLETED
-    )
+    assert TaskModel(state="COMPLETED").state == TaskState.get_name(TaskState.COMPLETED)
     assert TaskModel(state=M8F_TERMINATED_TASK_STATE).state == (
         M8F_TERMINATED_TASK_STATE
     )
