@@ -126,6 +126,8 @@ Missing:
 
 Call activities are supported through the host-supplied resolver described in
 the [API reference](api.md#initializeprocessinstancefromdefinitioncommand).
+Sequential and parallel multi-instance script tasks are covered too; see
+[BPMN support](bpmn-support.md#supported-elements).
 The following BPMN features aren't tested in the library:
 
 - **Event subprocesses**, triggered by events inside a running parent process,
@@ -136,8 +138,6 @@ The following BPMN features aren't tested in the library:
 - **Error and escalation boundary events**, for typed business errors such as
   a service task raising `INSUFFICIENT_FUNDS`. Timer boundary events are
   covered; these aren't.
-- **Multi-instance activities**, which run a task once per item in a
-  collection, in sequence or in parallel.
 - **Non-interrupting events**, which start side work, such as a reminder task,
   without cancelling the current path.
 
