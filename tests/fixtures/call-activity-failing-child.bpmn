@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:spiffworkflow="http://spiffworkflow.org/bpmn/schema/1.0/core"
+  id="failing_child"
+  targetNamespace="https://m8flow.example/bpmn">
+  <bpmn:process id="child_process" isExecutable="true">
+    <bpmn:startEvent id="child_start" />
+    <bpmn:serviceTask id="child_fail" name="Fail in child">
+      <bpmn:extensionElements>
+        <spiffworkflow:serviceTaskOperator id="demo/Fail" />
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="child_end" />
+    <bpmn:sequenceFlow id="fail_1" sourceRef="child_start" targetRef="child_fail" />
+    <bpmn:sequenceFlow id="fail_2" sourceRef="child_fail" targetRef="child_end" />
+  </bpmn:process>
+</bpmn:definitions>

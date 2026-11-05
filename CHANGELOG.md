@@ -7,6 +7,12 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ## [Unreleased]
 
+### Added
+
+- BPMN call activities through the tenant-aware `CallActivityResolver` API.
+  Called child workflows are stored inside the parent workflow snapshot and
+  their human tasks use the existing parent process instance worklist.
+
 ### Changed
 
 - Resolved CodeQL code-scanning alerts without changing the public API.
