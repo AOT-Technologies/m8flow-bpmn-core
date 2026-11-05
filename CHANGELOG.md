@@ -12,6 +12,9 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 - BPMN call activities through the tenant-aware `CallActivityResolver` API.
   Called child workflows are stored inside the parent workflow snapshot and
   their human tasks use the existing parent process instance worklist.
+- A runtime test for sequential and parallel multi-instance script tasks. They already ran through SpiffWorkflow; the BPMN support
+  reference, limitations page, and README no longer list them, or call
+  activities, as unsupported.
 
 ### Changed
 
