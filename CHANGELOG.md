@@ -9,6 +9,9 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ### Added
 
+- BPMN call activities through the tenant-aware `CallActivityResolver` API.
+  Called child workflows are stored inside the parent workflow snapshot and
+  their human tasks use the existing parent process instance worklist.
 - BPMN compensation boundary events, associations, task/subprocess handlers,
   intermediate throws and end events, targeted compensation, both wait modes,
   and durable reverse completion ordering with nested scope isolation.

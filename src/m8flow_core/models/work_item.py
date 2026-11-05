@@ -64,7 +64,10 @@ class WorkItemModel(M8fTenantScopedMixin, TenantScoped, Base):
     def task_name(self) -> str | None:
         if self.task_model is None:
             return None
-        value = self.task_model.task_definition.bpmn_identifier
+        properties = self.task_model.task_definition.properties_json
+        value = properties.get("__m8f_task_identifier")
+        if not isinstance(value, str):
+            value = self.task_model.task_definition.bpmn_identifier
         return value if isinstance(value, str) else None
 
     @property

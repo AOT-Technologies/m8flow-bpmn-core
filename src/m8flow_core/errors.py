@@ -45,9 +45,14 @@ class ServiceTaskExecutionError(BpmnCoreError, RuntimeError):
     """A BPMN service task failed while invoking a registered connector."""
 
 
+class CallActivityResolutionError(ValidationError):
+    """A call activity's referenced process definition cannot be resolved."""
+
+
 __all__ = [
     "AuthorizationError",
     "BpmnCoreError",
+    "CallActivityResolutionError",
     "CompensationExecutionError",
     "InvalidStateError",
     "NotFoundError",
