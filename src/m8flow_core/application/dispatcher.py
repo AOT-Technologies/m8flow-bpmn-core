@@ -14,9 +14,11 @@ from m8flow_core.application.commands import (
     ImportBpmnProcessDefinitionCommand,
     InitializeProcessInstanceFromDefinitionCommand,
     InitializeProcessInstanceWorkflowCommand,
+    PublishSignalCommand,
     RecordProcessInstanceEventCommand,
     ResumeProcessInstanceCommand,
     RetryProcessInstanceCommand,
+    RunSignalDeliveriesCommand,
     ScheduleProcessInstanceRetryCommand,
     SuspendProcessInstanceCommand,
     TerminateProcessInstanceCommand,
@@ -28,12 +30,14 @@ from m8flow_core.application.queries import (
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
+    GetSignalPublicationQuery,
     ListErrorProcessInstancesQuery,
     ListProcessInstancesQuery,
+    ListSignalDeliveriesQuery,
     ListSuspendedProcessInstancesQuery,
     ListTerminatedProcessInstancesQuery,
 )
-from m8flow_core.services.compensation_runtime import get_process_instance_compensations
+from m8flow_core.services.compensation_journal import get_process_instance_compensations
 from m8flow_core.services.process_definitions import (
     import_bpmn_process_definition,
 )
@@ -56,6 +60,12 @@ from m8flow_core.services.process_instances import (
     schedule_process_instance_retry,
     suspend_process_instance,
     upsert_process_instance_metadata,
+)
+from m8flow_core.services.signals import (
+    get_signal_publication,
+    list_signal_deliveries,
+    publish_signal,
+    run_signal_deliveries,
 )
 from m8flow_core.services.tasks import (
     claim_task,
@@ -92,6 +102,17 @@ def execute_command(
     command: object,
 ) -> object:
     with _session_scope(session_or_connection) as session:
+        if isinstance(command, PublishSignalCommand):
+            return publish_signal(
+                session, tenant_id=command.tenant_id, signal_name=command.signal_name,
+                user_id=command.user_id, occurrence_id=command.occurrence_id,
+                payload=command.payload, published_at=command.published_at,
+            )
+        if isinstance(command, RunSignalDeliveriesCommand):
+            return run_signal_deliveries(
+                session, tenant_id=command.tenant_id,
+                limit=command.limit, now=command.now,
+            )
         if isinstance(command, ClaimTaskCommand):
             return claim_task(
                 session,
@@ -246,6 +267,14 @@ def execute_query(
                 session,
                 tenant_id=query.tenant_id,
                 process_instance_id=query.process_instance_id,
+            )
+        if isinstance(query, GetSignalPublicationQuery):
+            return get_signal_publication(
+                session, tenant_id=query.tenant_id, occurrence_id=query.occurrence_id,
+            )
+        if isinstance(query, ListSignalDeliveriesQuery):
+            return list_signal_deliveries(
+                session, tenant_id=query.tenant_id, occurrence_id=query.occurrence_id,
             )
         if isinstance(query, GetPendingTasksQuery):
             return get_pending_tasks(

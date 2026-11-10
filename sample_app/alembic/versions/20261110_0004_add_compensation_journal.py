@@ -3,8 +3,8 @@
 from alembic import op
 from m8flow_core.models import Base as BpmnCoreBase
 
-revision = "20260706_0003"
-down_revision = "20260706_0002"
+revision = "20261110_0004"
+down_revision = "20261104_0003"
 branch_labels = None
 depends_on = None
 

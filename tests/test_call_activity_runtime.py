@@ -14,6 +14,7 @@ from m8flow_core.models.task_definition import TaskDefinitionModel
 from m8flow_core.models.tenant import M8flowTenantModel
 from m8flow_core.models.user import UserModel
 from m8flow_core.services.authorization import ROLE_ADMIN, ensure_v1_role
+from m8flow_core.services.workflow_engine import _build_workflow
 
 
 class _FailingConnector:
@@ -145,6 +146,21 @@ def test_call_activity_waits_in_child_then_parent_completes(session: Session) ->
     )
     assert refreshed.status == api.ProcessInstanceStatus.complete
     assert len(resolver_contexts) == 1
+
+
+def test_call_activity_loads_child_after_selecting_implicit_root() -> None:
+    workflow = _build_workflow(
+        bpmn_xml=PARENT_BPMN,
+        dmn_xml=None,
+        bpmn_process_id=None,
+        call_activity_resolver=lambda _: api.CallActivityDefinition(
+            "child_process", CHILD_BPMN
+        ),
+        call_activity_context=api.CallActivityContext("call-tenant", "", None, None),
+    )
+
+    assert workflow.spec.name == "parent_process"
+    assert set(workflow.subprocess_specs) == {"child_process"}
 
 
 def test_child_task_id_does_not_overwrite_parent_task_definition(

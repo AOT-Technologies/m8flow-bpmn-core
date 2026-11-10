@@ -427,7 +427,7 @@ def test_authorization_setup_is_idempotent(session: Session) -> None:
     ) == 1
     assert session.scalar(
         select(func.count()).select_from(PermissionAssignmentModel)
-    ) == 2
+    ) == 3
 
 
 def test_authorization_group_key_allows_duplicate_legacy_identifiers(

@@ -4,10 +4,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from m8flow_core import api
-from m8flow_core.models import M8flowTenantModel, UserModel
+from m8flow_core.models import M8flowTenantModel, SignalPublicationModel, UserModel
 from m8flow_core.services.authorization import ROLE_ADMIN, ensure_v1_role
 from m8flow_core.services.compensation_runtime import coordinator
 from m8flow_core.services.workflow_runtime import (
@@ -241,6 +242,79 @@ def test_compensation_rollback_is_caller_owned(engine) -> None:
 def test_import_rejects_invalid_bindings(session, mutation) -> None:
     with pytest.raises(api.ValidationError):
         start(session, mutation(saga()))
+
+
+@pytest.mark.parametrize(
+    "suffix", ["", "_start", "_end", "_flow_0", "_flow_1", "_lanes", "_lane"]
+)
+def test_compensation_helper_ids_avoid_existing_bpmn_ids(session, suffix):
+    base = "__m8f_compensation_undo_shipment"
+    xml = saga(end=True, target="shipment").replace(
+        '<startEvent id="start"/>',
+        f'<textAnnotation id="{base}{suffix}"><text>Shipping</text></textAnnotation>'
+        '<laneSet id="lanes"><lane id="shipping" name="Shipping">'
+        "<flowNodeRef>undo_shipment</flowNodeRef></lane></laneSet>"
+        '<startEvent id="start"/>',
+    )
+    instance_id, user_id = start(
+        session, xml, properties={"lane_owners": {"Shipping": ["operator"]}}
+    )
+    [item] = api.execute_query(session, api.GetPendingTasksQuery("comp", user_id))
+    assert item.lane_name == "Shipping"
+    instance = api.execute_query(
+        session, api.GetProcessInstanceQuery("comp", instance_id)
+    )
+    workflow = _restore_workflow(instance.workflow_state_json)
+    comp = coordinator(workflow)
+    assert comp is not None
+    [handler] = comp.handlers.values()
+    assert handler.spec.name == base + "_1"
+    finish(session, user_id, "Undo shipment")
+    assert records(session, instance_id)[-1].status == "completed"
+
+
+def test_compensation_helper_ids_avoid_earlier_helpers(session):
+    xml = saga(end=True).replace("undo_payment", "undo_inventory_start")
+    instance_id, user_id = start(session, xml)
+    instance = api.execute_query(
+        session, api.GetProcessInstanceQuery("comp", instance_id)
+    )
+    comp = coordinator(_restore_workflow(instance.workflow_state_json))
+    assert comp is not None
+    templates = comp.state["templates"]
+    assert templates["undo_inventory_start"]["spec"]["name"] == (
+        "__m8f_compensation_undo_inventory_start_1"
+    )
+    for name in ("shipment", "payment", "inventory"):
+        finish(session, user_id, "Undo " + name)
+    assert all(record.status == "completed" for record in records(session, instance_id))
+
+
+def test_compensation_and_qualified_signal_end_survive_reload(engine):
+    xml = (
+        saga(target="shipment")
+        .replace(
+            'targetNamespace="urn:compensation">',
+            'xmlns:tns="urn:compensation" targetNamespace="urn:compensation">'
+            '<signal id="notice" name="Notice"/>',
+        )
+        .replace(
+            '<endEvent id="end"/>',
+            '<endEvent id="end"><signalEventDefinition signalRef="tns:notice"/>'
+            "</endEvent>",
+        )
+    )
+    with Session(engine) as session:
+        instance_id, user_id = start(session, xml)
+        finish(session, user_id, "Undo shipment")
+        session.commit()
+
+    with Session(engine) as session:
+        finish(session, user_id, "After compensation")
+        publication = session.scalars(select(SignalPublicationModel)).one()
+        assert publication.signal_name == "Notice"
+        assert publication.source_process_instance_id == instance_id
+        assert records(session, instance_id)[-1].status == "completed"
 
 
 def test_scope_default_recursion_and_explicit_precedence(session) -> None:

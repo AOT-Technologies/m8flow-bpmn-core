@@ -100,14 +100,16 @@ deduplicate uncertain external calls.
 
 Run `uv run python examples/compensation.py`. The SQLite example reserves
 inventory, charges payment, arranges shipment, and compensates in shipment →
-payment → inventory order. It recreates the engine after committing shipment
-undo and verifies that all three handlers have one attempt.
+payment → inventory order. Press Enter to complete each pending handler and to
+recreate the engine after committing shipment undo. The walkthrough shows the
+restored journal and verifies that all three handlers have one attempt. Add
+`--non-interactive` to run it without prompts.
 
 Apply Alembic head before using an existing database. The additive revision
-`l3m4n5o6p7q8` follows the immutable 1.0 baseline. Existing workflows without
-compensation continue to restore normally. Legacy compensation instances have
-no reliable completion journal and cannot continue compensation; import the
-definition and start a new instance.
+`m8f_671_compensation` follows signal revision `l3m4n5o6p7q8`. Existing
+workflows without compensation continue to restore normally. Legacy compensation
+instances lack a reliable completion journal. Import the definition and start
+a new instance to run compensation.
 
 Compensation event subprocesses, loop/multi-instance characteristics, call
 activities, transaction cancellation, and automatic compensation from BPMN

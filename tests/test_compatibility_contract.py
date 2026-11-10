@@ -14,7 +14,9 @@ from m8flow_core.application.commands import (
     ImportBpmnProcessDefinitionCommand,
     InitializeProcessInstanceFromDefinitionCommand,
     InitializeProcessInstanceWorkflowCommand,
+    PublishSignalCommand,
     RecordProcessInstanceEventCommand,
+    RunSignalDeliveriesCommand,
     UpsertProcessInstanceMetadataCommand,
 )
 from m8flow_core.application.queries import (
@@ -23,7 +25,9 @@ from m8flow_core.application.queries import (
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
+    GetSignalPublicationQuery,
     ListProcessInstancesQuery,
+    ListSignalDeliveriesQuery,
 )
 from m8flow_core.errors import ValidationError
 from m8flow_core.models.base import Base
@@ -47,6 +51,15 @@ from m8flow_core.models.work_item import WorkItemModel
 from m8flow_core.services.work_items import WorkItemState
 
 EXPECTED_COMMAND_FIELDS = {
+    PublishSignalCommand: [
+        "tenant_id",
+        "signal_name",
+        "user_id",
+        "occurrence_id",
+        "payload",
+        "published_at",
+    ],
+    RunSignalDeliveriesCommand: ["tenant_id", "limit", "now"],
     ClaimTaskCommand: ["tenant_id", "work_item_id", "user_id"],
     CompleteTaskCommand: [
         "tenant_id",
@@ -121,6 +134,8 @@ EXPECTED_COMMAND_FIELDS = {
 
 EXPECTED_QUERY_FIELDS = {
     GetProcessInstanceCompensationsQuery: ["tenant_id", "process_instance_id"],
+    GetSignalPublicationQuery: ["tenant_id", "occurrence_id"],
+    ListSignalDeliveriesQuery: ["tenant_id", "occurrence_id"],
     GetPendingTasksQuery: ["tenant_id", "user_id"],
     GetProcessInstanceEventsQuery: ["tenant_id", "process_instance_id"],
     GetProcessInstanceMetadataQuery: ["tenant_id", "process_instance_id"],
@@ -202,6 +217,10 @@ def test_schema_table_names_are_compatible_baseline() -> None:
         "process_instance_event",
         "process_instance_metadata",
         "scheduler_job",
+        "signal_publication",
+        "signal_subscription",
+        "signal_delivery",
+        "signal_registry_state",
     }
     assert expected_tables.issubset(Base.metadata.tables)
 

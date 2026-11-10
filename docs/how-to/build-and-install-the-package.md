@@ -79,3 +79,10 @@ example needs.
 
 - [Embed the library in your application](embed-in-your-application.md)
 - [Configuration](../reference/configuration.md)
+
+## Upgrade a database for signal publication
+
+After installing this version, run `alembic upgrade head` to add the signal
+registry tables. The 1.0 baseline is unchanged; `l3m4n5o6p7q8` follows it.
+See [Publish signals](publish-signals.md#upgrade-an-existing-database) for
+registry initialization and provisioning the new role permission.

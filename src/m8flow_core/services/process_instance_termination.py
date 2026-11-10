@@ -22,6 +22,7 @@ from m8flow_core.services.process_instances import (
     _resolve_timestamp,
     record_process_instance_event,
 )
+from m8flow_core.services.signal_registry import retire_instance_signals
 from m8flow_core.services.tenant_users import ensure_user_belongs_to_tenant
 from m8flow_core.services.workflow_runtime import _cancel_compensation
 
@@ -40,7 +41,7 @@ def terminate_process_instance(
         user_id=user_id,
     )
     process_instance = _load_process_instance(
-        session, tenant_id=tenant_id, process_instance_id=process_instance_id
+        session, tenant_id=tenant_id, process_instance_id=process_instance_id, lock=True
     )
     require_command_authorization(
         session,
@@ -65,6 +66,7 @@ def terminate_process_instance(
     process_instance.ended_at = occurred_at
     process_instance.updated_at = occurred_at
     _cancel_compensation(session, process_instance, occurred_at)
+    retire_instance_signals(session, process_instance)
     _close_process_instance_runtime_state(
         session,
         process_instance,

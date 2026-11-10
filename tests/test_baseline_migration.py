@@ -14,12 +14,21 @@ from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy.orm import Session
 
-from m8flow_core.models import Base
+from m8flow_core.models import (
+    Base,
+    CompensationRecordModel,
+    CompensationRunModel,
+    CompensationScopeModel,
+    M8flowTenantModel,
+    ProcessInstanceModel,
+    SignalPublicationModel,
+)
 from m8flow_core.models.user import UserModel
 from m8flow_core.settings import get_settings
 
 BASELINE_REVISION = "k2l3m4n5o6p7"
-HEAD_REVISION = "l3m4n5o6p7q8"
+SIGNAL_REVISION = "l3m4n5o6p7q8"
+HEAD_REVISION = "m8f_671_compensation"
 
 POSTGRES_URL = os.getenv("M8FLOW_POSTGRES_UPGRADE_DATABASE_URL", "")
 
@@ -30,6 +39,7 @@ NAMED_CHECK_CONSTRAINTS = {
     },
     "principal": {"m8f_principal_exactly_one_subject"},
     "process_instance_event": {"m8f_process_instance_event_category_check"},
+    "signal_subscription": {"m8f_signal_subscription_references"},
 }
 
 
@@ -95,18 +105,20 @@ def _table_names(database_url: str) -> set[str]:
         engine.dispose()
 
 
-def test_migration_history_preserves_baseline_and_adds_compensation() -> None:
+def test_migration_history_has_one_head_after_signal_revision() -> None:
     script = ScriptDirectory.from_config(_alembic_config())
 
     revisions = list(script.walk_revisions())
 
     assert [revision.revision for revision in revisions] == [
         HEAD_REVISION,
+        SIGNAL_REVISION,
         BASELINE_REVISION,
     ]
     assert script.get_heads() == [HEAD_REVISION]
-    assert revisions[0].down_revision == BASELINE_REVISION
-    assert revisions[1].down_revision is None
+    assert revisions[0].down_revision == SIGNAL_REVISION
+    assert revisions[1].down_revision == BASELINE_REVISION
+    assert revisions[2].down_revision is None
 
 
 _DATABASES = [
@@ -211,6 +223,115 @@ def test_additive_upgrade_preserves_baseline_data(migration_database: str) -> No
         command.downgrade(config, BASELINE_REVISION)
         assert "compensation_record" not in _table_names(migration_database)
         assert "process_instance" in _table_names(migration_database)
+    finally:
+        engine.dispose()
+        command.downgrade(config, "base")
+
+
+@pytest.mark.parametrize("migration_database", _DATABASES, indirect=True)
+def test_upgrade_from_signal_preserves_data_and_enforces_journal_tenant(
+    migration_database: str,
+) -> None:
+    config = _alembic_config()
+    command.upgrade(config, SIGNAL_REVISION)
+    engine = sa.create_engine(migration_database)
+    tenant = M8flowTenantModel.__table__
+    instance = ProcessInstanceModel.__table__
+    publication = SignalPublicationModel.__table__
+    now = datetime.now(UTC)
+    journal_rows = (
+        (
+            CompensationScopeModel.__table__,
+            {"activity_id": "saga", "completed": False, "data_hash": "scope-data"},
+        ),
+        (
+            CompensationRunModel.__table__,
+            {
+                "run_id": "run",
+                "throw_task_guid": "throw",
+                "wait_for_completion": True,
+                "status": "running",
+            },
+        ),
+        (
+            CompensationRecordModel.__table__,
+            {
+                "source_task_guid": "source",
+                "activity_id": "shipment",
+                "completion_sequence": 1,
+                "status": "available",
+                "attempts": 0,
+                "data_hash": "record-data",
+            },
+        ),
+    )
+    if engine.dialect.name == "sqlite":
+
+        @sa.event.listens_for(engine, "connect")
+        def enable_foreign_keys(dbapi_connection, _record) -> None:
+            dbapi_connection.execute("PRAGMA foreign_keys=ON")
+
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                tenant.insert(),
+                [{"id": name, "name": name, "slug": name} for name in ("one", "two")],
+            )
+            user_id = connection.scalar(
+                UserModel.__table__.insert()
+                .values(username="operator", service="test", service_id="operator")
+                .returning(UserModel.__table__.c.id)
+            )
+            instance_id = connection.scalar(
+                instance.insert()
+                .values(
+                    m8f_tenant_id="one",
+                    process_model_identifier="saga",
+                    process_model_display_name="Saga",
+                    process_initiator_id=user_id,
+                )
+                .returning(instance.c.id)
+            )
+            connection.execute(
+                publication.insert().values(
+                    m8f_tenant_id="one",
+                    source_process_instance_id=instance_id,
+                    occurrence_id="existing-signal",
+                    signal_name="Notice",
+                    payload_json={"preserved": True},
+                    published_at=now,
+                )
+            )
+
+        command.upgrade(config, "head")
+        assert _schema_diff(migration_database) == []
+        with engine.begin() as connection:
+            for table, values in journal_rows:
+                insert = table.insert().values(
+                    process_instance_id=instance_id,
+                    scope_id="scope",
+                    created_at=now,
+                    updated_at=now,
+                    **values,
+                )
+                connection.execute(insert.values(m8f_tenant_id="one"))
+                with (
+                    pytest.raises(sa.exc.IntegrityError, match=r"(?i)foreign key"),
+                    connection.begin_nested(),
+                ):
+                    connection.execute(insert.values(m8f_tenant_id="two"))
+                count = connection.scalar(sa.select(sa.func.count()).select_from(table))
+                assert count == 1
+
+        command.downgrade(config, SIGNAL_REVISION)
+        assert {table.name for table, _ in journal_rows}.isdisjoint(
+            _table_names(migration_database)
+        )
+        with engine.connect() as connection:
+            assert connection.scalar(sa.select(publication.c.payload_json)) == {
+                "preserved": True
+            }
+            assert connection.scalar(sa.select(instance.c.id)) == instance_id
     finally:
         engine.dispose()
         command.downgrade(config, "base")

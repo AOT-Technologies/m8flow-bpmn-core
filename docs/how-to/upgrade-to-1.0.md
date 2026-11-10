@@ -114,13 +114,15 @@ uv run alembic upgrade head
 uv run alembic current
 ```
 
-The second command must report the current head, `l3m4n5o6p7q8` in this checkout.
+The second command must report `m8f_671_compensation` as the head.
 
 ### Check a database that is already at `k2l3m4n5o6p7`
 
 The baseline keeps the revision ID `k2l3m4n5o6p7`. If a database's
 `alembic_version` row already holds that value, `alembic upgrade head` applies
-the compensation migration without rerunning the baseline. No stamp is needed.
+the signal and compensation migrations without rerunning the baseline. A database
+already at signal revision `l3m4n5o6p7q8` applies just the compensation migration.
+No stamp is needed.
 
 The revision ID alone doesn't prove the tables match the 1.0 models. A
 database built before the baseline can still differ in details such as extra

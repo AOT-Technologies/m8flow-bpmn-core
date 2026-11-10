@@ -49,7 +49,8 @@ def resume_process_instance(
         user_id=user_id,
     )
     process_instance = _load_process_instance(
-        session, tenant_id=tenant_id, process_instance_id=process_instance_id
+        session, tenant_id=tenant_id,
+        process_instance_id=process_instance_id, lock=True,
     )
     require_command_authorization(
         session,
@@ -82,6 +83,11 @@ def resume_process_instance(
         occurred_at=occurred_at,
         user_id=user_id,
     )
+    from m8flow_core.services.signal_registry import (
+        refresh_instance_signal_subscriptions,
+    )
+
+    refresh_instance_signal_subscriptions(session, process_instance, occurred_at)
     session.flush()
     return process_instance
 
@@ -100,7 +106,8 @@ def retry_process_instance(
         user_id=user_id,
     )
     process_instance = _load_process_instance(
-        session, tenant_id=tenant_id, process_instance_id=process_instance_id
+        session, tenant_id=tenant_id,
+        process_instance_id=process_instance_id, lock=True,
     )
     require_command_authorization(
         session,
@@ -152,5 +159,10 @@ def retry_process_instance(
         tenant_id=tenant_id,
         process_instance_id=process_instance.id,
     )
+    from m8flow_core.services.signal_registry import (
+        refresh_instance_signal_subscriptions,
+    )
+
+    refresh_instance_signal_subscriptions(session, process_instance, occurred_at)
     session.flush()
     return process_instance

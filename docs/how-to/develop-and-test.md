@@ -97,10 +97,10 @@ run an independent writer while the outer transaction is open.
 
 ## Run the PostgreSQL integration test
 
-The integration test starts a temporary `postgres:16` container, creates the
-schema, runs the public API against it, and rolls back at the end. It also
-runs the conditional approval workflow with its BPMN and DMN fixtures. You
-need Docker running. To run it, use the following command:
+The integration tests start a temporary `postgres:16` container and run the
+public API against it. They exercise transaction control, the conditional
+approval BPMN and DMN fixtures, and compensation rollback and restart. With
+Docker running, use the following command:
 
 ```bash
 make test-integration
@@ -119,9 +119,11 @@ M8FLOW_TEST_POSTGRES_URL=postgresql+psycopg://<user>:<password>@localhost:5432/m
 
 The baseline migration tests also run against PostgreSQL when
 `M8FLOW_POSTGRES_UPGRADE_DATABASE_URL` points at a dedicated, empty database.
-They apply Alembic head, verify the upgrade from the baseline preserves
-existing data, compare the result with the models, check timestamps after
-2038, and downgrade again. Without the variable they run on SQLite only.
+They apply Alembic head, verify upgrades from the baseline and the signal
+revision, and compare the result with the models. They also check timestamps
+after 2038, cross-tenant compensation foreign keys, and downgrade behavior.
+The PostgreSQL CI job supplies the migration database and runs the compensation
+integration test. Without the variable, the migration cases run on SQLite.
 
 ## Run the sample app tests
 

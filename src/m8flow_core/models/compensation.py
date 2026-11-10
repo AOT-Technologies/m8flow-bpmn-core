@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKeyConstraint, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from m8flow_core.models.base import Base
@@ -24,6 +24,10 @@ class CompensationStatus(StrEnum):
 class CompensationScopeModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "compensation_scope"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["m8f_tenant_id", "process_instance_id"],
+            ["process_instance.m8f_tenant_id", "process_instance.id"],
+        ),
         UniqueConstraint(
             "m8f_tenant_id",
             "process_instance_id",
@@ -33,9 +37,7 @@ class CompensationScopeModel(M8fTenantScopedMixin, TenantScoped, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    process_instance_id: Mapped[int] = mapped_column(
-        ForeignKey("process_instance.id"), index=True
-    )
+    process_instance_id: Mapped[int] = mapped_column(index=True)
     scope_id: Mapped[str] = mapped_column(String(36))
     parent_scope_id: Mapped[str | None] = mapped_column(String(36))
     activity_id: Mapped[str] = mapped_column(String(255))
@@ -48,6 +50,10 @@ class CompensationScopeModel(M8fTenantScopedMixin, TenantScoped, Base):
 class CompensationRunModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "compensation_run"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["m8f_tenant_id", "process_instance_id"],
+            ["process_instance.m8f_tenant_id", "process_instance.id"],
+        ),
         UniqueConstraint(
             "m8f_tenant_id",
             "process_instance_id",
@@ -57,9 +63,7 @@ class CompensationRunModel(M8fTenantScopedMixin, TenantScoped, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    process_instance_id: Mapped[int] = mapped_column(
-        ForeignKey("process_instance.id"), index=True
-    )
+    process_instance_id: Mapped[int] = mapped_column(index=True)
     run_id: Mapped[str] = mapped_column(String(36))
     throw_task_guid: Mapped[str] = mapped_column(String(36))
     scope_id: Mapped[str] = mapped_column(String(36))
@@ -72,6 +76,10 @@ class CompensationRunModel(M8fTenantScopedMixin, TenantScoped, Base):
 class CompensationRecordModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "compensation_record"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["m8f_tenant_id", "process_instance_id"],
+            ["process_instance.m8f_tenant_id", "process_instance.id"],
+        ),
         UniqueConstraint(
             "m8f_tenant_id",
             "process_instance_id",
@@ -87,9 +95,7 @@ class CompensationRecordModel(M8fTenantScopedMixin, TenantScoped, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    process_instance_id: Mapped[int] = mapped_column(
-        ForeignKey("process_instance.id"), index=True
-    )
+    process_instance_id: Mapped[int] = mapped_column(index=True)
     source_task_guid: Mapped[str] = mapped_column(String(36))
     activity_id: Mapped[str] = mapped_column(String(255))
     scope_id: Mapped[str] = mapped_column(String(36))
