@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from SpiffWorkflow.bpmn.script_engine.python_engine import PythonScriptEngine
@@ -13,7 +13,16 @@ from SpiffWorkflow.dmn.specs.model import DecisionTable
 from SpiffWorkflow.spiff.parser.process import SpiffBpmnParser
 from SpiffWorkflow.spiff.serializer.config import SPIFF_CONFIG
 
-from m8flow_core.errors import ServiceTaskExecutionError, ValidationError
+from m8flow_core.errors import (
+    CallActivityResolutionError,
+    ServiceTaskExecutionError,
+    ValidationError,
+)
+from m8flow_core.services.call_activities import (
+    CallActivityContext,
+    CallActivityDefinition,
+    CallActivityResolver,
+)
 from m8flow_core.services.service_tasks import (
     ServiceTaskContext,
     ServiceTaskRequest,
@@ -155,6 +164,8 @@ def _build_workflow(
     dmn_xml: str | bytes | None,
     bpmn_process_id: str | None,
     service_task_context: ServiceTaskContext | None = None,
+    call_activity_resolver: CallActivityResolver | None = None,
+    call_activity_context: CallActivityContext | None = None,
 ) -> BpmnWorkflow:
     parser = _RuntimeSpiffBpmnParser(
         validator=None,
@@ -163,6 +174,12 @@ def _build_workflow(
     parser.add_bpmn_str(
         _coerce_xml_bytes(bpmn_xml),
         filename="runtime-workflow.bpmn",
+    )
+    _load_called_process_definitions(
+        parser,
+        root_process_id=bpmn_process_id,
+        resolver=call_activity_resolver,
+        context=call_activity_context,
     )
     if dmn_xml is not None:
         parser.add_dmn_str(
@@ -189,6 +206,127 @@ def _build_workflow(
     )
     adapt_signal_definitions(workflow)
     return workflow
+
+
+def _load_called_process_definitions(
+    parser: _RuntimeSpiffBpmnParser,
+    *,
+    root_process_id: str | None,
+    resolver: CallActivityResolver | None,
+    context: CallActivityContext | None,
+) -> None:
+    """Resolve recursive external call references into Spiff's parser."""
+    root_ids = parser.get_process_ids()
+    if root_process_id is None:
+        if len(root_ids) != 1:
+            raise ValidationError(
+                "A BPMN process id must be supplied when the file contains "
+                "multiple executable processes"
+            )
+        root_process_id = root_ids[0]
+    pending = [root_process_id]
+    inspected: set[str] = set()
+    while pending:
+        process_id = pending.pop()
+        if process_id in inspected:
+            continue
+        inspected.add(process_id)
+        process_parser = parser.get_process_parser(process_id)
+        if process_parser is None:
+            raise CallActivityResolutionError(
+                f"Called process {process_id!r} was not found in the resolved BPMN"
+            )
+        for called_element in process_parser.called_element_ids():
+            if not isinstance(called_element, str) or not called_element.strip():
+                raise CallActivityResolutionError(
+                    f"Call activity in process {process_id!r} has no calledElement"
+                )
+            if parser.get_process_parser(called_element) is None:
+                if resolver is None:
+                    raise CallActivityResolutionError(
+                        f"Call activity references {called_element!r}, but no "
+                        "call_activity_resolver was supplied"
+                    )
+                if context is None:
+                    raise ValidationError(
+                        "Call-activity resolver requires tenant and parent context"
+                    )
+                resolution_context = CallActivityContext(
+                    tenant_id=context.tenant_id,
+                    called_element=called_element,
+                    parent_process_instance_id=context.parent_process_instance_id,
+                    parent_process_definition_id=context.parent_process_definition_id,
+                )
+                try:
+                    result = resolver(resolution_context)
+                except CallActivityResolutionError:
+                    raise
+                except Exception as exc:
+                    raise CallActivityResolutionError(
+                        f"Resolver failed for calledElement {called_element!r} "
+                        f"in tenant {context.tenant_id!r}: {exc}"
+                    ) from exc
+                if result is None:
+                    raise CallActivityResolutionError(
+                        f"No child process definition for calledElement "
+                        f"{called_element!r} in tenant {context.tenant_id!r}"
+                    )
+                if isinstance(result, CallActivityDefinition):
+                    definitions = [result]
+                elif isinstance(result, Sequence) and not isinstance(
+                    result, (str, bytes, bytearray)
+                ):
+                    definitions = list(result)
+                else:
+                    raise CallActivityResolutionError(
+                        f"Resolver returned an invalid result for calledElement "
+                        f"{called_element!r}; return one definition or a sequence"
+                    )
+                if not definitions:
+                    raise CallActivityResolutionError(
+                        f"No child process definition for calledElement "
+                        f"{called_element!r} in tenant {context.tenant_id!r}"
+                    )
+                if len(definitions) != 1:
+                    raise CallActivityResolutionError(
+                        f"Ambiguous child process definition for calledElement "
+                        f"{called_element!r} in tenant {context.tenant_id!r}: "
+                        f"resolver returned {len(definitions)} definitions"
+                    )
+                definition = definitions[0]
+                if not isinstance(definition, CallActivityDefinition):
+                    raise CallActivityResolutionError(
+                        f"Resolver returned an invalid definition for "
+                        f"calledElement {called_element!r}"
+                    )
+                if definition.process_id != called_element:
+                    raise CallActivityResolutionError(
+                        f"Resolved process id {definition.process_id!r} does not "
+                        f"match calledElement {called_element!r}"
+                    )
+                try:
+                    parser.add_bpmn_str(
+                        _coerce_xml_bytes(definition.bpmn_xml),
+                        filename=f"called-process-{called_element}.bpmn",
+                    )
+                    if definition.process_id not in parser.get_process_ids():
+                        raise CallActivityResolutionError(
+                            f"Resolved BPMN does not contain executable process "
+                            f"{definition.process_id!r}"
+                        )
+                    if definition.dmn_xml is not None:
+                        parser.add_dmn_str(
+                            _coerce_xml_bytes(definition.dmn_xml),
+                            filename=f"called-process-{called_element}.dmn",
+                        )
+                except CallActivityResolutionError:
+                    raise
+                except Exception as exc:
+                    raise CallActivityResolutionError(
+                        f"Resolved definition for calledElement "
+                        f"{called_element!r} is invalid: {exc}"
+                    ) from exc
+            pending.append(called_element)
 
 
 def _restore_workflow(

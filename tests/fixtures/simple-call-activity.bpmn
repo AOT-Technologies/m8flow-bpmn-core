@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_parent" targetNamespace="https://m8flow.example/bpmn">
+  <bpmn:process id="parent_process" name="Parent process" isExecutable="true">
+    <bpmn:startEvent id="parent_start" />
+    <bpmn:callActivity id="call_child" name="Call child" calledElement="child_process" />
+    <bpmn:endEvent id="parent_end" />
+    <bpmn:sequenceFlow id="parent_flow_1" sourceRef="parent_start" targetRef="call_child" />
+    <bpmn:sequenceFlow id="parent_flow_2" sourceRef="call_child" targetRef="parent_end" />
+  </bpmn:process>
+</bpmn:definitions>

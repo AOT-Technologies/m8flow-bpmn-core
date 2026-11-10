@@ -23,7 +23,9 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 - Signal-bearing workflows keep instance creation, service-failure recovery,
   publication, and consumption in the caller's transaction. Rollback restores
   them together; commit an error state to retain it.
-
+- BPMN call activities through the tenant-aware `CallActivityResolver` API.
+  Called child workflows are stored inside the parent workflow snapshot and
+  their human tasks use the existing parent process instance worklist.
 
 ### Changed
 

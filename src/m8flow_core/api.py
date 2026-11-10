@@ -49,6 +49,7 @@ from m8flow_core.application.dispatcher import _session_scope
 from m8flow_core.errors import (
     AuthorizationError,
     BpmnCoreError,
+    CallActivityResolutionError,
     InvalidStateError,
     NotFoundError,
     ServiceTaskExecutionError,
@@ -78,6 +79,11 @@ from m8flow_core.services.authorization import (
     DatabaseAuthorizationPolicy,
     authorization_policy_scope,
     set_default_authorization_policy_factory,
+)
+from m8flow_core.services.call_activities import (
+    CallActivityContext,
+    CallActivityDefinition,
+    CallActivityResolver,
 )
 from m8flow_core.services.connector_proxy_service_tasks import (
     ConnectorProxyServiceTaskConnector,
@@ -216,6 +222,10 @@ __all__ = [
     "AuthorizationPolicyFactory",
     "AuthorizationRequest",
     "BpmnCoreError",
+    "CallActivityContext",
+    "CallActivityDefinition",
+    "CallActivityResolutionError",
+    "CallActivityResolver",
     "ClaimTaskCommand",
     "CompleteTaskCommand",
     "ConnectorProxyServiceTaskConnector",

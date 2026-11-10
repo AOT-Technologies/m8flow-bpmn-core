@@ -179,6 +179,7 @@ def execute_command(
                 summary=command.summary,
                 process_version=command.process_version,
                 started_at=command.started_at,
+                call_activity_resolver=command.call_activity_resolver,
                 bpmn_process_id=command.bpmn_process_id,
             )
         if isinstance(command, InitializeProcessInstanceWorkflowCommand):
@@ -190,6 +191,7 @@ def execute_command(
                 dmn_xml=command.dmn_xml,
                 bpmn_process_id=command.bpmn_process_id,
                 started_at=command.started_at,
+                call_activity_resolver=command.call_activity_resolver,
             )
         if isinstance(command, UpsertProcessInstanceMetadataCommand):
             return upsert_process_instance_metadata(

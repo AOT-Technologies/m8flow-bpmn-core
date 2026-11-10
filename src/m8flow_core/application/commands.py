@@ -8,6 +8,7 @@ from m8flow_core.models.process_instance_event import (
     ProcessLifecycleEventType,
     TaskEventType,
 )
+from m8flow_core.services.call_activities import CallActivityResolver
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +96,7 @@ class InitializeProcessInstanceFromDefinitionCommand:
     process_version: int = 1
     started_at: datetime | None = None
     bpmn_process_id: str | None = None
+    call_activity_resolver: CallActivityResolver | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +107,7 @@ class InitializeProcessInstanceWorkflowCommand:
     bpmn_process_id: str | None = None
     started_at: datetime | None = None
     dmn_xml: str | bytes | None = None
+    call_activity_resolver: CallActivityResolver | None = None
 
 
 @dataclass(frozen=True, slots=True)

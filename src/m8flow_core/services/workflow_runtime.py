@@ -5,7 +5,7 @@ import hashlib
 import json
 import logging
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -51,6 +51,10 @@ from m8flow_core.models.work_item import WorkItemModel
 from m8flow_core.services.authorization import (
     PROCESS_START_COMMAND,
     require_command_authorization,
+)
+from m8flow_core.services.call_activities import (
+    CallActivityContext,
+    CallActivityResolver,
 )
 from m8flow_core.services.lane_assignment import (
     assign_work_item_potential_owners,
@@ -123,6 +127,7 @@ def initialize_process_instance_workflow(
     dmn_xml: str | bytes | None = None,
     bpmn_process_id: str | None = None,
     started_at: datetime | None = None,
+    call_activity_resolver: CallActivityResolver | None = None,
 ) -> ProcessInstanceModel:
     process_instance = _load_process_instance(
         session,
@@ -143,6 +148,13 @@ def initialize_process_instance_workflow(
             tenant_id=tenant_id,
             process_instance_id=process_instance.id,
             process_definition_id=process_instance.bpmn_process_definition_id,
+        ),
+        call_activity_resolver=call_activity_resolver,
+        call_activity_context=CallActivityContext(
+            tenant_id=tenant_id,
+            called_element="",
+            parent_process_instance_id=process_instance.id,
+            parent_process_definition_id=process_instance.bpmn_process_definition_id,
         ),
     )
     _seed_runtime_definitions(
@@ -189,6 +201,7 @@ def initialize_process_instance_from_definition(
     process_version: int = 1,
     started_at: datetime | None = None,
     bpmn_process_id: str | None = None,
+    call_activity_resolver: CallActivityResolver | None = None,
 ) -> ProcessInstanceModel:
     ensure_user_belongs_to_tenant(
         session,
@@ -236,6 +249,7 @@ def initialize_process_instance_from_definition(
         dmn_xml=process_definition.source_dmn_xml,
         bpmn_process_id=selected_process_id,
         started_at=started_at,
+        call_activity_resolver=call_activity_resolver,
     )
 
 
@@ -1253,9 +1267,6 @@ def _sync_process_definition_from_workflow(
     if not isinstance(serialized_process_identifier, str):
         raise ValidationError("Serialized workflow spec is missing its name")
 
-    task_specs = dict(serialized_spec.get("task_specs", {}))
-    for child_spec in serialized_workflow.get("subprocess_specs", {}).values():
-        task_specs.update(child_spec.get("task_specs", {}))
     spec_payload = dict(serialized_spec)
     spec_payload.pop("task_specs", None)
 
@@ -1272,19 +1283,57 @@ def _sync_process_definition_from_workflow(
     process_definition.properties_json = merged_properties
     process_definition.updated_at = occurred_at
 
+    _sync_serialized_task_specs(
+        session,
+        serialized_spec,
+        tenant_id=process_instance.m8f_tenant_id,
+        process_definition_id=process_definition.id,
+        occurred_at=occurred_at,
+    )
+    subprocess_specs = serialized_workflow.get("subprocess_specs")
+    if isinstance(subprocess_specs, Mapping):
+        for subprocess_name, subprocess_spec in subprocess_specs.items():
+            if isinstance(subprocess_spec, Mapping):
+                _sync_serialized_task_specs(
+                    session,
+                    subprocess_spec,
+                    tenant_id=process_instance.m8f_tenant_id,
+                    process_definition_id=process_definition.id,
+                    occurred_at=occurred_at,
+                    task_identifier_prefix=str(subprocess_name),
+                )
+
+
+def _sync_serialized_task_specs(
+    session: Session,
+    serialized_spec: Mapping[str, Any],
+    *,
+    tenant_id: str,
+    process_definition_id: int,
+    occurred_at: datetime,
+    task_identifier_prefix: str | None = None,
+) -> None:
+    task_specs = serialized_spec.get("task_specs")
     if not isinstance(task_specs, Mapping):
         raise ValidationError("Serialized workflow spec is missing task specs")
     for task_name, task_spec_payload in task_specs.items():
-        if not isinstance(task_spec_payload, Mapping):
-            continue
-        _upsert_task_definition_from_payload(
-            session,
-            tenant_id=process_instance.m8f_tenant_id,
-            process_definition_id=process_definition.id,
-            task_identifier=str(task_name),
-            task_spec_payload=task_spec_payload,
-            occurred_at=occurred_at,
-        )
+        if isinstance(task_spec_payload, Mapping):
+            task_identifier = str(task_name)
+            database_identifier = (
+                f"{task_identifier_prefix}::{task_identifier}"
+                if task_identifier_prefix is not None
+                else task_identifier
+            )
+            persisted_payload = dict(task_spec_payload)
+            persisted_payload["__m8f_task_identifier"] = task_identifier
+            _upsert_task_definition_from_payload(
+                session,
+                tenant_id=tenant_id,
+                process_definition_id=process_definition_id,
+                task_identifier=database_identifier,
+                task_spec_payload=persisted_payload,
+                occurred_at=occurred_at,
+            )
 
 
 def _sync_task_models_from_workflow(
@@ -1294,9 +1343,6 @@ def _sync_task_models_from_workflow(
     serialized_workflow: Mapping[str, Any],
     occurred_at: datetime,
 ) -> None:
-    serialized_tasks = serialized_workflow.get("tasks")
-    if not isinstance(serialized_tasks, Mapping):
-        raise ValidationError("Serialized workflow is missing task rows")
     if process_instance.bpmn_process_definition_id is None:
         raise ValidationError(
             "Process instance is missing a BPMN process definition"
@@ -1313,17 +1359,10 @@ def _sync_task_models_from_workflow(
         ).all()
     }
 
-    serialized_tasks = dict(serialized_tasks)
-    for child in serialized_workflow.get("subprocesses", {}).values():
-        serialized_tasks.update(child.get("tasks", {}))
-    for task_guid, task_payload in serialized_tasks.items():
-        if not isinstance(task_payload, Mapping):
-            continue
-        task_spec_identifier = task_payload.get("task_spec")
-        if not isinstance(task_spec_identifier, str):
-            raise ValidationError(
-                f"Serialized task {task_guid!r} is missing its task spec identifier"
-            )
+    serialized_task_rows = list(_iter_serialized_task_rows(serialized_workflow))
+    if not serialized_task_rows:
+        raise ValidationError("Serialized workflow is missing task rows")
+    for _task_guid, task_spec_identifier, task_payload in serialized_task_rows:
         task_definition = task_definitions.get(task_spec_identifier)
         if task_definition is None:
             raise ValidationError(
@@ -1339,28 +1378,86 @@ def _sync_task_models_from_workflow(
         )
 
 
+def _iter_serialized_task_rows(
+    serialized_workflow: Mapping[str, Any],
+    *,
+    identifier_prefix: str | None = None,
+) -> Sequence[tuple[str, str, Mapping[str, Any]]]:
+    rows: list[tuple[str, str, Mapping[str, Any]]] = []
+    serialized_tasks = serialized_workflow.get("tasks")
+    if isinstance(serialized_tasks, Mapping):
+        for task_guid, task_payload in serialized_tasks.items():
+            if not isinstance(task_payload, Mapping):
+                continue
+            task_spec_name = task_payload.get("task_spec")
+            if not isinstance(task_spec_name, str):
+                raise ValidationError(
+                    f"Serialized task {task_guid!r} is missing its task spec identifier"
+                )
+            task_definition_identifier = (
+                f"{identifier_prefix}::{task_spec_name}"
+                if identifier_prefix is not None
+                else task_spec_name
+            )
+            rows.append(
+                (str(task_guid), task_definition_identifier, task_payload)
+            )
+    subprocesses = serialized_workflow.get("subprocesses")
+    if isinstance(subprocesses, Mapping):
+        for subprocess in subprocesses.values():
+            if isinstance(subprocess, Mapping):
+                subprocess_name = subprocess.get("spec")
+                if not isinstance(subprocess_name, str):
+                    raise ValidationError(
+                        "Serialized subprocess is missing its spec identifier"
+                    )
+                rows.extend(
+                    _iter_serialized_task_rows(
+                        subprocess,
+                        identifier_prefix=subprocess_name,
+                    )
+                )
+    return rows
+
+
 def _upsert_task_definition(
     session: Session,
     *,
     tenant_id: str,
     process_definition_id: int,
     task_spec: object,
+    task_identifier_prefix: str | None = None,
     occurred_at: datetime,
 ) -> TaskDefinitionModel:
     task_spec_payload = _WORKFLOW_SERIALIZER.to_dict(task_spec)
     if not isinstance(task_spec_payload, Mapping):
         raise ValidationError("Task spec serializer did not produce a dictionary")
-    task_identifier = getattr(task_spec, "name", None)
-    if not isinstance(task_identifier, str) or not task_identifier:
+    source_task_identifier = getattr(task_spec, "name", None)
+    if not isinstance(source_task_identifier, str) or not source_task_identifier:
         raise ValidationError("Task spec is missing its serialized identifier")
+    task_identifier = (
+        f"{task_identifier_prefix}::{source_task_identifier}"
+        if task_identifier_prefix is not None
+        else source_task_identifier
+    )
+    serialized_payload = dict(task_spec_payload)
+    serialized_payload["__m8f_task_identifier"] = source_task_identifier
     return _upsert_task_definition_from_payload(
         session,
         tenant_id=tenant_id,
         process_definition_id=process_definition_id,
         task_identifier=task_identifier,
-        task_spec_payload=task_spec_payload,
+        task_spec_payload=serialized_payload,
         occurred_at=occurred_at,
     )
+
+
+def _task_definition_identifier_prefix(workflow: object | None) -> str | None:
+    if workflow is None or getattr(workflow, "parent_workflow", None) is None:
+        return None
+    spec = getattr(workflow, "spec", None)
+    spec_name = getattr(spec, "name", None)
+    return spec_name if isinstance(spec_name, str) and spec_name else None
 
 
 def _upsert_task_definition_from_payload(
@@ -1380,6 +1477,7 @@ def _upsert_task_definition_from_payload(
         )
     )
     serialized_payload = dict(task_spec_payload)
+    serialized_payload.setdefault("__m8f_task_identifier", task_identifier)
     task_name = serialized_payload.get("bpmn_name")
     task_typename = serialized_payload.get("typename")
     if not isinstance(task_typename, str) or not task_typename:
@@ -1599,6 +1697,9 @@ def _materialize_single_manual_task(
         tenant_id=process_instance.m8f_tenant_id,
         process_definition_id=process_instance.bpmn_process_definition_id,
         task_spec=task.task_spec,
+        task_identifier_prefix=_task_definition_identifier_prefix(
+            getattr(task, "workflow", None)
+        ),
         occurred_at=occurred_at,
     )
     task_model = _upsert_task_model(

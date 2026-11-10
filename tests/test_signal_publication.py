@@ -385,7 +385,7 @@ def handler_model(kind: str, interrupt: bool, nested: bool = False) -> str:
 
 def pending_names(session, actor):
     return [
-        w.task_model.task_definition.bpmn_identifier
+        w.task_name
         for w in api.get_pending_tasks(
             session,
             tenant_id=actor[0],

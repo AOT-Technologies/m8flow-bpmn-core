@@ -130,10 +130,10 @@ Missing:
 
 ## Advanced BPMN coverage
 
+Call activities are supported through the host-supplied resolver described in
+the [API reference](api.md#initializeprocessinstancefromdefinitioncommand).
 The following BPMN features aren't tested in the library:
 
-- **Call activities**, where one process runs another reusable process as a
-  child and waits for it.
 - **Event subprocesses**, triggered by events inside a running parent process,
   often for cancellation or exception handling. Non-interrupting timer and
   interrupting/non-interrupting signal event subprocesses are covered.
