@@ -134,8 +134,21 @@ def records(session: Session, instance_id: int) -> list:
     )
 
 
-def transaction_xml(*, normal_end: bool = False) -> str:
+def transaction_xml(*, normal_end: bool = False, nested: bool = False) -> str:
     end_definition = "" if normal_end else "<cancelEventDefinition/>"
+    active_work = '<userTask id="active" name="Ship order"/>'
+    if nested:
+        active_work = f"""
+        <subProcess id="active">
+          <startEvent id="shipping_start"/>
+          <userTask id="pack" name="Pack order"/>
+          {binding("pack", "undo_pack")}
+          <userTask id="undo_pack" name="Unpack order" isForCompensation="true"/>
+          <userTask id="ship" name="Ship order"/>
+          <endEvent id="shipping_end"/>
+          {flow("shipping_start", "pack")}{flow("pack", "ship")}
+          {flow("ship", "shipping_end")}
+        </subProcess>"""
     transaction = f"""
       <transaction id="order">
         <startEvent id="tx_start"/>
@@ -149,7 +162,7 @@ def transaction_xml(*, normal_end: bool = False) -> str:
         <userTask id="undo_charge" name="Refund charge" isForCompensation="true"/>
         <parallelGateway id="split"/>
         <userTask id="cancel_request" name="Cancel order"/>
-        <userTask id="active" name="Ship order"/>
+        {active_work}
         <endEvent id="cancel">{end_definition}</endEvent>
         <endEvent id="shipped"/>
         {flow("tx_start", "reserve")}{flow("reserve", "charge")}
@@ -172,24 +185,41 @@ def transaction_xml(*, normal_end: bool = False) -> str:
       </process>""")
 
 
-def test_transaction_cancel_waits_for_compensation_and_retries_after_reload(engine):
+@pytest.mark.parametrize(
+    "nested", [False, True], ids=["direct-work", "active-subprocess"]
+)
+def test_transaction_cancel_waits_for_compensation_and_retries_after_reload(
+    engine, nested
+):
     with Session(engine) as session:
-        instance_id, user_id = start(session, transaction_xml())
+        instance_id, user_id = start(session, transaction_xml(nested=nested))
+        if nested:
+            assert {item.task_title for item in pending(session)} == {
+                "Cancel order",
+                "Pack order",
+            }
+            finish(session, user_id, "Pack order")
         assert {item.task_title for item in pending(session)} == {
             "Cancel order",
             "Ship order",
         }
         finish(session, user_id, "Cancel order")
+        if nested:
+            assert [item.task_title for item in pending(session)] == ["Unpack order"]
+            finish(session, user_id, "Unpack order")
         assert [item.task_title for item in pending(session)] == ["Refund charge"]
         with pytest.raises(
             api.CompensationExecutionError, match="undo_reserve"
         ) as failure:
             finish(session, user_id, "Refund charge")
         assert failure.value.compensation_recovery_flushed
-        assert [record.status for record in records(session, instance_id)] == [
-            "failed",
-            "completed",
-        ]
+        expected_statuses = {"reserve": "failed", "charge": "completed"}
+        if nested:
+            expected_statuses["pack"] = "completed"
+        assert {
+            record.activity_id: record.status
+            for record in records(session, instance_id)
+        } == expected_statuses
         session.commit()
 
     with Session(engine) as session:
@@ -208,7 +238,13 @@ def test_transaction_cancel_waits_for_compensation_and_retries_after_reload(engi
             session, api.RetryProcessInstanceCommand("comp", instance_id, user_id)
         )
         assert [item.task_title for item in pending(session)] == ["After cancel"]
-        assert [record.attempts for record in records(session, instance_id)] == [2, 1]
+        expected_attempts = [("reserve", 2), ("charge", 1)]
+        if nested:
+            expected_attempts.append(("pack", 1))
+        assert [
+            (record.activity_id, record.attempts)
+            for record in records(session, instance_id)
+        ] == expected_attempts
         session.commit()
 
     with Session(engine) as session:
