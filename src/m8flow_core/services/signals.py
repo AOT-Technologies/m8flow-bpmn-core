@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from m8flow_core.errors import BpmnCoreError, NotFoundError, ValidationError
@@ -14,6 +14,7 @@ from m8flow_core.models.process_instance import ProcessInstanceModel
 from m8flow_core.models.signals import (
     SignalDeliveryModel,
     SignalPublicationModel,
+    SignalRegistryStateModel,
     SignalSubscriptionModel,
 )
 from m8flow_core.services.signal_registry import (
@@ -55,11 +56,19 @@ def run_signal_deliveries(
     # sqlite3 legacy transaction mode does not BEGIN for SELECT. Without an
     # explicit outer transaction, releasing the first savepoint would commit it.
     connection = session.connection()
-    if connection.dialect.name == "sqlite":
+    sqlite = connection.dialect.name == "sqlite"
+    if sqlite:
         driver = connection.connection.driver_connection
         if driver is not None and not driver.in_transaction:
             connection.exec_driver_sql("BEGIN")
+        # Reserve the SQLite writer before any registry or delivery read.
+        _lock_delivery_runner(session, tenant_id)
     _ensure_registry(session, tenant_id, timestamp)
+    if not sqlite:
+        # The registry row exists after initialization. Hold its write lock
+        # through the caller's transaction, including any delivery savepoints.
+        _lock_delivery_runner(session, tenant_id)
+    session.flush()
     # Snapshot the batch, excluding suspended recipients before applying the limit.
     stmt = (
         select(SignalDeliveryModel)
@@ -77,6 +86,7 @@ def run_signal_deliveries(
         )
         .order_by(SignalDeliveryModel.id)
         .limit(limit)
+        .execution_options(populate_existing=True)
     )
     batch = list(session.scalars(stmt))
     attempted: list[SignalDeliveryModel] = []
@@ -92,13 +102,15 @@ def run_signal_deliveries(
             # All same-occurrence subscriptions must be injected before advancement.
             group = list(
                 session.scalars(
-                    select(SignalDeliveryModel).where(
+                    select(SignalDeliveryModel)
+                    .where(
                         SignalDeliveryModel.m8f_tenant_id == tenant_id,
                         SignalDeliveryModel.publication_id == delivery.publication_id,
                         SignalDeliveryModel.process_instance_id
                         == delivery.process_instance_id,
                         SignalDeliveryModel.status == "pending",
                     )
+                    .execution_options(populate_existing=True)
                 )
             )
         try:
@@ -114,6 +126,15 @@ def run_signal_deliveries(
         attempted.extend(group)
     session.flush()
     return attempted
+
+
+def _lock_delivery_runner(session: Session, tenant_id: str) -> None:
+    session.execute(
+        update(SignalRegistryStateModel)
+        .where(SignalRegistryStateModel.m8f_tenant_id == tenant_id)
+        .values(version=SignalRegistryStateModel.version)
+        .execution_options(synchronize_session=False)
+    )
 
 
 def _execute_delivery_group(

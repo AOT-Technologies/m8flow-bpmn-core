@@ -50,6 +50,11 @@ def upgrade() -> None:
             name="fk_signal_publication_m8f_tenant_id_m8flow_tenant",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_signal_publication"),
+        sa.ForeignKeyConstraint(
+            ["m8f_tenant_id", "source_process_instance_id"],
+            ["process_instance.m8f_tenant_id", "process_instance.id"],
+            name="fk_signal_publication_m8f_tenant_id_process_instance",
+        ),
         sa.UniqueConstraint(
             "m8f_tenant_id", "occurrence_id", name="uq_signal_publication_occurrence"
         ),
@@ -98,6 +103,12 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "kind IN ('start', 'catch', 'boundary', 'event_subprocess')",
             name="m8f_signal_subscription_kind",
+        ),
+        sa.CheckConstraint(
+            "(kind = 'start' AND definition_id IS NOT NULL "
+            "AND process_instance_id IS NULL) OR "
+            "(kind <> 'start' AND process_instance_id IS NOT NULL)",
+            name="m8f_signal_subscription_references",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_signal_subscription"),
         sa.UniqueConstraint(

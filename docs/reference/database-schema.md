@@ -56,9 +56,11 @@ All four signal tables have tenant-qualified ownership and remain in the
 caller's transaction. Publications and receipts retain audit history when
 subscriptions retire. Foreign keys from receipts to publications/subscriptions
 include `m8f_tenant_id`, preventing cross-tenant associations. Subscription
-references to definitions/instances and receipt references to resulting instances
-also use tenant-qualified foreign keys. The migration adds composite unique
-indexes on `(m8f_tenant_id, id)` to those two existing parent tables.
+references to definitions and instances, publication references to source
+instances, and receipt references to resulting instances also use tenant-qualified
+foreign keys. External publications may omit the source instance. The migration
+adds composite unique indexes on `(m8f_tenant_id, id)` to the process instance
+and definition tables.
 
 | Table | Stable columns |
 |---|---|
@@ -70,7 +72,9 @@ indexes on `(m8f_tenant_id, id)` to those two existing parent tables.
 Occurrence IDs are unique per tenant. Subscription keys identify an activation
 or persistent handler within the tenant. Receipt uniqueness is
 `(m8f_tenant_id, publication_id, subscription_id)`. Subscription `kind` is
-`start`, `catch`, `boundary`, or `event_subprocess`. Receipt `status` is
+`start`, `catch`, `boundary`, or `event_subprocess`. A `start` requires a
+definition and no instance. The other kinds require an instance. Receipt
+`status` is
 `pending`, `delivered`, or `skipped`. All timestamps use UTC datetimes.
 `payload_json` accepts JSON null and arbitrary JSON values. Source identifiers
 are retained audit references; they are not cascading foreign keys.

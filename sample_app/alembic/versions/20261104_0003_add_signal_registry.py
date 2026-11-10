@@ -13,9 +13,66 @@ branch_labels = None
 depends_on = None
 
 
-def _create_table(name: str, *elements: object) -> None:
-    if not sa.inspect(op.get_bind()).has_table(name):
+def _create_table(name: str, *elements: sa.schema.SchemaItem) -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if not inspector.has_table(name):
         op.create_table(name, *elements)
+        return
+
+    expected = sa.Table(name, sa.MetaData(), *elements)
+    columns = {column["name"]: column for column in inspector.get_columns(name)}
+    for column in expected.columns:
+        actual = columns.get(column.name)
+        if (
+            actual is None
+            or actual["nullable"] != column.nullable
+            or actual["type"].compile(dialect=bind.dialect)
+            != column.type.compile(dialect=bind.dialect)
+        ):
+            raise RuntimeError(
+                f"Incompatible signal schema for {name}: missing or invalid "
+                f"column {column.name}"
+            )
+
+    if inspector.get_pk_constraint(name)["constrained_columns"] != list(
+        expected.primary_key.columns.keys()
+    ):
+        raise RuntimeError(f"Incompatible signal schema for {name}: invalid primary key")
+
+    unique_keys = {
+        tuple(key["column_names"]) for key in inspector.get_unique_constraints(name)
+    }
+    foreign_keys = {
+        (
+            tuple(key["constrained_columns"]),
+            key["referred_table"],
+            tuple(key["referred_columns"]),
+        )
+        for key in inspector.get_foreign_keys(name)
+    }
+    checks = {check["name"] for check in inspector.get_check_constraints(name)}
+    for constraint in expected.constraints:
+        valid = True
+        if isinstance(constraint, sa.UniqueConstraint):
+            valid = tuple(constraint.columns.keys()) in unique_keys
+        elif isinstance(constraint, sa.ForeignKeyConstraint):
+            targets = [
+                element.target_fullname.rsplit(".", 1)
+                for element in constraint.elements
+            ]
+            valid = (
+                tuple(constraint.columns.keys()),
+                targets[0][0],
+                tuple(column for _, column in targets),
+            ) in foreign_keys
+        elif isinstance(constraint, sa.CheckConstraint):
+            valid = constraint.name in checks
+        if not valid:
+            raise RuntimeError(
+                f"Incompatible signal schema for {name}: missing or invalid "
+                f"constraint {constraint.name}"
+            )
 
 
 def _create_index(
@@ -25,11 +82,23 @@ def _create_index(
     *,
     unique: bool,
 ) -> None:
-    existing = {
-        index["name"] for index in sa.inspect(op.get_bind()).get_indexes(table_name)
+    bind = op.get_bind()
+    indexes = {
+        index["name"]: index
+        for index in sa.inspect(bind).get_indexes(table_name)
     }
-    if name not in existing:
+    existing = indexes.get(name)
+    if existing is None:
         op.create_index(name, table_name, columns, unique=unique)
+    elif (
+        existing["column_names"] != columns
+        or existing["unique"] != unique
+        or existing.get("dialect_options", {}).get(f"{bind.dialect.name}_where")
+        is not None
+    ):
+        raise RuntimeError(
+            f"Incompatible signal schema for {table_name}: invalid index {name}"
+        )
 
 
 def upgrade() -> None:
@@ -73,6 +142,11 @@ def upgrade() -> None:
             name="fk_signal_publication_m8f_tenant_id_m8flow_tenant",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_signal_publication"),
+        sa.ForeignKeyConstraint(
+            ["m8f_tenant_id", "source_process_instance_id"],
+            ["process_instance.m8f_tenant_id", "process_instance.id"],
+            name="fk_signal_publication_m8f_tenant_id_process_instance",
+        ),
         sa.UniqueConstraint(
             "m8f_tenant_id", "occurrence_id", name="uq_signal_publication_occurrence"
         ),
@@ -121,6 +195,12 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "kind IN ('start', 'catch', 'boundary', 'event_subprocess')",
             name="m8f_signal_subscription_kind",
+        ),
+        sa.CheckConstraint(
+            "(kind = 'start' AND definition_id IS NOT NULL "
+            "AND process_instance_id IS NULL) OR "
+            "(kind <> 'start' AND process_instance_id IS NOT NULL)",
+            name="m8f_signal_subscription_references",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_signal_subscription"),
         sa.UniqueConstraint(

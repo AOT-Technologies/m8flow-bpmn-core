@@ -30,6 +30,7 @@ NAMED_CHECK_CONSTRAINTS = {
     },
     "principal": {"m8f_principal_exactly_one_subject"},
     "process_instance_event": {"m8f_process_instance_event_category_check"},
+    "signal_subscription": {"m8f_signal_subscription_references"},
 }
 
 

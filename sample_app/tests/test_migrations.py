@@ -131,6 +131,8 @@ def test_existing_signal_tables_and_publications_are_preserved(migration_databas
     command.upgrade(config, "20260706_0002")
     # A shared host may already have applied the core signal migration.
     Base.metadata.create_all(engine)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("DROP INDEX ix_signal_delivery_due")
     with Session(engine) as session:
         session.add(M8flowTenantModel(id="shared", name="Shared", slug="shared"))
         session.flush()
@@ -151,6 +153,44 @@ def test_existing_signal_tables_and_publications_are_preserved(migration_databas
         publication = session.get(SignalPublicationModel, publication_id)
         assert publication.occurrence_id == "existing"
         assert publication.payload_json == {"preserve": True}
+
+
+@pytest.mark.parametrize(
+    ("schema_statements", "invalid_object"),
+    [
+        (
+            ("CREATE TABLE signal_publication (id INTEGER NOT NULL PRIMARY KEY)",),
+            "signal_publication.*column occurrence_id",
+        ),
+        (
+            (
+                "DROP INDEX m8f_process_instance_tenant_id_key",
+                "CREATE INDEX m8f_process_instance_tenant_id_key ON process_instance (id)",
+            ),
+            "process_instance.*index m8f_process_instance_tenant_id_key",
+        ),
+    ],
+    ids=["partial-table", "incompatible-index"],
+)
+def test_incompatible_existing_signal_schema_is_rejected(
+    migration_database, schema_statements, invalid_object
+):
+    engine, config = migration_database
+    command.upgrade(config, "20260706_0002")
+    with engine.begin() as connection:
+        for statement in schema_statements:
+            connection.exec_driver_sql(statement)
+
+    with pytest.raises(RuntimeError, match=invalid_object):
+        command.upgrade(config, "head")
+
+    with engine.connect() as connection:
+        assert (
+            connection.scalar(
+                text("SELECT version_num FROM m8flow_sample_app_alembic_version")
+            )
+            == "20260706_0002"
+        )
 
 
 def test_migrations_reuse_existing_secret_table_and_foreign_alembic_state(

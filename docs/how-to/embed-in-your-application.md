@@ -248,6 +248,7 @@ advice.
 BPMN signal throws publish durably in your transaction and deliver locally
 immediately. Run `api.execute_command(session,
 api.RunSignalDeliveriesCommand(tenant_id=tenant_id))` in a host-owned loop to
-reach other instances and Signal Starts. Use one runner per tenant and commit
-the runner transaction. See [Publish signals](publish-signals.md) for external
-publication, idempotency, payloads, retries, and suspension behavior.
+reach other instances and Signal Starts. Restrict runner access to trusted host
+code and validate the tenant before dispatch. Use one runner per tenant and
+commit the runner transaction. See [Publish signals](publish-signals.md) for
+external publication, idempotency, payloads, retries, and suspension behavior.

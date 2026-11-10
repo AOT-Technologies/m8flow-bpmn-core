@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Event
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, event, insert, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from m8flow_core import api
 from m8flow_core.models import (
     M8flowTenantModel,
     ProcessInstanceModel,
+    SignalDeliveryModel,
     SignalPublicationModel,
     SignalRegistryStateModel,
     SignalSubscriptionModel,
@@ -220,6 +224,43 @@ def test_broadcast_three_instances_and_signal_start_exactly_once(session, actor)
     assert len(list(session.scalars(select(ProcessInstanceModel)))) == 5
 
 
+def test_signal_reaches_called_child_after_restoring_parent(session, actor):
+    parent = deploy(
+        session,
+        actor,
+        model(
+            '<startEvent id="start"/>'
+            + flow("start", "call")
+            + '<callActivity id="call" calledElement="wait"/>'
+            + flow("call", "end")
+            + '<endEvent id="end"/>'
+        ),
+    )
+    instance = api.execute_command(
+        session,
+        api.InitializeProcessInstanceFromDefinitionCommand(
+            tenant_id=actor[0],
+            bpmn_process_definition_id=parent.id,
+            process_initiator_id=actor[1],
+            started_at=NOW,
+            call_activity_resolver=lambda _: api.CallActivityDefinition(
+                process_id="wait", bpmn_xml=waiter()
+            ),
+        ),
+    )
+    assert instance.status == "waiting"
+    session.commit()
+    session.expunge_all()
+
+    publish(session, actor)
+    receipts = run(session, actor[0])
+    assert [(receipt.status, receipt.process_instance_id) for receipt in receipts] == [
+        ("delivered", instance.id)
+    ]
+    restored = session.get(ProcessInstanceModel, instance.id)
+    assert restored.status == "complete"
+
+
 def test_external_idempotency_payload_and_no_late_replay(session, actor):
     first = publish(session, actor, payload={"value": 42})
     instance = start(session, actor, deploy(session, actor, waiter()))
@@ -248,6 +289,108 @@ def test_tenant_isolation_and_signal_name_matching(session, actor):
         api.get_signal_publication(session, tenant_id=other[0], occurrence_id="one")
     with pytest.raises(api.AuthorizationError):
         publish(session, (other[0], actor[1]))
+
+
+def test_signal_registry_rejects_cross_tenant_references(session):
+    if session.connection().dialect.name == "sqlite":
+        session.connection().exec_driver_sql("PRAGMA foreign_keys=ON")
+    actor = seed_actor(session, "signals")
+    other = seed_actor(session, "other")
+    own_publication = publish(session, actor)
+    foreign_publication = publish(session, other)
+    own_definition = deploy(session, actor, waiter())
+    foreign_definition = deploy(session, other, waiter())
+    own_instance = start(session, actor, own_definition)
+    foreign_instance = start(session, other, foreign_definition)
+    subscriptions = {
+        row.m8f_tenant_id: row.id
+        for row in session.scalars(select(SignalSubscriptionModel))
+    }
+    subscription = {
+        "m8f_tenant_id": actor[0],
+        "subscription_key": "direct",
+        "signal_name": "Notice",
+        "kind": "catch",
+        "process_instance_id": own_instance.id,
+        "definition_id": own_definition.id,
+        "task_spec_name": "catch",
+        "created_at": NOW,
+    }
+    delivery = {
+        "m8f_tenant_id": actor[0],
+        "publication_id": own_publication.id,
+        "subscription_id": subscriptions[actor[0]],
+        "process_instance_id": own_instance.id,
+        "retry_at": NOW,
+    }
+    invalid_inserts = [
+        insert(SignalPublicationModel).values(
+            m8f_tenant_id=actor[0],
+            occurrence_id="direct",
+            signal_name="Notice",
+            payload_json=None,
+            published_at=NOW,
+            source_process_instance_id=source_id,
+        )
+        for source_id in (
+            foreign_instance.id,
+            max(own_instance.id, foreign_instance.id) + 1,
+        )
+    ]
+    invalid_inserts.extend(
+        [
+            insert(SignalSubscriptionModel).values(
+                subscription | {"process_instance_id": foreign_instance.id}
+            ),
+            insert(SignalSubscriptionModel).values(
+                subscription | {"definition_id": foreign_definition.id}
+            ),
+            insert(SignalDeliveryModel).values(
+                delivery | {"publication_id": foreign_publication.id}
+            ),
+            insert(SignalDeliveryModel).values(
+                delivery | {"subscription_id": subscriptions[other[0]]}
+            ),
+            insert(SignalDeliveryModel).values(
+                delivery | {"process_instance_id": foreign_instance.id}
+            ),
+        ]
+    )
+    for statement in invalid_inserts:
+        with pytest.raises(IntegrityError, match="(?i)foreign key"):
+            with session.begin_nested():
+                session.execute(statement)
+
+
+@pytest.mark.parametrize(
+    ("kind", "has_definition", "has_instance"),
+    [
+        ("start", False, False),
+        ("start", True, True),
+        ("catch", True, False),
+        ("boundary", True, False),
+        ("event_subprocess", True, False),
+    ],
+)
+def test_subscription_kind_requires_matching_references(
+    session, actor, kind, has_definition, has_instance
+):
+    definition = deploy(session, actor, waiter())
+    instance = start(session, actor, definition)
+    with pytest.raises(IntegrityError, match="m8f_signal_subscription_references"):
+        with session.begin_nested():
+            session.execute(
+                insert(SignalSubscriptionModel).values(
+                    m8f_tenant_id=actor[0],
+                    subscription_key="invalid",
+                    signal_name="Notice",
+                    kind=kind,
+                    process_instance_id=instance.id if has_instance else None,
+                    definition_id=definition.id if has_definition else None,
+                    task_spec_name="invalid",
+                    created_at=NOW,
+                )
+            )
 
 
 def test_one_shot_reserved_and_suspension_holds_delivery(session, actor):
@@ -668,8 +811,6 @@ def test_qualified_signal_references_match_names_across_documents(session, actor
 def test_concurrent_identical_publications_create_one_occurrence(
     engine, session, actor
 ):
-    from concurrent.futures import ThreadPoolExecutor
-
     start(session, actor, deploy(session, actor, waiter()))
     session.commit()
 
@@ -693,6 +834,52 @@ def test_concurrent_identical_publications_create_one_occurrence(
         )
         == 1
     )
+
+
+@pytest.mark.parametrize("commit_first", [True, False], ids=["commit", "rollback"])
+def test_concurrent_runners_create_one_signal_start(
+    engine, session, actor, commit_first
+):
+    deploy(session, actor, start_model())
+    publish(session, actor)
+    session.commit()
+    contender_reached_registry = Event()
+
+    def compete():
+        with Session(engine) as contender:
+            connection = contender.connection()
+
+            @event.listens_for(connection, "before_cursor_execute")
+            def reached_registry(
+                _connection, _cursor, statement, _parameters, _context, _many
+            ):
+                if statement.startswith("UPDATE signal_registry_state"):
+                    contender_reached_registry.set()
+
+            rows = run(contender, actor[0])
+            result = [(row.status, row.attempts) for row in rows]
+            contender.commit()
+            return result
+
+    with ThreadPoolExecutor(max_workers=1) as pool, Session(engine) as first:
+        rows = run(first, actor[0])
+        assert [(row.status, row.attempts) for row in rows] == [("delivered", 1)]
+        competing = pool.submit(compete)
+        assert contender_reached_registry.wait(timeout=5)
+        if commit_first:
+            first.commit()
+        else:
+            first.rollback()
+        assert competing.result(timeout=10) == (
+            [] if commit_first else [("delivered", 1)]
+        )
+
+    assert len(list(session.scalars(select(ProcessInstanceModel)))) == 1
+    receipts = api.list_signal_deliveries(
+        session, tenant_id=actor[0], occurrence_id="one"
+    )
+    assert [(row.status, row.attempts) for row in receipts] == [("delivered", 1)]
+    assert run(session, actor[0]) == []
 
 
 def service_task() -> str:

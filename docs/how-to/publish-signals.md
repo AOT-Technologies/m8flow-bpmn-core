@@ -51,7 +51,7 @@ publication = api.execute_command(
 The user must belong to the tenant and have `signal.publish` with `execute`
 permission on that tenant. The built-in manager and admin roles grant it.
 BPMN throws execute as workflow behavior and do not require an additional user
-permission check. The delivery runner is a trusted host operation.
+permission check.
 
 Retry an external publication with the same tenant, occurrence ID, publisher,
 name, and payload. It returns the original occurrence without adding recipients.
@@ -77,8 +77,13 @@ with session_factory.begin() as session:
     )
 ```
 
-Run one delivery loop per tenant. No broker, background thread, or HTTP service
-is started by the library. Each call selects a bounded batch of due recipients.
+The runner advances workflows for the supplied tenant and has no acting-user
+authorization check. Restrict access to trusted host code and derive or
+validate the allowed `tenant_id` before invoking it.
+
+Run one delivery loop per tenant. Overlapping calls for a tenant serialize
+through the caller's transaction so they cannot consume the same receipt twice.
+Each call selects a bounded batch of due recipients.
 All subscriptions for one occurrence in the same instance are injected together;
 that atomic recipient group can contain several returned receipts. Signals
 produced by delivery are available to later runner calls.
@@ -128,4 +133,5 @@ Signal Starts use a dedicated tenant system user as initiator. Put their human
 tasks in lanes if they should be assigned to people. Re-run `ensure_v1_role` for
 existing manager/admin roles to provision the new publication grant.
 
-Run `uv run python examples/signal_broadcast.py` for a complete SQLite example.
+Run `uv run python examples/signal_broadcast.py` to step through the SQLite
+example. Add `--non-interactive` for scripted runs.

@@ -6,21 +6,23 @@ Uses an in-memory SQLite database, with no external services.
 
 from __future__ import annotations
 
+import argparse
 import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from m8flow_core import api
 from m8flow_core.db import build_engine, create_schema
-from m8flow_core.models import M8flowTenantModel, UserModel
+from m8flow_core.models import M8flowTenantModel, SignalPublicationModel, UserModel
 from m8flow_core.services.authorization import ensure_v1_role
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 
 
-def main() -> None:
+def main(*, interactive: bool = True) -> None:
     engine = build_engine("sqlite+pysqlite:///:memory:")
     create_schema(engine)
     tenant_id = "signal-example"
@@ -54,6 +56,8 @@ def main() -> None:
                     source_bpmn_xml=(FIXTURES / f"signal_{name}.bpmn").read_text(),
                 ),
             )
+        if interactive:
+            input("Press Enter to start three listeners. ")
         for _ in range(3):
             instance = api.execute_command(
                 session,
@@ -65,6 +69,11 @@ def main() -> None:
             )
             assert instance.status == "waiting"
             print(f"Waiting instance: {instance.id}")
+        session.commit()
+        print(f"Signal Start definition: {definitions['start'].id}")
+
+        if interactive:
+            input("Press Enter to run the throwing process and publish the signal. ")
         emitter = api.execute_command(
             session,
             api.InitializeProcessInstanceFromDefinitionCommand(
@@ -75,9 +84,28 @@ def main() -> None:
         )
         assert emitter.status == "complete"
         assert json.loads(emitter.workflow_state_json)["data"]["after_throw"] is True
-        print(f"Throwing instance {emitter.id}: complete; after_throw=True")
+        print(f"Throwing instance {emitter.id} completed after publishing.")
+        publication = session.scalars(
+            select(SignalPublicationModel).where(
+                SignalPublicationModel.m8f_tenant_id == tenant_id,
+                SignalPublicationModel.source_process_instance_id == emitter.id,
+            )
+        ).one()
+        queued = api.list_signal_deliveries(
+            session, tenant_id=tenant_id, occurrence_id=publication.occurrence_id
+        )
+        assert len(queued) == 4 and all(row.status == "pending" for row in queued)
+        for row in queued:
+            target = (
+                f"instance {row.process_instance_id}"
+                if row.process_instance_id is not None
+                else "Signal Start"
+            )
+            print(f"Pending receipt {row.id} for {target}")
         session.commit()
 
+    if interactive:
+        input("Press Enter to run the delivery loop. ")
     # The host owns the runner and its transaction boundary.
     with Session(engine) as session:
         receipts = api.execute_command(
@@ -98,4 +126,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--non-interactive", action="store_true", help="run all steps without prompts"
+    )
+    main(interactive=not parser.parse_args().non_interactive)

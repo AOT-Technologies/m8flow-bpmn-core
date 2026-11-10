@@ -28,8 +28,9 @@ The BPMN and DMN files they use are in `tests/fixtures/`.
 
 ## Run the SQLite examples
 
-The SQLite examples need nothing beyond `uv sync`. They run without pausing
-and print each step. To run them, use the following commands:
+The SQLite examples need nothing beyond `uv sync`. They print each step.
+`signal_broadcast.py` pauses before starting the listeners, publishing the
+signal, and running deliveries. Add `--non-interactive` to skip those prompts.
 
 ```bash
 uv run python examples/parallel_review.py

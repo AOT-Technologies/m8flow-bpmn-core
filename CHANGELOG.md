@@ -19,10 +19,12 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
   functions, and `SIGNAL_PUBLISH_COMMAND`. Managers and admins can publish with
   the new tenant-scoped permission. An additive Alembic revision
   `l3m4n5o6p7q8` introduces the four signal registry tables.
-- An in-memory SQLite signal broadcast example and embedding guide.
+- An interactive SQLite signal broadcast example and embedding guide.
 - Signal-bearing workflows keep instance creation, service-failure recovery,
   publication, and consumption in the caller's transaction. Rollback restores
   them together; commit an error state to retain it.
+- Overlapping signal runner calls serialize per tenant. The registry enforces
+  same-tenant publication sources and required subscription references.
 - BPMN call activities through the tenant-aware `CallActivityResolver` API.
   Called child workflows are stored inside the parent workflow snapshot and
   their human tasks use the existing parent process instance worklist.

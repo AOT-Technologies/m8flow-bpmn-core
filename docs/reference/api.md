@@ -72,8 +72,10 @@ order is the order shown below; `tenant_id` is always first.
 `PublishSignalCommand` validates publisher membership, then requires
 `SIGNAL_PUBLISH_COMMAND` (`"signal.publish"`) with `execute` permission on the
 exact tenant resource. Managers and admins receive that permission by default.
-The runner is a trusted host operation. Both commands preserve caller-owned
-transactions, including when dispatched with a `Connection`.
+The runner has no acting-user authorization check. The host must restrict
+invocation and validate the allowed tenant before dispatch. Both commands
+preserve caller-owned transactions, including when dispatched with a
+`Connection`.
 
 Signal names match exactly and case-sensitively within the tenant. Name and
 occurrence ID must be non-blank strings of at most 255 characters. The payload
@@ -87,8 +89,9 @@ the same registry with internally generated execution identities and record
 local delivery immediately. Other instances and Signal Starts require the
 runner; publication does not execute them inline.
 
-The runner snapshots a bounded batch of due candidates. All subscriptions for
-one occurrence in one recipient instance are processed as an atomic group,
+The runner serializes overlapping calls for a tenant through the caller's
+transaction before selecting a bounded batch of due candidates. All
+subscriptions for one occurrence in one recipient instance form an atomic group,
 which can contain multiple returned receipts. Newly emitted occurrences are
 left for a later runner call. Suspended recipients are held until resume.
 Failed attempts before consumption remain pending and retry after 30 seconds;

@@ -175,19 +175,8 @@ def _build_workflow(
         _coerce_xml_bytes(bpmn_xml),
         filename="runtime-workflow.bpmn",
     )
-    _load_called_process_definitions(
-        parser,
-        root_process_id=bpmn_process_id,
-        resolver=call_activity_resolver,
-        context=call_activity_context,
-    )
-    if dmn_xml is not None:
-        parser.add_dmn_str(
-            _coerce_xml_bytes(dmn_xml),
-            filename="runtime-workflow.dmn",
-        )
-    process_ids = parser.get_process_ids()
     if bpmn_process_id is None:
+        process_ids = parser.get_process_ids()
         if len(process_ids) != 1:
             raise ValidationError(
                 "A BPMN process id must be supplied when the file contains "
@@ -197,6 +186,17 @@ def _build_workflow(
     else:
         selected_process_id = bpmn_process_id
 
+    _load_called_process_definitions(
+        parser,
+        root_process_id=selected_process_id,
+        resolver=call_activity_resolver,
+        context=call_activity_context,
+    )
+    if dmn_xml is not None:
+        parser.add_dmn_str(
+            _coerce_xml_bytes(dmn_xml),
+            filename="runtime-workflow.dmn",
+        )
     spec = parser.get_spec(selected_process_id)
     subprocess_specs = parser.get_subprocess_specs(selected_process_id)
     workflow = BpmnWorkflow(
@@ -211,19 +211,11 @@ def _build_workflow(
 def _load_called_process_definitions(
     parser: _RuntimeSpiffBpmnParser,
     *,
-    root_process_id: str | None,
+    root_process_id: str,
     resolver: CallActivityResolver | None,
     context: CallActivityContext | None,
 ) -> None:
     """Resolve recursive external call references into Spiff's parser."""
-    root_ids = parser.get_process_ids()
-    if root_process_id is None:
-        if len(root_ids) != 1:
-            raise ValidationError(
-                "A BPMN process id must be supplied when the file contains "
-                "multiple executable processes"
-            )
-        root_process_id = root_ids[0]
     pending = [root_process_id]
     inspected: set[str] = set()
     while pending:

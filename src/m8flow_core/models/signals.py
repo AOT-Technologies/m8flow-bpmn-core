@@ -34,6 +34,10 @@ class SignalRegistryStateModel(M8fTenantScopedMixin, TenantScoped, Base):
 class SignalPublicationModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "signal_publication"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["m8f_tenant_id", "source_process_instance_id"],
+            ["process_instance.m8f_tenant_id", "process_instance.id"],
+        ),
         UniqueConstraint(
             "m8f_tenant_id", "occurrence_id", name="uq_signal_publication_occurrence"
         ),
@@ -63,6 +67,12 @@ class SignalSubscriptionModel(M8fTenantScopedMixin, TenantScoped, Base):
         CheckConstraint(
             "kind IN ('start', 'catch', 'boundary', 'event_subprocess')",
             name="m8f_signal_subscription_kind",
+        ),
+        CheckConstraint(
+            "(kind = 'start' AND definition_id IS NOT NULL "
+            "AND process_instance_id IS NULL) OR "
+            "(kind <> 'start' AND process_instance_id IS NOT NULL)",
+            name="m8f_signal_subscription_references",
         ),
         UniqueConstraint(
             "m8f_tenant_id", "subscription_key", name="uq_signal_subscription_key"
