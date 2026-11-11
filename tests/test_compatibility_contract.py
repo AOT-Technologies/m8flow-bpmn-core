@@ -89,6 +89,7 @@ EXPECTED_COMMAND_FIELDS = {
         "process_version",
         "started_at",
         "bpmn_process_id",
+        "call_activity_resolver",
     ],
     InitializeProcessInstanceWorkflowCommand: [
         "tenant_id",
@@ -97,6 +98,7 @@ EXPECTED_COMMAND_FIELDS = {
         "bpmn_process_id",
         "started_at",
         "dmn_xml",
+        "call_activity_resolver",
     ],
     RecordProcessInstanceEventCommand: [
         "tenant_id",

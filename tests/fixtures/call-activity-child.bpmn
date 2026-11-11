@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_child" targetNamespace="https://m8flow.example/bpmn">
+  <bpmn:process id="child_process" name="Child process" isExecutable="true">
+    <bpmn:startEvent id="child_start" />
+    <bpmn:userTask id="child_wait" name="Child approval" />
+    <bpmn:endEvent id="child_end" />
+    <bpmn:sequenceFlow id="child_flow_1" sourceRef="child_start" targetRef="child_wait" />
+    <bpmn:sequenceFlow id="child_flow_2" sourceRef="child_wait" targetRef="child_end" />
+  </bpmn:process>
+</bpmn:definitions>

@@ -194,6 +194,53 @@ BOUNDARY_TIMER_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
 </bpmn:definitions>
 """
 
+TIMER_EVENT_SUBPROCESS_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  id="Definitions_Timer_Event_Subprocess"
+  targetNamespace="http://m8flow.example/timers">
+  <bpmn:process id="Process_timer_event_subprocess" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1" />
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="TimerCatch_1" />
+    <bpmn:intermediateCatchEvent id="TimerCatch_1" name="TimerCatch_1">
+      <bpmn:timerEventDefinition>
+""" + (
+    "        <bpmn:timeDate xsi:type=\"bpmn:tFormalExpression\">"
+    "'2099-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
+) + """
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="TimerCatch_1" targetRef="EndEvent_1" />
+    <bpmn:endEvent id="EndEvent_1" />
+    <bpmn:subProcess id="Reminder" triggeredByEvent="true">
+      <bpmn:startEvent id="ReminderStart" isInterrupting="false">
+        <bpmn:timerEventDefinition>
+""" + (
+    "          <bpmn:timeDate xsi:type=\"bpmn:tFormalExpression\">"
+    "'2098-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
+) + """
+        </bpmn:timerEventDefinition>
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow
+        id="Flow_r1"
+        sourceRef="ReminderStart"
+        targetRef="Task_reminder"
+      />
+      <bpmn:scriptTask id="Task_reminder" name="Send Reminder">
+        <bpmn:script>reminder_sent = True</bpmn:script>
+      </bpmn:scriptTask>
+      <bpmn:sequenceFlow
+        id="Flow_r2"
+        sourceRef="Task_reminder"
+        targetRef="ReminderEnd"
+      />
+      <bpmn:endEvent id="ReminderEnd" />
+    </bpmn:subProcess>
+  </bpmn:process>
+</bpmn:definitions>
+"""
+
 
 def test_run_due_scheduler_jobs_reschedules_stale_due_timer(
     session: Session,
@@ -411,6 +458,114 @@ def test_run_due_scheduler_jobs_executes_interrupting_boundary_timer(
         api.ProcessLifecycleEventType.process_instance_created.value,
         api.TaskEventType.task_cancelled.value,
     ]
+
+
+def test_timer_event_subprocess_is_scheduled_as_an_intermediate_timer(
+    session: Session,
+) -> None:
+    tenant, user = _seed_timer_actor(session)
+    definition = _import_process_definition(
+        session,
+        tenant_id=tenant.id,
+        user_id=user.id,
+        bpmn_identifier="timer-event-subprocess-process",
+        bpmn_name="Timer Event Subprocess Process",
+        source_bpmn_xml=TIMER_EVENT_SUBPROCESS_BPMN,
+    )
+
+    # The event subprocess start is not a process start: importing must not
+    # create a timer_start job that would start new instances.
+    assert (
+        session.scalars(
+            select(SchedulerJobModel).where(
+                SchedulerJobModel.m8f_tenant_id == tenant.id
+            )
+        ).all()
+        == []
+    )
+
+    process_instance = api.execute_command(
+        session,
+        api.InitializeProcessInstanceFromDefinitionCommand(
+            tenant_id=tenant.id,
+            bpmn_process_definition_id=definition.id,
+            process_initiator_id=user.id,
+            started_at=datetime.fromtimestamp(20, UTC),
+        ),
+    )
+
+    scheduler_job = _load_scheduler_job(session, tenant_id=tenant.id)
+    assert process_instance.status == api.ProcessInstanceStatus.waiting.value
+    assert scheduler_job.job_type == "intermediate_timer"
+    assert scheduler_job.run_at == datetime(2098, 1, 1, tzinfo=UTC)
+    assert sorted(
+        payload["task_spec_name"]
+        for payload in scheduler_job.payload_json["timer_tasks"]
+    ) == ["ReminderStart", "TimerCatch_1"]
+
+
+def test_run_due_scheduler_jobs_fires_timer_event_subprocess(
+    session: Session,
+) -> None:
+    tenant, user = _seed_timer_actor(session)
+    definition = _import_process_definition(
+        session,
+        tenant_id=tenant.id,
+        user_id=user.id,
+        bpmn_identifier="timer-event-subprocess-process",
+        bpmn_name="Timer Event Subprocess Process",
+        source_bpmn_xml=TIMER_EVENT_SUBPROCESS_BPMN,
+    )
+    process_instance = api.execute_command(
+        session,
+        api.InitializeProcessInstanceFromDefinitionCommand(
+            tenant_id=tenant.id,
+            bpmn_process_definition_id=definition.id,
+            process_initiator_id=user.id,
+            started_at=datetime.fromtimestamp(20, UTC),
+        ),
+    )
+    scheduler_job = _load_scheduler_job(session, tenant_id=tenant.id)
+    reminder_start_guid = next(
+        payload["task_guid"]
+        for payload in scheduler_job.payload_json["timer_tasks"]
+        if payload["task_spec_name"] == "ReminderStart"
+    )
+    _set_waiting_timer_event_value(
+        session,
+        process_instance=process_instance,
+        task_guid=reminder_start_guid,
+        event_value="1970-01-01T00:00:00+00:00",
+    )
+    scheduler_job.run_at = datetime.fromtimestamp(0, UTC)
+    session.flush()
+
+    processed_count = api.run_due_scheduler_jobs(
+        session,
+        worker_id="inline-event-subprocess-worker",
+        tenant_id=tenant.id,
+    )
+
+    assert processed_count == 1
+    session.expire_all()
+
+    process_instance = api.execute_query(
+        session,
+        api.GetProcessInstanceQuery(
+            tenant_id=tenant.id,
+            process_instance_id=process_instance.id,
+        ),
+    )
+    scheduler_job = _load_scheduler_job(session, tenant_id=tenant.id)
+
+    # Non-interrupting: the reminder runs to completion and only the main
+    # timer is left waiting.
+    assert process_instance.status == api.ProcessInstanceStatus.waiting.value
+    assert scheduler_job.run_at == datetime(2099, 1, 1, tzinfo=UTC)
+    assert [
+        payload["task_spec_name"]
+        for payload in scheduler_job.payload_json["timer_tasks"]
+    ] == ["TimerCatch_1"]
 
 
 def test_run_due_scheduler_jobs_executes_scheduled_process_retry(
@@ -1012,9 +1167,16 @@ def _set_waiting_timer_event_value(
     assert json_data is not None
     payload = dict(json_data.data)
     serialized_workflow = json.loads(payload[WORKFLOW_STATE_JSON_DATA_KEY])
-    serialized_workflow["tasks"][task_guid]["internal_data"]["event_value"] = (
-        event_value
+    # Event subprocess tasks live in their subprocess, not the top level.
+    tasks = next(
+        workflow["tasks"]
+        for workflow in [
+            serialized_workflow,
+            *serialized_workflow.get("subprocesses", {}).values(),
+        ]
+        if task_guid in workflow["tasks"]
     )
+    tasks[task_guid]["internal_data"]["event_value"] = event_value
     payload[WORKFLOW_STATE_JSON_DATA_KEY] = json.dumps(serialized_workflow)
     process_instance.bpmn_process.json_data_hash = (
         JsonDataModel.create_or_update_from_payload(
