@@ -63,9 +63,6 @@ renamed and removed name.
 - Lane owners that match no user in the tenant are skipped with a warning
   instead of failing the process.
 - The minimum supported SpiffWorkflow version is 3.2.0.
-- The model, authorization, event, and lane-assignment code was redesigned
-  independently of spiff-arena. See
-  [About the clean-room review](docs/explanation/clean-room-review.md).
 
 ### Removed
 
