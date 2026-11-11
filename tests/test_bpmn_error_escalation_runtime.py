@@ -167,4 +167,5 @@ def test_error_thrown_after_a_restore_reaches_its_event_subprocess(
     assert _pending(session, tenant, user) == []
     states = _task_states(session, instance)
     assert states["OnError"] == {"COMPLETED"}
+    assert states["Work"] == {"CANCELLED"}
     assert "COMPLETED" not in states.get("After", set())

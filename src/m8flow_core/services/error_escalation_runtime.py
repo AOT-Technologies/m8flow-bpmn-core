@@ -129,6 +129,8 @@ def _catch_on_boundary(host: Any, event: BpmnEvent) -> bool:
             and task.task_spec.catches(task, event)
         ):
             _deliver(task, event)
+            if task.task_spec.cancel_activity:
+                _interrupt([host])
             return True
     return False
 
@@ -169,13 +171,52 @@ def _start_matching_event_subprocess(
         for task in subprocess.get_tasks():
             task.data = DeepMerge.merge(task.data, deepcopy(thrower_data))
         if matching[0].extensions.get(_INTERRUPTING_EXTENSION, True):
-            for sibling in handler.parent.children:
-                if sibling is not handler:
-                    sibling.cancel()
+            siblings = handler.parent.children
+            _interrupt([sibling for sibling in siblings if sibling is not handler])
         for task in list(top.event_manager.tasks.values()):
             if task.workflow is subprocess and task.task_spec.catches(task, event):
                 _deliver(task, event)
         return True
+    return False
+
+
+def _interrupt(tasks: list[Any]) -> None:
+    """Cancel ``tasks`` and keep every subprocess task under them cancelled.
+
+    Cancelling a subprocess task ends its subprocess, and Spiff's completion
+    callback for that subprocess moves the task back to READY, after which it
+    completes. An interrupted activity then showed as completed (M8F-665), so
+    the callbacks are disconnected first.
+    """
+    if not tasks:
+        return
+    top = tasks[0].workflow.top_workflow
+    roots = {task.id for task in tasks}
+    for host_id, subprocess in list(top.subprocesses.items()):
+        host = top.get_task_from_id(host_id)
+        if not host.has_state(TaskState.FINISHED_MASK) and _within(host, roots):
+            subprocess.completed_event.disconnect(
+                host.task_spec._on_subworkflow_completed
+            )
+    for task in tasks:
+        task.cancel()
+
+
+def _within(task: Any, roots: set[Any]) -> bool:
+    """True when ``task`` is one of ``roots`` or below one, across subprocesses."""
+    current = task
+    while current is not None:
+        if current.id in roots:
+            return True
+        parent = current.parent
+        if parent is None:
+            host_id = getattr(current.workflow, "parent_task_id", None)
+            parent = (
+                current.workflow.top_workflow.get_task_from_id(host_id)
+                if host_id is not None
+                else None
+            )
+        current = parent
     return False
 
 

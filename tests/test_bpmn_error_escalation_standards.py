@@ -7,6 +7,7 @@ behaviour is product policy and lives in test_bpmn_error_escalation_policy.py.
 from __future__ import annotations
 
 import pytest
+from SpiffWorkflow.util.task import TaskState
 
 from m8flow_core.services.workflow_runtime import _build_workflow
 
@@ -324,6 +325,70 @@ def test_event_subprocess_in_inner_scope_wins_over_outer_one():
         "handler_saw",
         "main_done",
     }
+
+
+# --- the interrupted activity's recorded state --------------------------------
+
+
+def _state(workflow, bpmn_id: str) -> str:
+    [task] = [
+        task
+        for task in workflow.get_tasks()
+        if task.workflow is workflow and task.task_spec.bpmn_id == bpmn_id
+    ]
+    return TaskState.get_name(task.state)
+
+
+@pytest.mark.parametrize(
+    ("thrower", "catcher", "work_state"),
+    [
+        pytest.param(
+            _error_end(ERROR("ErrB")),
+            _handler("Outer", ERROR("ErrB"), "outer_handled"),
+            "CANCELLED",
+            id="error-event-subprocess",
+        ),
+        pytest.param(
+            _escalation_then_continue(),
+            _handler("Outer", ESCALATION, "outer_handled"),
+            "CANCELLED",
+            id="escalation-event-subprocess",
+        ),
+        pytest.param(
+            _error_end(ERROR("ErrB")),
+            _boundary("OuterB", "Work", ERROR("ErrB"), "outer_handled"),
+            "CANCELLED",
+            id="error-boundary",
+        ),
+        pytest.param(
+            _escalation_then_continue(),
+            _boundary("OuterB", "Work", ESCALATION, "outer_handled"),
+            "CANCELLED",
+            id="escalation-boundary",
+        ),
+        pytest.param(
+            _escalation_then_continue(),
+            _handler("Outer", ESCALATION, "outer_handled", interrupting=False),
+            "COMPLETED",
+            id="non-interrupting-event-subprocess",
+        ),
+        pytest.param(
+            _escalation_then_continue(),
+            _boundary(
+                "OuterB", "Work", ESCALATION, "outer_handled", cancel_activity=False
+            ),
+            "COMPLETED",
+            id="non-interrupting-boundary",
+        ),
+    ],
+)
+def test_interrupted_subprocess_is_recorded_as_cancelled(thrower, catcher, work_state):
+    """An interrupted activity ends CANCELLED, not COMPLETED: cancelling it used to
+    end its subprocess, whose completion callback revived the activity."""
+    workflow = _run(_process(_work(thrower), catcher))
+
+    assert workflow.completed
+    assert _state(workflow, "Work") == work_state
 
 
 # --- runtime exceptions are not BPMN errors ------------------------------------
