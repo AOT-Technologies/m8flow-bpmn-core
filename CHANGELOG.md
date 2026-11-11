@@ -92,6 +92,22 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
   process timer start, which started extra instances, and the running instance
   fired it only when another timer woke it. Needs SpiffWorkflow 3.2.0 or later.
 
+- Error and escalation events now go to the nearest matching catcher (M8F-665).
+  The walk starts in the thrower's scope and moves out one scope at a time. In
+  each scope its event subprocesses come first, then boundary events on the
+  activity that hosts the scope. Before, SpiffWorkflow broadcast the event to
+  every matching catcher in the process, so with matching boundaries at two
+  levels the outer one won.
+- Event subprocesses with an error or escalation start event now run only when
+  a matching event is thrown (M8F-665). SpiffWorkflow parsed those start events
+  as none starts, so the handler ran every time its scope started and caught
+  nothing. The handler starts from the thrower's data. An interrupting one,
+  the BPMN default, cancels the rest of its scope, including waiting user
+  tasks; one with `isInterrupting="false"` runs beside the main path.
+- An escalation that nothing catches is ignored and the flow continues, and an
+  error end event that nothing catches ends its path like a plain end event.
+  Neither puts the instance into an error state (M8F-665).
+
 ### Security
 
 - Updated locked dependencies to resolve open Dependabot advisories:

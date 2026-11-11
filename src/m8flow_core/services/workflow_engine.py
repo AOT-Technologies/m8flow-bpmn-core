@@ -6,6 +6,7 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from SpiffWorkflow.bpmn.parser.util import full_tag
 from SpiffWorkflow.bpmn.script_engine.python_engine import PythonScriptEngine
 from SpiffWorkflow.bpmn.serializer.workflow import BpmnWorkflowSerializer
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
@@ -31,6 +32,10 @@ from m8flow_core.services.compensation_parser import (
 from m8flow_core.services.compensation_runtime import (
     CompensationCoordinator,
     connector_compensation_metadata,
+)
+from m8flow_core.services.error_escalation_runtime import (
+    EventSubprocessStartEventParser,
+    install_scoped_error_escalation_throw,
 )
 from m8flow_core.services.service_tasks import (
     ServiceTaskContext,
@@ -69,6 +74,14 @@ class _NoopDMNEngine:
 
 class _RuntimeSpiffBpmnParser(CompensationBpmnParser):
     """Spiff parser that can fall back to a no-op DMN engine for POC runs."""
+
+    OVERRIDE_PARSER_CLASSES = {
+        **CompensationBpmnParser.OVERRIDE_PARSER_CLASSES,
+        full_tag("startEvent"): (
+            EventSubprocessStartEventParser,
+            CompensationBpmnParser.OVERRIDE_PARSER_CLASSES[full_tag("startEvent")][1],
+        ),
+    }
 
     def __init__(
         self, *args: Any, use_noop_dmn_engine: bool = True, **kwargs: Any
@@ -215,6 +228,7 @@ def _build_workflow(
         script_engine=_service_task_script_engine(service_task_context),
     )
     adapt_signal_definitions(spec, subprocess_specs)
+    install_scoped_error_escalation_throw(workflow)
     if parser.has_compensation:
         comp = CompensationCoordinator(workflow, _WORKFLOW_SERIALIZER)
         comp.state["bindings"] = parser.compensation_bindings
@@ -361,6 +375,7 @@ def _restore_workflow(
     workflow = _WORKFLOW_SERIALIZER.from_dict(payload)
     workflow.script_engine = _service_task_script_engine(service_task_context)
     adapt_signal_definitions(workflow.spec, workflow.subprocess_specs)
+    install_scoped_error_escalation_throw(workflow)
     if compensation is not None:
         handlers = compensation.pop("handlers", {})
         comp = CompensationCoordinator(workflow, _WORKFLOW_SERIALIZER, compensation)
