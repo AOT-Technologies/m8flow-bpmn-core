@@ -9,7 +9,8 @@ name: Publish m8flow-core
 #   channel: release — publishes that version as-is (for example, 1.0.0).
 #                      Requires a dated CHANGELOG entry and an existing
 #                      GitHub Release tagged <version>, with no "v" prefix,
-#                      whose tag points at the commit being built.
+#                      whose tag points at the commit being built. The
+#                      release may still be a draft; publish it afterwards.
 #   channel: beta    — publishes a PEP 440 pre-release derived from it
 #                      (1.0.0 -> 1.0.0b1, then b2, b3 ...). The next beta
 #                      number is resolved from what already exists on PyPI.
@@ -38,7 +39,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: read
+      # write only so the token can list draft releases; GitHub hides drafts
+      # from tokens without push access. This job never writes.
+      contents: write
 
     outputs:
       dist_name: ${{ steps.version.outputs.dist_name }}
@@ -189,7 +192,7 @@ jobs:
 
       # Stable only: beta versions never get a GitHub Release. The release tag
       # must point at the commit being built, or the package and the release
-      # would describe different source.
+      # would describe different source. The release may still be a draft.
       - name: Verify GitHub Release exists and matches this commit
         if: inputs.channel == 'release'
         env:
