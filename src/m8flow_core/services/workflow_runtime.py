@@ -1438,6 +1438,42 @@ def _sync_task_models_from_workflow(
             task_payload=task_payload,
             occurred_at=occurred_at,
         )
+    _delete_dropped_predicted_task_models(
+        session,
+        process_instance=process_instance,
+        kept_guids={task_guid for task_guid, _, _ in serialized_task_rows},
+    )
+
+
+_PREDICTED_TASK_STATES = frozenset(
+    TaskState.get_name(state)
+    for state in (TaskState.MAYBE, TaskState.LIKELY, TaskState.FUTURE)
+)
+
+
+def _delete_dropped_predicted_task_models(
+    session: Session,
+    *,
+    process_instance: ProcessInstanceModel,
+    kept_guids: set[str],
+) -> None:
+    """Delete the rows of predicted tasks the workflow no longer has.
+
+    Spiff drops a task's predicted children when it cancels the task, for
+    example when an interrupting catcher cancels the rest of a scope. The sync
+    only upserts, so a step predicted before the instance was saved kept a
+    FUTURE row after it was dropped (M8F-665). Rows of steps that ran, waited,
+    failed or were cancelled are history and stay.
+    """
+    for task_model in session.scalars(
+        select(TaskModel).where(
+            TaskModel.m8f_tenant_id == process_instance.m8f_tenant_id,
+            TaskModel.process_instance_id == process_instance.id,
+            TaskModel.state.in_(_PREDICTED_TASK_STATES),
+        )
+    ).all():
+        if task_model.guid not in kept_guids and not task_model.work_items:
+            session.delete(task_model)
 
 
 def _iter_serialized_task_rows(
