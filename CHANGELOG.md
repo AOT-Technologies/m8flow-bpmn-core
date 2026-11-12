@@ -16,6 +16,14 @@ and what each version part means.
 
 ## [Unreleased]
 
+### Added
+
+- [Publish a release](docs/how-to/publish-a-release.md#withdraw-or-replace-a-release)
+  now covers yanking a broken version from PyPI, marking it on GitHub and in
+  the changelog, and replacing it with a patch release.
+- CI uploads test coverage from `main` to Codecov, and the README shows a
+  coverage badge. The PyPI badge now reads the latest version from PyPI.
+
 ## [1.0.0] - 2026-11-12
 
 The first stable release, and the first under the name m8flow-core. Versions
