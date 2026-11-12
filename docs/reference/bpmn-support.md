@@ -47,6 +47,7 @@ The following elements are supported:
 | Timer intermediate catch event | The instance waits until the scheduler fires the timer |
 | Interrupting timer boundary event | `timeDate` or `timeDuration`, such as `PT2M`. Cancels the attached task and continues on the timeout path. |
 | Call activity | Resolves `calledElement` through the host-supplied tenant-aware resolver. The child runs in the parent snapshot and parent execution resumes on child completion. See the [resolver contract](api.md#initializeprocessinstancefromdefinitioncommand). |
+| Multi-instance activity | Sequential or parallel, once per item of the collection in `loopDataInputRef` (bound to `inputDataItem`) or `loopCardinality` times. Map results with `loopDataOutputRef` and `outputDataItem`; parallel results aren't ordered. Tested with script tasks; multi-instance user tasks aren't tested yet. |
 | Non-interrupting timer event subprocess | A `subProcess` with `triggeredByEvent="true"` and a timer start event with `isInterrupting="false"`. The scheduler fires it inside the running instance, and the main path keeps going. Needs SpiffWorkflow 3.2.0 or later. Human tasks inside it don't become work items yet. |
 
 Signals need a host-run delivery loop for recipients outside the throwing
@@ -103,7 +104,6 @@ The following elements and behaviors aren't covered:
 - Error and escalation boundary events
 - Non-interrupting boundary events other than signals
 - Compound Multiple/Parallel Multiple events and event-based gateways
-- Multi-instance activities
 - Asynchronous service tasks that complete through a callback
 
 [Limitations](limitations.md#advanced-bpmn-coverage) describes each of them.

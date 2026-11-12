@@ -40,6 +40,9 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
   Compensation checkpoints use caller-owned transactions; callers must commit
   captured failures to retain them for retry. Legacy compensation snapshots
   without completion journals cannot continue compensation.
+- A runtime test for sequential and parallel multi-instance script tasks. They already ran through SpiffWorkflow; the BPMN support
+  reference, limitations page, and README no longer list them, or call
+  activities, as unsupported.
 
 ### Changed
 
