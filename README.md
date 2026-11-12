@@ -17,7 +17,7 @@ SPDX-License-Identifier: Apache-2.0
 <p align="center">
   <a href="https://github.com/AOT-Technologies/m8flow-core/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/AOT-Technologies/m8flow-core/ci.yml?branch=main&label=CI" alt="CI status"></a>
   <a href="https://pypi.org/project/m8flow-core/1.0.0/"><img src="https://img.shields.io/badge/PyPI%20release-1.0.0-blue" alt="m8flow-core 1.0.0 on PyPI"></a>
-  <img src="https://img.shields.io/badge/python-3.12-blue" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue" alt="Python 3.12, 3.13, and 3.14">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache 2.0 license"></a>
 </p>
 

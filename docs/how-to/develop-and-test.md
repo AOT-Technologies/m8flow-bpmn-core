@@ -78,6 +78,20 @@ command:
 make test
 ```
 
+CI measures line coverage of `m8flow_core` and fails below 80%, the
+`fail_under` value in `pyproject.toml`. On a pull request, CI also fails when
+less than 80% of the lines the pull request changes in `src/m8flow_core` are
+covered. To run both checks against `main`, use the following commands:
+
+```bash
+uv run pytest --cov=m8flow_core --cov-report=xml:coverage.xml
+uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=80
+```
+
+Pull requests run the suite on Linux with Python 3.12. After a merge to
+`main`, CI also runs it on Python 3.12, 3.13, and 3.14 on Linux, macOS, and
+Windows.
+
 To run one file or one test, pass it to pytest:
 
 ```bash
@@ -137,8 +151,8 @@ The baseline migration tests also run against PostgreSQL when
 They apply Alembic head, verify upgrades from the baseline and the signal
 revision, and compare the result with the models. They also check timestamps
 after 2038, cross-tenant compensation foreign keys, and downgrade behavior.
-The PostgreSQL CI job supplies the migration database and runs the compensation
-integration test. Without the variable, the migration cases run on SQLite.
+The PostgreSQL CI job supplies the migration database and runs every
+integration test in `integration/`. Without the variable, the migration cases run on SQLite.
 
 ## Run the sample app tests
 
@@ -155,6 +169,23 @@ uv run --locked ruff check src tests
 uv run --locked ruff format --check src tests
 uv run --locked pytest
 ```
+
+## Smoke test the built wheel
+
+CI and the publish workflow install the built wheel into a clean environment,
+outside the source tree, and run `tools/smoke_test.py`. The script imports the
+installed package and runs the parallel-review workflow to completion. To do
+the same, run the following commands from the repository root:
+
+```bash
+uv build --wheel --out-dir /tmp/m8flow-smoke/dist
+uv venv --python 3.12 /tmp/m8flow-smoke/venv
+uv pip install --python /tmp/m8flow-smoke/venv/bin/python /tmp/m8flow-smoke/dist/*.whl
+(cd /tmp/m8flow-smoke && venv/bin/python -I "$OLDPWD/tools/smoke_test.py" \
+    "$OLDPWD/tests/fixtures/parallel_review_poc.bpmn" --expect-installed)
+```
+
+The script prints `PASS` and exits with status 0 when the workflow completes.
 
 ## Apply migrations
 

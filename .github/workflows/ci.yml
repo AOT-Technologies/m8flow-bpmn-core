@@ -55,9 +55,66 @@ jobs:
       - name: Run REUSE lint
         run: uv run --locked reuse lint
 
+  # Runs on every pull request and push. Gates total coverage at the
+  # `fail_under` value in pyproject.toml and, on pull requests, holds the
+  # lines the PR changes to the same threshold.
   tests:
-    name: Core test suite
+    name: Core test suite and coverage
     runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          # diff-cover compares against the base branch.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Sync environment
+        run: uv sync --locked
+
+      - name: Run tests with total coverage gate
+        run: >-
+          uv run --locked pytest --cov=m8flow_core
+          --cov-report=term-missing --cov-report=xml:coverage.xml
+
+      - name: Gate coverage of changed lines
+        if: github.event_name == 'pull_request'
+        run: >-
+          uv run --locked diff-cover coverage.xml
+          --compare-branch=origin/${{ github.base_ref }}
+          --fail-under=80
+
+  # Runs only after a merge to main: the remaining supported Python versions
+  # and operating systems. Ubuntu with Python 3.12 is covered by `tests`.
+  tests-matrix:
+    name: Core test suite (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.12", "3.13", "3.14"]
+        exclude:
+          - os: ubuntu-latest
+            python-version: "3.12"
+
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
 
     steps:
       - name: Check out repository
@@ -66,7 +123,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version-file: ".python-version"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.3.2
@@ -133,10 +190,10 @@ jobs:
       - name: Run tests and migrations
         run: uv run --locked --extra postgresql pytest
 
-      - name: Run compensation integration test
+      - name: Run integration tests
         env:
           M8FLOW_TEST_POSTGRES_URL: ${{ env.M8FLOW_TEST_DATABASE_URL }}
-        run: uv run --locked --extra postgresql pytest integration/test_postgres_compensation.py
+        run: uv run --locked --extra postgresql pytest integration/
 
   sample-app-tests:
     name: Sample app lint and tests
@@ -163,6 +220,16 @@ jobs:
 
       - name: Build library wheel
         run: uv build --wheel
+
+      - name: Smoke test the installed wheel
+        run: |
+          smoke_dir="$RUNNER_TEMP/smoke"
+          uv venv --python 3.12 "$smoke_dir/venv"
+          uv pip install --python "$smoke_dir/venv/bin/python" dist/*.whl
+          cd "$smoke_dir"
+          "$smoke_dir/venv/bin/python" -I "$GITHUB_WORKSPACE/tools/smoke_test.py" \
+            "$GITHUB_WORKSPACE/tests/fixtures/parallel_review_poc.bpmn" \
+            --expect-installed
 
       - name: Stage library wheel for sample app
         run: bash sample_app/scripts/stage_local_wheel.sh

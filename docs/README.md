@@ -63,6 +63,7 @@ Exact values to look up:
 - [Configuration](reference/configuration.md)
 - [Repository layout](reference/repository-layout.md)
 - [Limitations](reference/limitations.md)
+- [Performance baseline](reference/performance-baseline.md)
 
 ### Explanation
 

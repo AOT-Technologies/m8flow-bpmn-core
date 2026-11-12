@@ -25,6 +25,8 @@ The repository root holds the following:
 | `.github/` | CI, DCO sign-off, CodeQL, dependency review, secret-scan, and PyPI publish workflows; Dependabot settings; issue and pull request templates |
 | `tools/check_dco.py` | The DCO sign-off check, run by the `commit-msg` hook and testable with `--rev-range` |
 | `tools/add_license_headers.py` | Adds the SPDX header to files that lack one; `--check` lists them |
+| `tools/smoke_test.py` | Release smoke test: imports the installed package and runs the parallel-review workflow to completion |
+| `tools/benchmark.py` | Times BPMN import and workflow execution for the [performance baseline](performance-baseline.md) |
 | `.pre-commit-config.yaml` | Local hooks: Ruff, mypy, Bandit, and REUSE, plus the DCO `commit-msg` check |
 | `.gitleaks.toml` | Secret-scan settings |
 | `Makefile` | Development commands. Run `make help` to list them. |

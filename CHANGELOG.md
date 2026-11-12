@@ -33,6 +33,19 @@ and what each version part means.
 - `make format` and `make format-check` run the Ruff formatter. CI and
   pre-commit now fail on unformatted Python, including Python code blocks in
   Markdown.
+- After a merge to `main`, CI runs the test suite on Python 3.12, 3.13, and
+  3.14, on Linux, macOS, and Windows. Pull requests run Linux with Python
+  3.12. The package metadata lists the 3.13 and 3.14 classifiers.
+- CI and the publish workflow fail when line coverage of `m8flow_core` drops
+  below 80%. Pull requests also fail when less than 80% of their changed
+  lines are covered, checked with the new `diff-cover` dev dependency.
+- A release smoke test, `tools/smoke_test.py`. CI and the publish workflow
+  install the built wheel into a clean environment and run the
+  parallel-review workflow to completion.
+- `tools/benchmark.py` and a [performance baseline](docs/reference/performance-baseline.md)
+  for BPMN import and workflow execution.
+- The PostgreSQL CI job runs every integration test in `integration/`, not
+  only the compensation test.
 
 ### Changed
 

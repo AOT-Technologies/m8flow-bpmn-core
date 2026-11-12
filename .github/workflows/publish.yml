@@ -244,7 +244,7 @@ jobs:
       - name: Run tests
         run: |
           uv sync --locked
-          uv run --locked pytest
+          uv run --locked pytest --cov=m8flow_core --cov-report=term-missing
 
       # No-op on the release channel; stamps the pre-release version on beta.
       # Runs after the tests so the locked environment is unchanged.
@@ -336,6 +336,18 @@ jobs:
                   print(f"ERROR: {error}", file=sys.stderr)
               sys.exit(1)
           print(f"PASS: {wheel} and {sdist}")
+
+      # Install the built wheel into a clean environment, outside the source
+      # tree, then import it and run a representative BPMN workflow.
+      - name: Smoke test the installed wheel
+        run: |
+          smoke_dir="$RUNNER_TEMP/smoke"
+          uv venv --python 3.12 "$smoke_dir/venv"
+          uv pip install --python "$smoke_dir/venv/bin/python" dist/*.whl
+          cd "$smoke_dir"
+          "$smoke_dir/venv/bin/python" -I "$GITHUB_WORKSPACE/tools/smoke_test.py" \
+            "$GITHUB_WORKSPACE/tests/fixtures/parallel_review_poc.bpmn" \
+            --expect-installed
 
       - name: Upload artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

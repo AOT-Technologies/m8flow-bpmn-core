@@ -65,9 +65,10 @@ No part of the 1.0 contract is deprecated or experimental today.
 ## Supported Python versions
 
 m8flow-core requires Python 3.12 or later, as `requires-python` in
-`pyproject.toml` declares. CI tests on Python 3.12, the version pinned in
-`.python-version`. Later 3.x versions are allowed by the package metadata
-but aren't tested yet.
+`pyproject.toml` declares. After every merge to `main`, CI runs the test
+suite on Python 3.12, 3.13, and 3.14, each on Linux, macOS, and Windows. Development tooling uses 3.12, the
+version pinned in `.python-version`. Later 3.x versions are allowed by the
+package metadata but aren't tested yet.
 
 ## Dependencies
 

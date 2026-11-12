@@ -23,6 +23,8 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
@@ -42,6 +44,7 @@ celery = ["celery[redis]>=5.4,<6.0"]
 [dependency-groups]
 dev = [
   "bandit[toml]>=1.8,<2.0",
+  "diff-cover>=9.0,<11.0",
   "mypy>=1.11,<2.0",
   "pre-commit>=4.0,<5.0",
   "pytest>=9.0.3,<10.0",
@@ -93,6 +96,13 @@ ignore = ["B008"]
 testpaths = ["tests"]
 addopts = "-q"
 pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["m8flow_core"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
 
 [tool.mypy]
 python_version = "3.12"
