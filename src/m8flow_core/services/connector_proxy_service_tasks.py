@@ -280,7 +280,10 @@ def _connector_proxy_json_request(
                 base_url=normalized_base_url,
                 status_code=exc.code,
                 raw_body=raw_body,
-            )
+            ),
+            error_code=_connector_proxy_error_code(
+                _parse_connector_proxy_response_body(raw_body)
+            ),
         ) from exc
     except URLError as exc:
         raise ServiceTaskExecutionError(
@@ -317,8 +320,20 @@ def _raise_for_connector_proxy_error_payload(
         error_message = json.dumps(dict(raw_error), sort_keys=True)
     raise ServiceTaskExecutionError(
         "Connector proxy call for "
-        f"{operation_id!r} at {base_url} failed: {error_message}"
+        f"{operation_id!r} at {base_url} failed: {error_message}",
+        error_code=_connector_proxy_error_code(parsed_body),
     )
+
+
+def _connector_proxy_error_code(parsed_body: object | None) -> str | None:
+    """The proxy's ``error.error_code`` (for example ``HttpError404``), if any."""
+    if not isinstance(parsed_body, Mapping):
+        return None
+    raw_error = parsed_body.get("error")
+    if not isinstance(raw_error, Mapping):
+        return None
+    error_code = raw_error.get("error_code")
+    return error_code if isinstance(error_code, str) and error_code.strip() else None
 
 
 def _connector_proxy_http_error_message(

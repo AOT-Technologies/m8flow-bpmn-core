@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from SpiffWorkflow.bpmn.script_engine.python_engine import PythonScriptEngine
+from SpiffWorkflow.bpmn.script_engine.python_environment import TaskDataEnvironment
 from SpiffWorkflow.bpmn.serializer.workflow import BpmnWorkflowSerializer
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
 from SpiffWorkflow.dmn.specs.model import DecisionTable
@@ -82,6 +83,24 @@ class _RuntimeSpiffBpmnParser(CompensationBpmnParser):
         return _NoopDMNEngine(decision_ref)
 
 
+class BpmnError(Exception):
+    """Raised by script code to throw a BPMN error, as Camunda's ``BpmnError``.
+
+    Scripts call ``raise BpmnError("CODE")`` or ``raise BpmnError("CODE",
+    "message")``. The nearest error boundary with that code, or with no code,
+    catches it (M8F-675). Without a matching catcher the task fails.
+    """
+
+    def __init__(self, code: str, message: str | None = None) -> None:
+        super().__init__(f"{code}: {message}" if message else code)
+        self.code = code
+        self.message = message
+
+
+def _script_environment() -> TaskDataEnvironment:
+    return TaskDataEnvironment({"BpmnError": BpmnError})
+
+
 class _RuntimeServiceTaskScriptEngine(PythonScriptEngine):
     """Script engine that routes Spiff service tasks through the registry."""
 
@@ -92,7 +111,7 @@ class _RuntimeServiceTaskScriptEngine(PythonScriptEngine):
         process_instance_id: int | None,
         process_definition_id: int | None,
     ) -> None:
-        super().__init__()
+        super().__init__(environment=_script_environment())
         self._tenant_id = tenant_id
         self._process_instance_id = process_instance_id
         self._process_definition_id = process_definition_id
@@ -391,7 +410,7 @@ def _service_task_script_engine(
     service_task_context: ServiceTaskContext | None,
 ) -> PythonScriptEngine:
     if service_task_context is None:
-        return PythonScriptEngine()
+        return PythonScriptEngine(environment=_script_environment())
     return _RuntimeServiceTaskScriptEngine(
         tenant_id=service_task_context.tenant_id,
         process_instance_id=service_task_context.process_instance_id,

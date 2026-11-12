@@ -42,7 +42,16 @@ class CompensationExecutionError(BpmnCoreError, RuntimeError):
 
 
 class ServiceTaskExecutionError(BpmnCoreError, RuntimeError):
-    """A BPMN service task failed while invoking a registered connector."""
+    """A BPMN service task failed while invoking a registered connector.
+
+    ``error_code`` (for example ``"HttpError404"``) makes the failure a BPMN
+    error: the nearest error boundary with that code, or with no code, catches
+    it. Without a matching catcher, or without a code, the task fails as before.
+    """
+
+    def __init__(self, *args: object, error_code: str | None = None) -> None:
+        super().__init__(*args)
+        self.error_code = error_code
 
 
 class CallActivityResolutionError(ValidationError):

@@ -144,9 +144,11 @@ The following BPMN features aren't tested in the library:
   multi-instance integration, call activities, transaction cancellation, and
   automatic compensation from BPMN errors are not supported. See
   [Run compensation handlers](../how-to/run-compensation.md).
-- **Error and escalation boundary events**, for typed business errors such as
-  a service task raising `INSUFFICIENT_FUNDS`. Timer boundary events are
-  covered; these aren't.
+- **Error boundary events for modelled errors, and escalation boundary
+  events.** An error that task code raises, such as a script's
+  `raise BpmnError("INSUFFICIENT_FUNDS")` or a connector's coded failure, is
+  caught by a matching error boundary. An error thrown by an error end event
+  isn't routed yet, and error event subprocesses don't catch either kind.
 - **Other non-interrupting events**, beyond the tested timer and signal forms.
 
 ## Operations and observability

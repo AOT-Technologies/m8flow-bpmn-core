@@ -46,6 +46,7 @@ The following elements are supported:
 | Timer start event | `timeDate`, or a finite recurring `timeCycle` such as `R3/PT20S`. Each firing creates a new process instance. |
 | Timer intermediate catch event | The instance waits until the scheduler fires the timer |
 | Interrupting timer boundary event | `timeDate` or `timeDuration`, such as `PT2M`. Cancels the attached task and continues on the timeout path. |
+| Error boundary event, for errors raised by task code | A script runs `raise BpmnError("CODE")`, or `raise BpmnError("CODE", "message")`, like Camunda's `BpmnError`. A connector raises `ServiceTaskExecutionError(..., error_code="CODE")`; the connector proxy client sets `error_code` from the proxy's reply, such as `HttpError404`. The nearest waiting error boundary with that code, or with no code, catches the error, cancels the task, and continues on the boundary path, passing up from a sub-process if needed. The `spiffworkflow:variableName` extension on the `bpmn:error` receives `{"code", "message"}`. With no matching boundary, the task fails as before. Any other Python exception is never caught as a BPMN error. |
 | Call activity | Resolves `calledElement` through the host-supplied tenant-aware resolver. The child runs in the parent snapshot and parent execution resumes on child completion. See the [resolver contract](api.md#initializeprocessinstancefromdefinitioncommand). |
 | Multi-instance activity | Sequential or parallel, once per item of the collection in `loopDataInputRef` (bound to `inputDataItem`) or `loopCardinality` times. Map results with `loopDataOutputRef` and `outputDataItem`; parallel results aren't ordered. Tested with script tasks; multi-instance user tasks aren't tested yet. |
 | Non-interrupting timer event subprocess | A `subProcess` with `triggeredByEvent="true"` and a timer start event with `isInterrupting="false"`. The scheduler fires it inside the running instance, and the main path keeps going. Needs SpiffWorkflow 3.2.0 or later. Human tasks inside it don't become work items yet. |
@@ -101,7 +102,8 @@ The following elements and behaviors aren't covered:
 
 - Message events and message correlation
 - Event subprocesses, other than the documented timer and signal forms
-- Error and escalation boundary events
+- Error boundary events for errors thrown by error end events, and escalation
+  boundary events
 - Non-interrupting boundary events other than signals
 - Compound Multiple/Parallel Multiple events and event-based gateways
 - Asynchronous service tasks that complete through a callback

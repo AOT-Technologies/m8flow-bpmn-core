@@ -579,6 +579,12 @@ The following names make up the service task extension point:
 | `set_default_service_task_registry_factory(factory)` | Function | Installs a registry factory for the whole process |
 
 A connector failure reaches the caller as `ServiceTaskExecutionError`.
+Give it an `error_code`, as in
+`ServiceTaskExecutionError(message, error_code="HttpError404")`, to make the
+failure a BPMN error: a waiting error boundary with that code, or with no
+code, catches it, and the instance carries on instead of failing. The
+connector proxy client sets `error_code` from the `error.error_code` field of
+the proxy's reply. See [BPMN support](bpmn-support.md).
 [About service task execution](../explanation/service-task-execution.md)
 explains when a failure is saved even if the caller rolls back.
 
