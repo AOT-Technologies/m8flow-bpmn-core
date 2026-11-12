@@ -1,10 +1,10 @@
 # Database schema
 
 This page lists the tables that m8flow-core's ORM models define. The library
-ships the models in `m8flow_core.models` and, in `alembic/versions/`, a single
-Alembic baseline revision that creates them. The baseline, `k2l3m4n5o6p7`, has
-no parent and is the current head. It builds the whole 1.0 schema on an empty
-database; see [Upgrade to 1.0](../how-to/upgrade-to-1.0.md) for existing
+ships the models in `m8flow_core.models` and Alembic revisions in
+`alembic/versions/`. The immutable baseline, `k2l3m4n5o6p7`, has no parent.
+Revision `l3m4n5o6p7q8` adds the signal registry and is the current head.
+The baseline builds the 1.0 schema on an empty database; see [Upgrade to 1.0](../how-to/upgrade-to-1.0.md) for existing
 databases.
 
 Table and column names are part of the compatibility contract, because host
@@ -49,6 +49,35 @@ The library defines the following tables:
 | `process_instance_metadata` | `ProcessInstanceMetadataModel` | Yes | Key and value pairs, including task payload values |
 | `scheduler_job` | `SchedulerJobModel` | Yes | Due timers and retries. [About scheduling](../explanation/scheduling.md#the-scheduler-job-table) lists its columns. |
 | `future_task` | `FutureTaskModel` | Yes | Runtime tasks waiting to run, with `run_at` and `queued_to_run_at` |
+
+## Signal registry
+
+All four signal tables have tenant-qualified ownership and remain in the
+caller's transaction. Publications and receipts retain audit history when
+subscriptions retire. Foreign keys from receipts to publications/subscriptions
+include `m8f_tenant_id`, preventing cross-tenant associations. Subscription
+references to definitions and instances, publication references to source
+instances, and receipt references to resulting instances also use tenant-qualified
+foreign keys. External publications may omit the source instance. The migration
+adds composite unique indexes on `(m8f_tenant_id, id)` to the process instance
+and definition tables.
+
+| Table | Stable columns |
+|---|---|
+| `signal_registry_state` | `m8f_tenant_id` (primary key), `version` |
+| `signal_publication` | `id`, `m8f_tenant_id`, `occurrence_id`, `signal_name`, `payload_json`, `source_process_instance_id`, `source_task_guid`, `published_by_user_id`, `published_at` |
+| `signal_subscription` | `id`, `m8f_tenant_id`, `subscription_key`, `signal_name`, `kind`, `process_instance_id`, `definition_id`, `scope_id`, `task_guid`, `task_spec_name`, `process_model_identifier`, `repeatable`, `active`, `reserved`, `created_at` |
+| `signal_delivery` | `id`, `m8f_tenant_id`, `publication_id`, `subscription_id`, `status`, `attempts`, `retry_at`, `delivered_at`, `last_error`, `process_instance_id` |
+
+Occurrence IDs are unique per tenant. Subscription keys identify an activation
+or persistent handler within the tenant. Receipt uniqueness is
+`(m8f_tenant_id, publication_id, subscription_id)`. Subscription `kind` is
+`start`, `catch`, `boundary`, or `event_subprocess`. A `start` requires a
+definition and no instance. The other kinds require an instance. Receipt
+`status` is
+`pending`, `delivered`, or `skipped`. All timestamps use UTC datetimes.
+`payload_json` accepts JSON null and arbitrary JSON values. Source identifiers
+are retained audit references; they are not cascading foreign keys.
 
 ## Tenant-scoped JSON payloads
 

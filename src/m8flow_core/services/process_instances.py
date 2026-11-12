@@ -260,7 +260,8 @@ def suspend_process_instance(
         user_id=user_id,
     )
     process_instance = _load_process_instance(
-        session, tenant_id=tenant_id, process_instance_id=process_instance_id
+        session, tenant_id=tenant_id,
+        process_instance_id=process_instance_id, lock=True,
     )
     require_command_authorization(
         session,
@@ -305,7 +306,8 @@ def error_process_instance(
             user_id=user_id,
         )
     process_instance = _load_process_instance(
-        session, tenant_id=tenant_id, process_instance_id=process_instance_id
+        session, tenant_id=tenant_id,
+        process_instance_id=process_instance_id, lock=True,
     )
     if process_instance.status == ProcessInstanceStatus.error.value:
         return process_instance
@@ -319,6 +321,9 @@ def error_process_instance(
         )
 
     occurred_at = _resolve_timestamp(errored_at)
+    from m8flow_core.services.signal_registry import retire_instance_signals
+
+    retire_instance_signals(session, process_instance)
     process_instance.status = ProcessInstanceStatus.error.value
     process_instance.ended_at = occurred_at
     process_instance.updated_at = occurred_at
@@ -355,7 +360,8 @@ def schedule_process_instance_retry(
         user_id=user_id,
     )
     process_instance = _load_process_instance(
-        session, tenant_id=tenant_id, process_instance_id=process_instance_id
+        session, tenant_id=tenant_id,
+        process_instance_id=process_instance_id, lock=True,
     )
     require_command_authorization(
         session,
@@ -404,7 +410,8 @@ def terminate_process_instance(
         user_id=user_id,
     )
     process_instance = _load_process_instance(
-        session, tenant_id=tenant_id, process_instance_id=process_instance_id
+        session, tenant_id=tenant_id,
+        process_instance_id=process_instance_id, lock=True,
     )
     require_command_authorization(
         session,
@@ -425,6 +432,9 @@ def terminate_process_instance(
         )
 
     occurred_at = _resolve_timestamp(terminated_at)
+    from m8flow_core.services.signal_registry import retire_instance_signals
+
+    retire_instance_signals(session, process_instance)
     process_instance.status = ProcessInstanceStatus.terminated.value
     process_instance.ended_at = occurred_at
     process_instance.updated_at = occurred_at
@@ -542,7 +552,8 @@ def get_process_instance_metadata(
 
 
 def _load_process_instance(
-    session: Session, *, tenant_id: str, process_instance_id: int
+    session: Session, *, tenant_id: str, process_instance_id: int,
+    lock: bool = False,
 ) -> ProcessInstanceModel:
     process_instance = session.scalar(
         select(ProcessInstanceModel).where(
@@ -555,6 +566,10 @@ def _load_process_instance(
             "Process instance "
             f"{process_instance_id} was not found for tenant {tenant_id}"
         )
+    if lock:
+        from m8flow_core.services.signal_registry import lock_signal_instance
+
+        lock_signal_instance(session, process_instance)
     return process_instance
 
 

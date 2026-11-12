@@ -7,6 +7,79 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ## [Unreleased]
 
+### Added
+
+- Durable tenant-scoped BPMN signal publication, subscription indexing, and
+  idempotent delivery receipts. Intermediate/end throws broadcast to waiting
+  intermediate catches, boundary events, event subprocesses, and Signal Start
+  definitions. Local handlers react immediately; hosts run queued deliveries
+  with `RunSignalDeliveriesCommand` or `run_signal_deliveries`.
+- `PublishSignalCommand`, `RunSignalDeliveriesCommand`,
+  `GetSignalPublicationQuery`, `ListSignalDeliveriesQuery`, matching service
+  functions, and `SIGNAL_PUBLISH_COMMAND`. Managers and admins can publish with
+  the new tenant-scoped permission. An additive Alembic revision
+  `l3m4n5o6p7q8` introduces the four signal registry tables.
+- An interactive SQLite signal broadcast example and embedding guide.
+- Signal-bearing workflows keep instance creation, service-failure recovery,
+  publication, and consumption in the caller's transaction. Rollback restores
+  them together; commit an error state to retain it.
+- Overlapping signal runner calls serialize per tenant. The registry enforces
+  same-tenant publication sources and required subscription references.
+- BPMN call activities through the tenant-aware `CallActivityResolver` API.
+  Called child workflows are stored inside the parent workflow snapshot and
+  their human tasks use the existing parent process instance worklist.
+
+### Changed
+
+- Resolved CodeQL code-scanning alerts without changing the public API.
+  `resume_process_instance` and `retry_process_instance` moved from
+  `services/process_instances.py` to the new
+  `services/process_instance_reactivation.py`, which breaks the import cycle
+  with `services/workflow_runtime.py`. Both are still exported from
+  `m8flow_core.api` and `m8flow_core.services`. The lazily loaded names in the
+  `m8flow_core.services` and `m8flow_core.application` packages are now also
+  imported under `TYPE_CHECKING`, so static analysis can see them.
+- SpiffWorkflow 3.2.0 is now the minimum supported version, up from 3.1.2.
+  Earlier versions never set up event subprocesses.
+
+### Fixed
+
+- Removed unused runtime compatibility imports and made the signal service
+  facade's exports explicit. Workflow serializer configuration now uses the
+  shared version constant, addressing the remaining CodeQL unused-symbol
+  alerts without changing the public API or serialized format.
+
+- Removed cyclic imports introduced by signal publication. Engine construction,
+  workflow-state persistence, and signal indexing now form lower-level internal
+  modules; Spiff signal throws use an injected publisher callback. Public API
+  exports and persisted workflow formats are unchanged.
+- Added sample-app revision `20261104_0003` for the signal registry and its
+  composite parent indexes. The app now upgrades existing databases and adopts
+  existing signal tables without changing the host's Alembic version state.
+  This fixes sample-app startup and CI failures on missing signal tables.
+
+
+- Unmatched signal throws are covered by regressions: publication succeeds
+  without a catcher and downstream execution continues (BPMN-03). Signal end
+  events now publish instead of silently behaving as none end events.
+- Non-interrupting signal boundaries re-arm for repeated occurrences;
+  interrupting signal event subprocesses cancel competing scope execution.
+  Tasks in signal-triggered subprocesses are persisted and materialized.
+
+
+- A timer start event inside an event subprocess is now scheduled as a timer
+  of the running instance. Before, importing the definition scheduled it as a
+  process timer start, which started extra instances, and the running instance
+  fired it only when another timer woke it. Needs SpiffWorkflow 3.2.0 or later.
+
+### Security
+
+- Updated locked dependencies to resolve open Dependabot advisories:
+  `filelock` 4.2.4, `virtualenv` 21.15.1, `Mako` 1.4.3, `lxml` 6.1.3, and
+  `pydantic-settings` 2.16.2 in `uv.lock`; `Werkzeug` 3.1.9 and `Mako` 1.4.3
+  in `sample_app/uv.lock`. The declared dependency ranges are unchanged.
+
+## [1.0.0] - 2026-10-22
 ## [1.0.0] - 2026-11-11
 
 The first stable release, and the first under the name m8flow-core. Versions

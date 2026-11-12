@@ -95,6 +95,20 @@ The schema is kept compatible with the m8flow backend's database, so a host
 application and m8flow can share a database and the m8flow UI can show
 instances the library created.
 
+## Service dependency direction
+
+Engine construction and serialization live in the internal `workflow_engine`
+module. `workflow_state` persists snapshots without advancing workflows.
+`signal_registry` uses those helpers to index subscriptions, publish occurrences,
+and maintain receipts, without importing workflow or lifecycle orchestration.
+The high-level signal service advances recipients through `workflow_runtime`.
+Spiff signal adapters receive a publisher callback when the runtime is bound,
+so they do not import back into the signal service.
+
+This dependency direction allows lifecycle services to maintain subscriptions
+without creating an import cycle. Tests inspect imports inside functions as
+well as module-level imports and load the services in fresh Python processes.
+
 ## The public surface
 
 Only `m8flow_core.api` is public. The [API reference](../reference/api.md)
