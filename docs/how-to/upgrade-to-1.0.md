@@ -92,7 +92,7 @@ To migrate each area, follow these steps:
 
 ## Migrate the database
 
-The library's Alembic history in 1.0 is a single baseline revision,
+The library's Alembic history starts with the 1.0 baseline revision,
 `k2l3m4n5o6p7`, with no parent. It creates the complete 1.0 schema on an
 empty database. It doesn't convert a 0.x schema or its data: the 0.x
 revisions aren't part of 1.0.
@@ -102,25 +102,27 @@ Pick the path that matches your database:
 | Database | What to do |
 |---|---|
 | Empty | Run `alembic upgrade head`. See [Create a new database](#create-a-new-database). |
-| Version row already reads `k2l3m4n5o6p7` | Don't run or stamp anything. Alembic already treats the database as current. Run `alembic check` to confirm the schema matches. |
+| Version row already reads `k2l3m4n5o6p7` | Run `alembic upgrade head` to apply additive migrations. No stamp is needed. |
 | 0.x schema | Convert it with the 0.x migrations and your own migrations, then stamp. See [Convert a 0.x database](#convert-a-0x-database). |
 
 ### Create a new database
 
-Run the baseline against the empty database, then confirm the revision:
+Apply the migrations to the empty database, then confirm the revision:
 
 ```bash
 uv run alembic upgrade head
 uv run alembic current
 ```
 
-The second command must print `k2l3m4n5o6p7 (head)`.
+The second command must report `m8f_671_compensation` as the head.
 
 ### Check a database that is already at `k2l3m4n5o6p7`
 
 The baseline keeps the revision ID `k2l3m4n5o6p7`. If a database's
-`alembic_version` row already holds that value, `alembic upgrade head` has
-nothing to do, and `alembic stamp` isn't needed.
+`alembic_version` row already holds that value, `alembic upgrade head` applies
+the signal and compensation migrations without rerunning the baseline. A database
+already at signal revision `l3m4n5o6p7q8` applies just the compensation migration.
+No stamp is needed.
 
 The revision ID alone doesn't prove the tables match the 1.0 models. A
 database built before the baseline can still differ in details such as extra
@@ -164,7 +166,7 @@ To convert, follow these steps:
 
 4. Apply your application's migrations that convert the 0.x schema and data
    to the 1.0 schema.
-5. Install 1.0, then compare the converted schema with the 1.0 models. The
+5. Check out the 1.0 release and install it, then compare the converted schema with the 1.0 models. The
    check reads the models, not the revision history, so it works before the
    stamp. The command must report no differences:
 
@@ -180,9 +182,11 @@ To convert, follow these steps:
    ```
 
    The second command must print `k2l3m4n5o6p7 (head)`.
-7. For every tenant, check a representative workflow, a task claim, the event
+7. To use a checkout with the compensation revision, install that version
+   and run `uv run alembic upgrade head` and `uv run alembic check` from it.
+8. For every tenant, check a representative workflow, a task claim, the event
    history, and the scheduler rows through your application.
-8. Start the new version of every process. Don't start an older one.
+9. Start the new version of every process. Don't start an older one.
 
 These commands assume a checkout of this repository. If your application owns
 its migrations, as the [sample app](../../sample_app/README.md) does, run the
@@ -190,10 +194,11 @@ equivalent commands against your own Alembic environment.
 
 ### Upgrading m8flow
 
-m8flow runs its own migration chain alongside the library's, and it expects
-the library at `k2l3m4n5o6p7`. Deploy the matching m8flow release and this
-library together. m8flow's migrations must leave the library tables in the
-1.0 schema before the library's version row reads `k2l3m4n5o6p7`.
+m8flow runs its own migration chain alongside the library's. Deploy matching
+versions of m8flow and the library. When the host owns the schema migrations,
+ensure its database includes the compensation journal tables before enabling
+compensation. The library's version row must reflect the migrations that have
+actually been applied.
 
 ## If the upgrade fails
 

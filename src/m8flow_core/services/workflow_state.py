@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -14,6 +15,7 @@ from m8flow_core.models.process_instance import (
     WORKFLOW_STATE_JSON_DATA_KEY,
     ProcessInstanceModel,
 )
+from m8flow_core.services.compensation_runtime import coordinator
 from m8flow_core.services.workflow_engine import (
     _WORKFLOW_SERIALIZER,
     _WORKFLOW_STATE_SERIALIZER_VERSION,
@@ -25,7 +27,7 @@ def _persist_workflow_recovery_state(
     process_instance: ProcessInstanceModel,
     workflow: BpmnWorkflow,
 ) -> None:
-    serialized_state = _WORKFLOW_SERIALIZER.serialize_json(workflow)
+    serialized_state = _serialize_runtime_workflow(workflow)
     process_instance.workflow_engine_version = _WORKFLOW_STATE_SERIALIZER_VERSION
     serialized_workflow = _serialize_workflow_dict(workflow)
     _sync_bpmn_process_from_workflow(
@@ -36,10 +38,32 @@ def _persist_workflow_recovery_state(
     )
 
 
+def _serialize_runtime_workflow(workflow: BpmnWorkflow) -> str:
+    serialized: str = _WORKFLOW_SERIALIZER.serialize_json(workflow)
+    comp = coordinator(workflow)
+    if comp is None:
+        return serialized
+    payload = json.loads(serialized)
+    payload["m8f_compensation"] = comp.snapshot()
+    return json.dumps(payload)
+
+
 def _serialize_workflow_dict(workflow: BpmnWorkflow) -> dict[str, Any]:
-    serialized_workflow = _WORKFLOW_SERIALIZER.to_dict(workflow)
+    serialized_workflow: dict[str, Any] = _WORKFLOW_SERIALIZER.to_dict(workflow)
     if not isinstance(serialized_workflow, dict):
         raise ValidationError("Workflow serializer did not produce a dictionary")
+    if comp := coordinator(workflow):
+        # Project detached handlers as subprocesses so both use scoped task rows.
+        subprocess_specs = serialized_workflow["subprocess_specs"]
+        subprocesses = serialized_workflow["subprocesses"]
+        for handler in comp.handlers.values():
+            payload = _WORKFLOW_SERIALIZER.to_dict(handler)
+            spec = payload["spec"]
+            subprocess_specs[spec["name"]] = spec
+            subprocess_specs.update(payload["subprocess_specs"])
+            payload["spec"] = spec["name"]
+            subprocesses[str(handler.task_tree.id)] = payload
+        serialized_workflow = comp.encode_payload(serialized_workflow)
     if serialized_workflow.get("serializer_version") is None:
         serialized_workflow["serializer_version"] = _WORKFLOW_STATE_SERIALIZER_VERSION
     return serialized_workflow

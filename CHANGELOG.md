@@ -28,6 +28,18 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 - BPMN call activities through the tenant-aware `CallActivityResolver` API.
   Called child workflows are stored inside the parent workflow snapshot and
   their human tasks use the existing parent process instance worklist.
+- BPMN compensation boundary events, associations, task/subprocess handlers,
+  intermediate throws and end events, targeted compensation, both wait modes,
+  and durable reverse completion ordering with nested scope isolation.
+- Tenant-scoped compensation journals and progress query, compensation lifecycle
+  events, connector idempotency context, and retry of failed undo handlers.
+- Alembic revision `m8f_671_compensation` follows the signal registry revision
+  and enforces same-tenant process references in all three journal tables.
+- An interactive compensation walkthrough shows committed progress across an
+  engine restart and supports `--non-interactive` for scripted runs.
+  Compensation checkpoints use caller-owned transactions; callers must commit
+  captured failures to retain them for retry. Legacy compensation snapshots
+  without completion journals cannot continue compensation.
 
 ### Changed
 
@@ -44,6 +56,11 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ### Fixed
 
+- Added the compensation journal tables to the sample app's migration chain,
+  so tenant realignment can run against databases migrated by the app.
+- Removed import cycles in compensation persistence and process termination.
+- Signal starts can be retried after a caller rollback on SQLite without
+  retaining a stale workflow row in the session.
 - Removed unused runtime compatibility imports and made the signal service
   facade's exports explicit. Workflow serializer configuration now uses the
   shared version constant, addressing the remaining CodeQL unused-symbol

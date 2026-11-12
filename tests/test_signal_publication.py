@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from threading import Event
 
 import pytest
-from sqlalchemy import delete, event, insert, select
+from sqlalchemy import delete, event, insert, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -972,8 +972,13 @@ def test_signal_start_creation_and_receipt_roll_back_together(session, actor):
     assert len(list(session.scalars(select(ProcessInstanceModel)))) == 1
     publish(session, actor, "two")
     session.commit()
-    run(session, actor[0])
+    [delivery] = run(session, actor[0])
+    assert delivery.status == "delivered"
+    rolled_back = session.get(ProcessInstanceModel, delivery.process_instance_id)
+    assert rolled_back is not None
+    rolled_back_process = rolled_back.bpmn_process
     session.rollback()
+    assert inspect(rolled_back_process).transient
     assert len(list(session.scalars(select(ProcessInstanceModel)))) == 1
     assert (
         api.list_signal_deliveries(

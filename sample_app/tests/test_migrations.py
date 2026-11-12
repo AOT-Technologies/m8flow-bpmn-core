@@ -25,6 +25,7 @@ SIGNAL_TABLES = {
     "signal_subscription",
     "signal_delivery",
 }
+COMPENSATION_TABLES = {"compensation_scope", "compensation_run", "compensation_record"}
 PARENT_INDEXES = {
     "process_instance": "m8f_process_instance_tenant_id_key",
     "bpmn_process_definition": "m8f_definition_tenant_id_key",
@@ -64,6 +65,25 @@ def assert_signal_schema(engine) -> None:
             },
         )
         assert compare_metadata(context, Base.metadata) == []
+
+
+def test_upgrade_from_signal_revision_adds_compensation_schema(migration_database):
+    engine, config = migration_database
+    command.upgrade(config, "20261104_0003")
+    assert COMPENSATION_TABLES.isdisjoint(inspect(engine).get_table_names())
+
+    command.upgrade(config, "head")
+
+    assert_signal_schema(engine)
+    inspector = inspect(engine)
+    assert COMPENSATION_TABLES <= set(inspector.get_table_names())
+    for table in COMPENSATION_TABLES:
+        assert any(
+            fk["constrained_columns"] == ["m8f_tenant_id", "process_instance_id"]
+            and fk["referred_table"] == "process_instance"
+            and fk["referred_columns"] == ["m8f_tenant_id", "id"]
+            for fk in inspector.get_foreign_keys(table)
+        )
 
 
 def test_fresh_migration_creates_signal_schema_and_is_repeatable(migration_database):
@@ -120,7 +140,7 @@ def test_upgrade_from_previous_head_adds_indexes_and_preserves_data(migration_da
             connection.scalar(
                 text("SELECT version_num FROM m8flow_sample_app_alembic_version")
             )
-            == "20261104_0003"
+            == "20261110_0004"
         )
 
 
@@ -241,9 +261,14 @@ def test_migrations_reuse_existing_secret_table_and_foreign_alembic_state(
     run_migrations()
 
     inspector = inspect(create_engine(database_url))
-    assert "secret" in inspector.get_table_names()
-    assert "work_item" in inspector.get_table_names()
-    assert "m8flow_sample_app_alembic_version" in inspector.get_table_names()
+    assert {
+        "secret",
+        "work_item",
+        "compensation_scope",
+        "compensation_run",
+        "compensation_record",
+        "m8flow_sample_app_alembic_version",
+    }.issubset(inspector.get_table_names())
 
     verification_engine = create_engine(database_url)
     with verification_engine.begin() as connection:
@@ -251,7 +276,7 @@ def test_migrations_reuse_existing_secret_table_and_foreign_alembic_state(
             connection.execute(
                 text("select version_num from m8flow_sample_app_alembic_version")
             ).scalar()
-            == "20261104_0003"
+            == "20261110_0004"
         )
         assert (
             connection.execute(text("select version_num from alembic_version")).scalar()

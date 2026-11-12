@@ -243,6 +243,16 @@ advice.
 - [Customize authorization](customize-authorization.md)
 - [About the architecture](../explanation/architecture.md)
 
+## Embed compensation workflows
+
+Use the same start, claim, complete, scheduler, and lifecycle APIs for
+compensation. Query progress with `GetProcessInstanceCompensationsQuery`.
+Compensation failures remain in your transaction: catch
+`ServiceTaskExecutionError` or `CompensationExecutionError` and commit when you
+want to retain the failure for retry. Rolling back discards undo completions
+from that transaction. Configure connector deduplication with the compensation
+idempotency metadata. See [Run compensation handlers](run-compensation.md).
+
 ## Deliver signals
 
 BPMN signal throws publish durably in your transaction and deliver locally

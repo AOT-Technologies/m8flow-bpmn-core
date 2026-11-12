@@ -195,8 +195,9 @@ migrations. It records its history in its own version table,
 m8flow backend.
 
 Revision `20261104_0003` adds the four signal registry tables and the composite
-parent indexes they reference. Startup applies this revision automatically;
-you can also run `uv run alembic upgrade head` from `sample_app/` before starting
+parent indexes they reference. Revision `20261110_0004` follows it and adds the
+three compensation journal tables. Startup applies both revisions automatically.
+You can also run `uv run alembic upgrade head` from `sample_app/` before starting
 the app. Upgrading from `20260706_0002` preserves existing tenant, user, secret,
 and workflow data. If a shared host already created the signal tables, the
 revision keeps them and their data. The host's `alembic_version` row is unchanged.

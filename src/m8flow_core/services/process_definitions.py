@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from defusedxml import ElementTree
-from SpiffWorkflow.spiff.parser.process import SpiffBpmnParser
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,12 +20,14 @@ from m8flow_core.services.authorization import (
     PROCESS_DEFINITION_IMPORT_COMMAND,
     require_command_authorization,
 )
+from m8flow_core.services.compensation_parser import CompensationBpmnParser
 from m8flow_core.services.lane_assignment import (
     enroll_definition_lane_owners,
     validate_initiator_lanes,
 )
 from m8flow_core.services.tenant_users import ensure_user_belongs_to_tenant
 from m8flow_core.services.workflow_runtime import (
+    _RuntimeSpiffBpmnParser,
     _sync_timer_start_scheduler_jobs_for_definition,
 )
 
@@ -108,11 +109,7 @@ def import_bpmn_process_definition(
             bpmn_version_control_type=bpmn_version_control_type,
             bpmn_version_control_identifier=bpmn_version_control_identifier,
             created_at=created_at,
-            updated_at=(
-                updated_at
-                if updated_at is not None
-                else created_at
-            ),
+            updated_at=(updated_at if updated_at is not None else created_at),
         )
         session.add(definition)
     else:
@@ -128,9 +125,7 @@ def import_bpmn_process_definition(
         if bpmn_version_control_type is not None:
             definition.bpmn_version_control_type = bpmn_version_control_type
         if bpmn_version_control_identifier is not None:
-            definition.bpmn_version_control_identifier = (
-                bpmn_version_control_identifier
-            )
+            definition.bpmn_version_control_identifier = bpmn_version_control_identifier
         if created_at is not None:
             definition.created_at = created_at
         if updated_at is not None:
@@ -193,8 +188,7 @@ def _bpmn_lane_names(bpmn_xml_text: str) -> list[str]:
     return [
         element.get("name") or ""
         for element in root.iter()
-        if isinstance(element.tag, str)
-        and element.tag.rsplit("}", 1)[-1] == "lane"
+        if isinstance(element.tag, str) and element.tag.rsplit("}", 1)[-1] == "lane"
     ]
 
 
@@ -229,16 +223,14 @@ def _ensure_bpmn_version_snapshot(
 
 
 def _extract_process_identifier(bpmn_xml_text: str) -> str:
-    parser = SpiffBpmnParser(validator=None)
+    parser = CompensationBpmnParser(validator=None)
     parser.add_bpmn_str(
         bpmn_xml_text.encode("utf-8"),
         filename="definition-process-selector.bpmn",
     )
     process_ids = parser.get_process_ids()
     if not process_ids:
-        raise ValidationError(
-            "BPMN source does not contain any executable processes"
-        )
+        raise ValidationError("BPMN source does not contain any executable processes")
     if len(process_ids) != 1:
         raise ValidationError(
             "A BPMN file must contain exactly one executable process when it is "
@@ -257,7 +249,9 @@ def _validate_bpmn_source(
     Catches malformed XML, missing executable processes, and DMN parse errors at
     import time, instead of letting them surface during workflow execution.
     """
-    parser = SpiffBpmnParser(validator=None)
+    parser = _RuntimeSpiffBpmnParser(
+        validator=None, use_noop_dmn_engine=dmn_xml_text is None
+    )
     try:
         parser.add_bpmn_str(
             bpmn_xml_text.encode("utf-8"),
@@ -271,9 +265,7 @@ def _validate_bpmn_source(
     except ValidationError:
         raise
     except Exception as exc:
-        raise ValidationError(
-            f"BPMN/DMN source is not parseable: {exc}"
-        ) from exc
+        raise ValidationError(f"BPMN/DMN source is not parseable: {exc}") from exc
 
     try:
         process_ids = parser.get_process_ids()
@@ -283,6 +275,13 @@ def _validate_bpmn_source(
         ) from exc
 
     if not process_ids:
-        raise ValidationError(
-            "BPMN source does not contain any executable processes"
-        )
+        raise ValidationError("BPMN source does not contain any executable processes")
+    if parser.has_compensation:
+        try:
+            for process_id in [*process_ids, *parser.compensation_handlers.values()]:
+                parser.get_spec(process_id)
+                parser.get_subprocess_specs(process_id)
+        except Exception as exc:
+            raise ValidationError(
+                f"Compensation BPMN specs are not parseable: {exc}"
+            ) from exc

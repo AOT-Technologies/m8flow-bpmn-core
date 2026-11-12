@@ -26,6 +26,7 @@ from m8flow_core.application.commands import (
 )
 from m8flow_core.application.queries import (
     GetPendingTasksQuery,
+    GetProcessInstanceCompensationsQuery,
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
@@ -36,6 +37,7 @@ from m8flow_core.application.queries import (
     ListSuspendedProcessInstancesQuery,
     ListTerminatedProcessInstancesQuery,
 )
+from m8flow_core.services.compensation_journal import get_process_instance_compensations
 from m8flow_core.services.process_definitions import (
     import_bpmn_process_definition,
 )
@@ -43,6 +45,7 @@ from m8flow_core.services.process_instance_reactivation import (
     resume_process_instance,
     retry_process_instance,
 )
+from m8flow_core.services.process_instance_termination import terminate_process_instance
 from m8flow_core.services.process_instances import (
     create_process_instance,
     error_process_instance,
@@ -56,7 +59,6 @@ from m8flow_core.services.process_instances import (
     record_process_instance_event,
     schedule_process_instance_retry,
     suspend_process_instance,
-    terminate_process_instance,
     upsert_process_instance_metadata,
 )
 from m8flow_core.services.signals import (
@@ -115,14 +117,14 @@ def execute_command(
             return claim_task(
                 session,
                 tenant_id=command.tenant_id,
-            work_item_id=command.work_item_id,
+                work_item_id=command.work_item_id,
                 user_id=command.user_id,
             )
         if isinstance(command, CompleteTaskCommand):
             return complete_task(
                 session,
                 tenant_id=command.tenant_id,
-            work_item_id=command.work_item_id,
+                work_item_id=command.work_item_id,
                 user_id=command.user_id,
                 completed_at=command.completed_at,
                 task_payload=command.task_payload,
@@ -260,6 +262,12 @@ def execute_query(
     query: object,
 ) -> object:
     with _session_scope(session_or_connection) as session:
+        if isinstance(query, GetProcessInstanceCompensationsQuery):
+            return get_process_instance_compensations(
+                session,
+                tenant_id=query.tenant_id,
+                process_instance_id=query.process_instance_id,
+            )
         if isinstance(query, GetSignalPublicationQuery):
             return get_signal_publication(
                 session, tenant_id=query.tenant_id, occurrence_id=query.occurrence_id,

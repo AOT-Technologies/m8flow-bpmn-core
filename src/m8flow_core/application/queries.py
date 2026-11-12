@@ -60,3 +60,9 @@ class ListTerminatedProcessInstancesQuery:
 class ListProcessInstancesQuery:
     tenant_id: str
     status: ProcessInstanceStatus | str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GetProcessInstanceCompensationsQuery:
+    tenant_id: str
+    process_instance_id: int

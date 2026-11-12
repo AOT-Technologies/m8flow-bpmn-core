@@ -10,7 +10,6 @@ from SpiffWorkflow.bpmn.script_engine.python_engine import PythonScriptEngine
 from SpiffWorkflow.bpmn.serializer.workflow import BpmnWorkflowSerializer
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
 from SpiffWorkflow.dmn.specs.model import DecisionTable
-from SpiffWorkflow.spiff.parser.process import SpiffBpmnParser
 from SpiffWorkflow.spiff.serializer.config import SPIFF_CONFIG
 
 from m8flow_core.errors import (
@@ -23,6 +22,16 @@ from m8flow_core.services.call_activities import (
     CallActivityDefinition,
     CallActivityResolver,
 )
+from m8flow_core.services.compensation_parser import (
+    CompensationBpmnParser,
+    CompensationEnd,
+    CompensationEventConverter,
+    CompensationThrow,
+)
+from m8flow_core.services.compensation_runtime import (
+    CompensationCoordinator,
+    connector_compensation_metadata,
+)
 from m8flow_core.services.service_tasks import (
     ServiceTaskContext,
     ServiceTaskRequest,
@@ -31,13 +40,18 @@ from m8flow_core.services.service_tasks import (
 from m8flow_core.services.signal_runtime import (
     adapt_signal_definitions,
     configure_signal_serializer,
-    signal_parser_overrides,
 )
 
 _WORKFLOW_STATE_SERIALIZER_VERSION = "5"
 
 _WORKFLOW_SERIALIZER = BpmnWorkflowSerializer(
-    registry=BpmnWorkflowSerializer.configure(SPIFF_CONFIG),
+    registry=BpmnWorkflowSerializer.configure(
+        {
+            **SPIFF_CONFIG,
+            CompensationThrow: CompensationEventConverter,
+            CompensationEnd: CompensationEventConverter,
+        }
+    ),
     version=_WORKFLOW_STATE_SERIALIZER_VERSION,
 )
 configure_signal_serializer(_WORKFLOW_SERIALIZER.registry)
@@ -53,13 +67,8 @@ class _NoopDMNEngine:
         return {}
 
 
-class _RuntimeSpiffBpmnParser(SpiffBpmnParser):
+class _RuntimeSpiffBpmnParser(CompensationBpmnParser):
     """Spiff parser that can fall back to a no-op DMN engine for POC runs."""
-
-    OVERRIDE_PARSER_CLASSES = {
-        **SpiffBpmnParser.OVERRIDE_PARSER_CLASSES,
-        **signal_parser_overrides(),
-    }
 
     def __init__(
         self, *args: Any, use_noop_dmn_engine: bool = True, **kwargs: Any
@@ -132,6 +141,7 @@ class _RuntimeServiceTaskScriptEngine(PythonScriptEngine):
                 task_name=getattr(getattr(task, "task_spec", None), "name", None),
                 task_type=type(getattr(task, "task_spec", object())).__name__,
                 metadata={
+                    **connector_compensation_metadata(task),
                     "result_variable": getattr(
                         getattr(task, "task_spec", None),
                         "result_variable",
@@ -204,7 +214,21 @@ def _build_workflow(
         subprocess_specs,
         script_engine=_service_task_script_engine(service_task_context),
     )
-    adapt_signal_definitions(workflow)
+    adapt_signal_definitions(spec, subprocess_specs)
+    if parser.has_compensation:
+        comp = CompensationCoordinator(workflow, _WORKFLOW_SERIALIZER)
+        comp.state["bindings"] = parser.compensation_bindings
+        for handler_id, process_id in parser.compensation_handlers.items():
+            handler_spec = parser.get_spec(process_id)
+            handler_subs = parser.get_subprocess_specs(process_id)
+            adapt_signal_definitions(handler_spec, handler_subs)
+            comp.state["templates"][handler_id] = {
+                "spec": _WORKFLOW_SERIALIZER.to_dict(handler_spec),
+                "subprocess_specs": {
+                    key: _WORKFLOW_SERIALIZER.to_dict(value)
+                    for key, value in handler_subs.items()
+                },
+            }
     return workflow
 
 
@@ -301,6 +325,11 @@ def _load_called_process_definitions(
                         _coerce_xml_bytes(definition.bpmn_xml),
                         filename=f"called-process-{called_element}.bpmn",
                     )
+                    if parser.has_compensation:
+                        raise CallActivityResolutionError(
+                            f"Called process {called_element!r} uses compensation, "
+                            "which is unsupported with call activities"
+                        )
                     if definition.process_id not in parser.get_process_ids():
                         raise CallActivityResolutionError(
                             f"Resolved BPMN does not contain executable process "
@@ -326,9 +355,16 @@ def _restore_workflow(
     *,
     service_task_context: ServiceTaskContext | None = None,
 ) -> BpmnWorkflow:
-    workflow = _WORKFLOW_SERIALIZER.deserialize_json(serialized_state)
+    payload = json.loads(serialized_state, cls=_WORKFLOW_SERIALIZER.json_decoder_cls)
+    compensation = payload.pop("m8f_compensation", None)
+    _WORKFLOW_SERIALIZER.migrate(payload)
+    workflow = _WORKFLOW_SERIALIZER.from_dict(payload)
     workflow.script_engine = _service_task_script_engine(service_task_context)
-    adapt_signal_definitions(workflow)
+    adapt_signal_definitions(workflow.spec, workflow.subprocess_specs)
+    if compensation is not None:
+        handlers = compensation.pop("handlers", {})
+        comp = CompensationCoordinator(workflow, _WORKFLOW_SERIALIZER, compensation)
+        comp.restore_handlers(handlers)
     return workflow
 
 

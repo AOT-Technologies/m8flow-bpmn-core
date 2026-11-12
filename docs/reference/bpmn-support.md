@@ -35,6 +35,7 @@ The following elements are supported:
 | Sequence flow with condition expression | Python expressions evaluated against task data |
 | User task | Becomes a human task that users claim and complete |
 | Manual task | Becomes a human task, like a user task |
+| Compensation boundary/throw/end events | Associations to task/subprocess handlers, `activityRef`, both `waitForCompletion` values, durable reverse completion order and nested default compensation. See [Run compensation handlers](../how-to/run-compensation.md). |
 | Task (untyped) | Becomes a human task, like a user task |
 | Script task | Python script run by the SpiffWorkflow script engine |
 | Business rule task | Evaluates a DMN decision table from the definition's DMN file |
@@ -99,7 +100,6 @@ The following elements and behaviors aren't covered:
 
 - Message events and message correlation
 - Event subprocesses, other than the documented timer and signal forms
-- Compensation
 - Error and escalation boundary events
 - Non-interrupting boundary events other than signals
 - Compound Multiple/Parallel Multiple events and event-based gateways
@@ -114,3 +114,14 @@ The following elements and behaviors aren't covered:
 - [Run the examples](../how-to/run-the-examples.md): the examples cover most
   supported elements
 - [About scheduling](../explanation/scheduling.md)
+
+### Compensation boundaries
+
+Handlers marked `isForCompensation` remain outside normal sequence flow.
+Human handlers, including those nested in handler subprocesses, become normal
+work items. Completed subprocesses retain their scope data; explicit handlers
+replace default recursive compensation. Parent throws exclude active
+subprocesses. Compensation models requiring event subprocesses, loop or
+multi-instance characteristics, call activities, transactions, or BPMN error
+handling are rejected. Standard timer date/duration literals and existing
+Spiff timer expressions are accepted in compensation models.

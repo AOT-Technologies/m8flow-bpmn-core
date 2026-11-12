@@ -21,6 +21,7 @@ from m8flow_core.application import (
     CreateProcessInstanceCommand,
     ErrorProcessInstanceCommand,
     GetPendingTasksQuery,
+    GetProcessInstanceCompensationsQuery,
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
@@ -50,11 +51,13 @@ from m8flow_core.errors import (
     AuthorizationError,
     BpmnCoreError,
     CallActivityResolutionError,
+    CompensationExecutionError,
     InvalidStateError,
     NotFoundError,
     ServiceTaskExecutionError,
     ValidationError,
 )
+from m8flow_core.models.compensation import CompensationStatus
 from m8flow_core.models.process_instance import ProcessInstanceStatus
 from m8flow_core.models.process_instance_event import (
     ProcessInstanceEventCategory,
@@ -85,6 +88,7 @@ from m8flow_core.services.call_activities import (
     CallActivityDefinition,
     CallActivityResolver,
 )
+from m8flow_core.services.compensation_journal import get_process_instance_compensations
 from m8flow_core.services.connector_proxy_service_tasks import (
     ConnectorProxyServiceTaskConnector,
     build_connector_proxy_service_task_connectors,
@@ -96,6 +100,7 @@ from m8flow_core.services.process_instance_reactivation import (
     resume_process_instance,
     retry_process_instance,
 )
+from m8flow_core.services.process_instance_termination import terminate_process_instance
 from m8flow_core.services.process_instances import (
     create_process_instance,
     error_process_instance,
@@ -109,7 +114,6 @@ from m8flow_core.services.process_instances import (
     record_process_instance_event,
     schedule_process_instance_retry,
     suspend_process_instance,
-    terminate_process_instance,
     upsert_process_instance_metadata,
 )
 from m8flow_core.services.scheduler_runtime import (
@@ -211,6 +215,7 @@ def run_due_scheduler_jobs(
             tenant_id=tenant_id,
         )
 
+
 __all__ = [
     "PublishSignalCommand", "RunSignalDeliveriesCommand",
     "GetSignalPublicationQuery", "ListSignalDeliveriesQuery",
@@ -226,6 +231,9 @@ __all__ = [
     "CallActivityDefinition",
     "CallActivityResolutionError",
     "CallActivityResolver",
+    "CompensationExecutionError",
+    "CompensationStatus",
+    "get_process_instance_compensations",
     "ClaimTaskCommand",
     "CompleteTaskCommand",
     "ConnectorProxyServiceTaskConnector",
@@ -233,6 +241,7 @@ __all__ = [
     "DatabaseAuthorizationPolicy",
     "ErrorProcessInstanceCommand",
     "GetPendingTasksQuery",
+    "GetProcessInstanceCompensationsQuery",
     "GetProcessInstanceEventsQuery",
     "GetProcessInstanceMetadataQuery",
     "GetProcessInstanceQuery",

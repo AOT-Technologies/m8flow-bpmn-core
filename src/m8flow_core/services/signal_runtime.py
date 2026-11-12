@@ -110,8 +110,8 @@ def signal_parser_overrides() -> dict[str, tuple[type, type]]:
     }
 
 
-def adapt_signal_definitions(workflow: Any) -> None:
-    for spec in [workflow.spec, *workflow.subprocess_specs.values()]:
+def adapt_signal_definitions(root_spec: Any, subprocess_specs: Any) -> None:
+    for spec in [root_spec, *subprocess_specs.values()]:
         for task_spec in spec.task_specs.values():
             definition = getattr(task_spec, "event_definition", None)
             _adapt_definition(definition)
