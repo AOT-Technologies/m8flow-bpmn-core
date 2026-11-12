@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 .DEFAULT_GOAL := help
 
 UV ?= uv
@@ -5,7 +10,7 @@ SRC_DIR := src
 TEST_DIR := tests
 ALEMBIC_DIR := alembic/versions
 
-.PHONY: help sync sync-postgresql lint lint-fix typecheck security precommit-install test test-integration build package package-wheel package-sdist
+.PHONY: help sync sync-postgresql lint lint-fix typecheck security license-headers license-headers-fix precommit-install test test-integration build package package-wheel package-sdist
 
 help:
 	@echo "Targets:"
@@ -15,6 +20,8 @@ help:
 	@echo "  make lint-fix         Run Ruff with --fix"
 	@echo "  make typecheck        Run mypy on the core package"
 	@echo "  make security         Run Bandit on the core and sample-app source trees"
+	@echo "  make license-headers  Check that every file declares its copyright and license (REUSE)"
+	@echo "  make license-headers-fix  Add the SPDX header to files that lack one"
 	@echo "  make precommit-install  Install the local pre-commit and commit-msg hooks"
 	@echo "  make test             Run the unit test suite"
 	@echo "  make test-integration  Run the Postgres integration test"
@@ -40,6 +47,13 @@ typecheck:
 
 security:
 	$(UV) run bandit -c pyproject.toml -r $(SRC_DIR) sample_app/src
+
+license-headers:
+	$(UV) run python tools/add_license_headers.py --check
+	$(UV) run reuse lint
+
+license-headers-fix:
+	$(UV) run python tools/add_license_headers.py
 
 precommit-install:
 	$(UV) run pre-commit install --hook-type pre-commit --hook-type commit-msg

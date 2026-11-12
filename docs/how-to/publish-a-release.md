@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Publish a release
 
 This guide is for maintainers. It shows how to publish m8flow-core to PyPI

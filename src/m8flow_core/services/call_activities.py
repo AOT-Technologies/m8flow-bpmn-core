@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Host-provided process definitions for BPMN call activities."""
 
 from __future__ import annotations

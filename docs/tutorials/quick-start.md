@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Quick start: run your first workflow
 
 In this tutorial, you build a Python script that runs a one-step expense

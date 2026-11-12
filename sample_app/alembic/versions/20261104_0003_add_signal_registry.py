@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Add the signal registry to the sample app migration chain.
 
 DDL mirrors core revision l3m4n5o6p7q8 without depending on repository-only

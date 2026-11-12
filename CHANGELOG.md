@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Changelog
 
 All notable changes to m8flow-core are recorded in this file. The format
@@ -9,6 +15,20 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ### Added
 
+- [REUSE](https://reuse.software/) 3.3 compliance. Every file declares its
+  copyright and license through an SPDX header, `REUSE.toml`, or a `.license`
+  file, and `LICENSES/` holds the license texts. `reuse lint` runs in CI, in
+  pre-commit, and as `make license-headers`; `make license-headers-fix` runs
+  the new `tools/add_license_headers.py` to add missing headers. Migrations
+  released in 1.0.0 are left unchanged.
+- The source distribution includes `LICENSES/`, `NOTICE.license`, and
+  `REUSE.toml`, and the wheel ships `LICENSES/Apache-2.0.txt` with `LICENSE`
+  and `NOTICE`.
+
+### Changed
+
+- The copyright holder is now `AOT Technologies`, matching node-wire, in the
+  SPDX headers, `LICENSE`, `NOTICE`, and the package author metadata.
 - Durable tenant-scoped BPMN signal publication, subscription indexing, and
   idempotent delivery receipts. Intermediate/end throws broadcast to waiting
   intermediate catches, boundary events, event subprocesses, and Signal Start

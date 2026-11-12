@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # About the workflow data model
 
 m8flow-core stores a running workflow in a handful of tables, each with one

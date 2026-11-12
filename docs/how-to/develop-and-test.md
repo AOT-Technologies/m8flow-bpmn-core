@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Develop and test
 
 This guide covers the day-to-day commands for working on m8flow-core:
@@ -28,7 +34,7 @@ Run `make help` to list every `make` target.
 
 ## Install the Git hooks
 
-The repository's pre-commit hooks run Ruff, mypy, and Bandit before each
+The repository's pre-commit hooks run Ruff, mypy, Bandit, and REUSE before each
 commit. A `commit-msg` hook rejects any commit without a `Signed-off-by`
 trailer, so commit with `git commit -s`. To install the hooks, run the
 following command:
@@ -39,19 +45,24 @@ make precommit-install
 
 ## Run the static checks
 
-CI runs three static checks. To run them yourself, use the following
+CI runs four static checks. To run them yourself, use the following
 commands:
 
 ```bash
 make lint
 make typecheck
 make security
+make license-headers
 ```
 
 `make lint` runs [Ruff](https://docs.astral.sh/ruff/) for linting and import
 ordering; `make lint-fix` applies the fixes Ruff can make on its own.
 `make typecheck` runs mypy on `src/m8flow_core/`. `make security` runs
 [Bandit](https://bandit.readthedocs.io/) on the library and the sample app.
+`make license-headers` runs [REUSE](https://reuse.software/) to check that
+every file declares its copyright and license, and `make license-headers-fix`
+adds the SPDX header to new files that lack one. See
+[Add license headers](../../CONTRIBUTING.md#add-license-headers).
 
 ## Run the unit tests
 

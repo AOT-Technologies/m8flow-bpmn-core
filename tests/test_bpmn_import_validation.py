@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Verify that ``import_bpmn_process_definition`` rejects bad BPMN at import.
 
 Before this validation existed, an unparseable or empty BPMN file would land

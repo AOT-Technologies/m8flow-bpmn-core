@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # m8flow-core documentation
 
 This folder holds the m8flow-core documentation: how to embed the library

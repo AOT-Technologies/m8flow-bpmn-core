@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Contributing to m8flow-core
 
 Thanks for your interest in contributing. This guide covers how to set up a
@@ -68,6 +74,7 @@ your change before you open a pull request:
 | Lint | `make lint` |
 | Type check | `make typecheck` |
 | Security lint | `make security` |
+| License headers | `make license-headers` |
 | Unit tests, on SQLite and PostgreSQL | `make test` |
 | Sample app lint and tests | See [Run the sample app tests](docs/how-to/develop-and-test.md#run-the-sample-app-tests) |
 
@@ -93,6 +100,8 @@ Reviews check the following rules:
 - Only add code, BPMN files, or other content that you wrote or whose license
   is compatible with Apache-2.0. If you adapt a file from another project,
   record its source and license in [NOTICE](NOTICE).
+- Start every new file with an SPDX license header. See
+  [Add license headers](#add-license-headers).
 - Don't add a dependency unless you need it, and explain why in the pull
   request.
 - Add an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) for any
@@ -111,6 +120,47 @@ the same pull request:
 - the how-to guides and examples that use it
 - `tests/test_api_surface.py`, which locks the exported names, and
   `tests/test_compatibility_contract.py`, which locks the schema contract
+
+## Add license headers
+
+The repository follows the [REUSE specification](https://reuse.software/):
+every file declares its copyright and license. Files that can hold a comment
+start with an SPDX header built from [.copyright.tmpl](.copyright.tmpl). In
+code and config files the header is a `#` block:
+
+<!-- REUSE-IgnoreStart -->
+```text
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+```
+
+Markdown files use the same two tags in an HTML comment:
+
+```text
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+```
+<!-- REUSE-IgnoreEnd -->
+
+To add the header to every new file that lacks one, run the following
+command:
+
+```bash
+make license-headers-fix
+```
+
+The command skips files that [REUSE.toml](REUSE.toml) covers. Add a path there
+for a file that can't hold a comment, such as an image, a lock file, or a BPMN
+file. Never add a header to a released Alembic migration; `REUSE.toml` covers
+those too.
+
+`make license-headers` checks the whole repository. It also runs as a
+pre-commit hook and in CI.
 
 ## Submitting changes
 

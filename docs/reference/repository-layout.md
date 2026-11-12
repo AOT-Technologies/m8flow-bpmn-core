@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Repository layout
 
 This page describes what each folder in the repository holds.
@@ -18,10 +24,15 @@ The repository root holds the following:
 | `docs/` | This documentation |
 | `.github/` | CI, DCO sign-off, CodeQL, dependency review, secret-scan, and PyPI publish workflows; Dependabot settings; issue and pull request templates |
 | `tools/check_dco.py` | The DCO sign-off check, run by the `commit-msg` hook and testable with `--rev-range` |
-| `.pre-commit-config.yaml` | Local hooks: Ruff, mypy, and Bandit, plus the DCO `commit-msg` check |
+| `tools/add_license_headers.py` | Adds the SPDX header to files that lack one; `--check` lists them |
+| `.pre-commit-config.yaml` | Local hooks: Ruff, mypy, Bandit, and REUSE, plus the DCO `commit-msg` check |
 | `.gitleaks.toml` | Secret-scan settings |
 | `Makefile` | Development commands. Run `make help` to list them. |
 | `pyproject.toml` | Package metadata, dependencies, extras, and tool settings |
+| `REUSE.toml` | Copyright and license for files that can't carry an SPDX header |
+| `LICENSES/` | License texts referenced by SPDX identifiers, for the REUSE check |
+| `NOTICE.license` | Copyright and license for `NOTICE` |
+| `.copyright.tmpl` | The SPDX header text that `make license-headers-fix` adds |
 | `sample.env` | Example environment variables |
 
 ## The library package

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Sample app migrations
 
 This folder holds the sample app's Alembic revisions. The app owns them, even

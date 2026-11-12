@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Call external services from service tasks
 
 This guide shows how to run BPMN service tasks: how to name the operation in

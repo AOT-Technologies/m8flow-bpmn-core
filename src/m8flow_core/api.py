@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Public library API for the platform/app layer.
 
 This package is intended to be imported directly, not exposed over HTTP.

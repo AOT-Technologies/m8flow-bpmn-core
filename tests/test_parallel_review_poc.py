@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """End-to-end test for the parallel-review POC.
 
 Exercises BPMN shapes that the conditional-approval POC does not cover:

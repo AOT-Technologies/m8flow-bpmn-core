@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 repos:
   - repo: local
     hooks:
@@ -21,6 +26,13 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/|sample_app/src/)
+
+      - id: reuse
+        name: REUSE
+        entry: uv run --locked reuse lint
+        language: system
+        pass_filenames: false
+        always_run: true
 
       - id: dco-signoff
         name: DCO signoff

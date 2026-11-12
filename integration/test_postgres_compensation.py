@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4

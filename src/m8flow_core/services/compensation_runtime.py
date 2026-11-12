@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Compensation coordinator, serialized with the owning workflow.
 
 The snapshot is the recovery image; journal tables are its queryable projection.

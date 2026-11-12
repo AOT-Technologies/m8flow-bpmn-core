@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Publish and deliver BPMN signals
 
 Signals publish an occurrence to every eligible subscription in the tenant.

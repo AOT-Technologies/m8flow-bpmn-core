@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Compile BPMN compensation bindings without introducing normal-flow tokens.
 
 The original source remains unchanged in storage. Handler activities are compiled

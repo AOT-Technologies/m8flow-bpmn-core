@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Resume and retry transitions that re-enter the workflow runtime.
 
 These live apart from ``process_instances`` because they call back into

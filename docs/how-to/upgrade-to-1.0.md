@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Upgrade to 1.0
 
 This guide moves an application from `m8flow-bpmn-core` 0.x to m8flow-core

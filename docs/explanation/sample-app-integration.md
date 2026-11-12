@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # About the sample app integration
 
 The [sample app](../../sample_app/README.md) is a small Flask application that

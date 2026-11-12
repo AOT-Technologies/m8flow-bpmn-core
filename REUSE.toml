@@ -1,0 +1,43 @@
+# Licensing for files that can't carry an inline SPDX header.
+# Check the whole repository with `make license-headers`.
+
+version = 1
+SPDX-PackageName = "m8flow-core"
+SPDX-PackageSupplier = "AOT Technologies <opensource@aot-technologies.com>"
+SPDX-PackageDownloadLocation = "https://github.com/AOT-Technologies/m8flow-core"
+
+# Generated lock files.
+[[annotations]]
+path = ["uv.lock", "sample_app/uv.lock"]
+SPDX-FileCopyrightText = "NONE"
+SPDX-License-Identifier = "CC0-1.0"
+
+# BPMN and DMN process files, kept exactly as the modeler exports them.
+# NOTICE records the two adapted from the m8flow samples.
+[[annotations]]
+path = ["**/*.bpmn", "**/*.dmn"]
+SPDX-FileCopyrightText = "2026 AOT Technologies"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Documentation images and recordings.
+[[annotations]]
+path = "docs/images/**"
+SPDX-FileCopyrightText = "2026 AOT Technologies"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Migrations released in 1.0.0. Released migrations are never edited, so they
+# carry no inline header.
+[[annotations]]
+path = [
+  "alembic/versions/k2l3m4n5o6p7_baseline_1_0_schema.py",
+  "sample_app/alembic/versions/20260706_0001_create_library_baseline.py",
+  "sample_app/alembic/versions/20260706_0002_add_secret_table.py",
+]
+SPDX-FileCopyrightText = "2026 AOT Technologies"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Files whose format has no comment syntax.
+[[annotations]]
+path = [".python-version", "alembic/versions/.gitkeep"]
+SPDX-FileCopyrightText = "2026 AOT Technologies"
+SPDX-License-Identifier = "Apache-2.0"

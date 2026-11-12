@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Domain error hierarchy for the m8flow-core public API.
 
 Every error raised by a public service or dispatcher path is a subclass of

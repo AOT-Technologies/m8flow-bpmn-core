@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 <p align="center">
   <img src="docs/images/m8flow-logo.png" alt="m8flow" width="280">
 </p>

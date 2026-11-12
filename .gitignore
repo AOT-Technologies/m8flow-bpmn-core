@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -19,6 +24,7 @@ dist/
 .*
 !.gitleaks.toml
 !.pre-commit-config.yaml
+!.copyright.tmpl
 !/.github/
 !/.github/codeql/
 !/.github/codeql/*.yml

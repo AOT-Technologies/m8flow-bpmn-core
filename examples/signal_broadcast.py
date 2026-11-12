@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Broadcast one BPMN signal to three waiting instances and a Signal Start.
 
 Run: uv run python examples/signal_broadcast.py
