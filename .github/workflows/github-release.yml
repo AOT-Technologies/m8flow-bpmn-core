@@ -2,14 +2,15 @@
 # yamllint disable rule:line-length
 name: GitHub Release
 
-# Step 2 of a release, after "Create release tag". Creates the GitHub Release
-# for the tag, with the version's CHANGELOG section as notes and an SBOM of the
-# runtime dependencies attached. Next, run "Publish m8flow-core" from the tag
-# on the release channel; it refuses to publish until this release exists.
+# Step 2 of a release, after "Create release tag". Creates a draft GitHub
+# Release for the tag, with the version's CHANGELOG section as notes and an
+# SBOM of the runtime dependencies attached. Next, run "Publish m8flow-core"
+# from the tag on the release channel; it refuses to publish until this
+# release exists. Review the draft, then publish it once PyPI has the version.
 #
-# The release is published, not a draft: publish.yml looks it up by tag, and
-# the API doesn't resolve draft releases by tag. Review the notes in the
-# CHANGELOG pull request instead.
+# Drafts aren't served by the releases-by-tag API; `gh release view <tag>`
+# falls back to the release list, which shows drafts only to tokens with push
+# access (contents: write).
 on:
   workflow_dispatch:
     inputs:
@@ -58,12 +59,13 @@ jobs:
           ref: refs/tags/${{ env.RELEASE_VERSION }}
           fetch-depth: 0
 
+      # gh release view also finds drafts, given a token with push access.
       - name: Check release does not already exist
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "${RELEASE_VERSION}" >/dev/null 2>&1; then
-            echo "ERROR: a GitHub Release for ${RELEASE_VERSION} already exists" >&2
+            echo "ERROR: a GitHub Release for ${RELEASE_VERSION} already exists (draft or published)" >&2
             exit 1
           fi
           echo "No release for ${RELEASE_VERSION} yet"
@@ -177,11 +179,12 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Create GitHub Release
+      - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${RELEASE_VERSION}" \
+            --draft \
             --verify-tag \
             --title "${RELEASE_VERSION}" \
             --notes-file release-notes.md \
@@ -191,9 +194,9 @@ jobs:
       - name: Report GitHub Release
         run: |
           {
-            echo "### GitHub Release"
+            echo "### GitHub Release (draft)"
             echo "- Tag: ${RELEASE_VERSION}"
             echo "- Commit: $(git rev-parse HEAD)"
             echo "- Assets: sbom.json, release-manifest.txt"
-            echo "- Next: run \"Publish m8flow-core\" from tag ${RELEASE_VERSION} on the release channel"
+            echo "- Next: review the draft, run \"Publish m8flow-core\" from tag ${RELEASE_VERSION} on the release channel, then publish the draft"
           } >> "$GITHUB_STEP_SUMMARY"
