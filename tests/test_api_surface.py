@@ -6,6 +6,15 @@ from m8flow_core import api
 # contract change and should be paired with an entry in ``docs/reference/api.md``.
 EXPECTED_PUBLIC_API = frozenset(
     {
+        "PublishSignalCommand",
+        "RunSignalDeliveriesCommand",
+        "GetSignalPublicationQuery",
+        "ListSignalDeliveriesQuery",
+        "SIGNAL_PUBLISH_COMMAND",
+        "publish_signal",
+        "run_signal_deliveries",
+        "get_signal_publication",
+        "list_signal_deliveries",
         # Errors
         "AuthorizationError",
         "AuthorizationDecision",
@@ -17,6 +26,10 @@ EXPECTED_PUBLIC_API = frozenset(
         "CallActivityDefinition",
         "CallActivityResolutionError",
         "CallActivityResolver",
+        "CompensationExecutionError",
+        "CompensationStatus",
+        "GetProcessInstanceCompensationsQuery",
+        "get_process_instance_compensations",
         "InvalidStateError",
         "NotFoundError",
         "ServiceTaskExecutionError",

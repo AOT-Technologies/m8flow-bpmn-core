@@ -11,9 +11,11 @@ from m8flow_core.application.commands import (
     ImportBpmnProcessDefinitionCommand,
     InitializeProcessInstanceFromDefinitionCommand,
     InitializeProcessInstanceWorkflowCommand,
+    PublishSignalCommand,
     RecordProcessInstanceEventCommand,
     ResumeProcessInstanceCommand,
     RetryProcessInstanceCommand,
+    RunSignalDeliveriesCommand,
     ScheduleProcessInstanceRetryCommand,
     SuspendProcessInstanceCommand,
     TerminateProcessInstanceCommand,
@@ -21,11 +23,14 @@ from m8flow_core.application.commands import (
 )
 from m8flow_core.application.queries import (
     GetPendingTasksQuery,
+    GetProcessInstanceCompensationsQuery,
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
+    GetSignalPublicationQuery,
     ListErrorProcessInstancesQuery,
     ListProcessInstancesQuery,
+    ListSignalDeliveriesQuery,
     ListSuspendedProcessInstancesQuery,
     ListTerminatedProcessInstancesQuery,
 )
@@ -40,12 +45,16 @@ def __getattr__(name: str) -> Any:
         return getattr(dispatcher, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
+
 __all__ = [
+    "PublishSignalCommand", "RunSignalDeliveriesCommand",
+    "GetSignalPublicationQuery", "ListSignalDeliveriesQuery",
     "ClaimTaskCommand",
     "CompleteTaskCommand",
     "CreateProcessInstanceCommand",
     "ErrorProcessInstanceCommand",
     "GetPendingTasksQuery",
+    "GetProcessInstanceCompensationsQuery",
     "GetProcessInstanceEventsQuery",
     "GetProcessInstanceMetadataQuery",
     "GetProcessInstanceQuery",

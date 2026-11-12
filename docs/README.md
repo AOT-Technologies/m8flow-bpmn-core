@@ -30,9 +30,12 @@ process, starts it, and completes its task.
 
 ### How-to guides
 
+- [Publish and deliver BPMN signals](how-to/publish-signals.md)
+
 Steps for one task, for readers who already know the basics:
 
 - [Embed the library in your application](how-to/embed-in-your-application.md)
+- [Run compensation handlers](how-to/run-compensation.md)
 - [Run timers and scheduled retries](how-to/run-timers-and-retries.md)
 - [Call external services from service tasks](how-to/call-external-services.md)
 - [Customize authorization](how-to/customize-authorization.md)

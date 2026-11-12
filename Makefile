@@ -49,7 +49,7 @@ test:
 
 test-integration:
 	$(UV) sync --extra postgresql
-	$(UV) run pytest integration/test_postgres_integration.py
+	$(UV) run pytest integration/
 
 build:
 	$(UV) build

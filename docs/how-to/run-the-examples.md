@@ -11,8 +11,10 @@ The repository has the following examples:
 
 | Script | What it shows | Database |
 |---|---|---|
+| `compensation.py` | Interactive inventory, payment, and shipment undo in reverse order, with a restart after shipment undo commits | Temporary SQLite |
+| `signal_broadcast.py` | One signal reaches three waiting instances and one Signal Start exactly once | In-memory SQLite |
 | `parallel_review.py` | A purchase order through a parallel gateway, script tasks, and an exclusive gateway, across three lanes | In-memory SQLite |
-| `errors_demo.py` | Every public error class, raised for real | In-memory SQLite |
+| `errors_demo.py` | Validation, lookup, tenant, and state errors through public calls | In-memory SQLite |
 | `conditional_approval.py` | An approval with an exclusive gateway, a DMN decision, lane assignment, and command permission checks | PostgreSQL or SQLite |
 | `conditional_approval_rejection.py` | The same approval, where the manager rejects and the Finance lane never starts | PostgreSQL or SQLite |
 | `scheduled_timer.py` | A timer start event fired by an inline scheduler loop | PostgreSQL or SQLite |
@@ -27,13 +29,19 @@ The BPMN and DMN files they use are in `tests/fixtures/`.
 
 ## Run the SQLite examples
 
-The SQLite examples need nothing beyond `uv sync`. They run without pausing
-and print each step. To run them, use the following commands:
+The SQLite examples need nothing beyond `uv sync`. They print each step.
+`signal_broadcast.py` pauses before starting the listeners, publishing the
+signal, and running deliveries. Add `--non-interactive` to skip those prompts.
 
 ```bash
 uv run python examples/parallel_review.py
 uv run python examples/errors_demo.py
+uv run python examples/compensation.py
+uv run python examples/signal_broadcast.py
 ```
+
+The compensation walkthrough pauses before each undo and before the engine
+restart. Add `--non-interactive` to run it without prompts.
 
 In `parallel_review.py`, change `SCENARIO` near the top of the file to
 `finance_rejects` or `compliance_rejects` to follow the rejection branches.

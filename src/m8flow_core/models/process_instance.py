@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import (
     Mapped,
     mapped_column,
@@ -50,6 +50,9 @@ _ACTIVE_STATUSES: tuple[str, ...] = (
 
 class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "process_instance"
+    __table_args__ = (
+        Index("m8f_process_instance_tenant_id_key", "m8f_tenant_id", "id", unique=True),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     process_model_identifier: Mapped[str] = mapped_column(
         String(255), index=True, nullable=False

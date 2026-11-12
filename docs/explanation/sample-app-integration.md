@@ -17,7 +17,9 @@ The app is built on the following decisions:
 - **The host application owns migrations.** The wheel doesn't ship Alembic
   revisions, so the sample app's own migration history creates the library's
   tables as well as its own. Its Alembic environment loads both
-  `m8flow_core.models.Base` and the app's `SampleAppBase` metadata.
+  `m8flow_core.models.Base` and the app's `SampleAppBase` metadata. Revision
+  `20261104_0003` adds the signal registry independently of the core repository's
+  migration history, including when upgrading an existing sample-app database.
 - **PostgreSQL by default.** The app defaults to the local m8flow database, so
   its data can be inspected and compared with m8flow.
 - **Definitions live in the database.** Deployed BPMN goes into

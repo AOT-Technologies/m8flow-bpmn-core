@@ -92,6 +92,7 @@ jobs:
 
     env:
       M8FLOW_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/m8flow_core_test
+      M8FLOW_POSTGRES_UPGRADE_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/m8flow_core_upgrade_test
 
     steps:
       - name: Check out repository
@@ -113,8 +114,18 @@ jobs:
       - name: Sync environment
         run: uv sync --locked --extra postgresql
 
-      - name: Run tests
-        run: uv run --locked pytest
+      - name: Create migration test database
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: docker exec "$POSTGRES_CONTAINER" createdb -U postgres m8flow_core_upgrade_test
+
+      - name: Run tests and migrations
+        run: uv run --locked --extra postgresql pytest
+
+      - name: Run compensation integration test
+        env:
+          M8FLOW_TEST_POSTGRES_URL: ${{ env.M8FLOW_TEST_DATABASE_URL }}
+        run: uv run --locked --extra postgresql pytest integration/test_postgres_compensation.py
 
   sample-app-tests:
     name: Sample app lint and tests

@@ -11,20 +11,15 @@ from typing import Any
 from uuid import UUID
 
 from defusedxml import ElementTree
-from SpiffWorkflow.bpmn.script_engine.python_engine import PythonScriptEngine
-from SpiffWorkflow.bpmn.serializer.workflow import BpmnWorkflowSerializer
 from SpiffWorkflow.bpmn.specs.event_definitions.timer import TimerEventDefinition
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
-from SpiffWorkflow.dmn.specs.model import DecisionTable
-from SpiffWorkflow.spiff.parser.process import SpiffBpmnParser
-from SpiffWorkflow.spiff.serializer.config import SPIFF_CONFIG
 from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import select
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session
 
 from m8flow_core.errors import (
-    CallActivityResolutionError,
+    CompensationExecutionError,
     InvalidStateError,
     NotFoundError,
     ServiceTaskExecutionError,
@@ -37,7 +32,6 @@ from m8flow_core.models.bpmn_process_definition import (
 from m8flow_core.models.future_task import FutureTaskModel
 from m8flow_core.models.json_data import JsonDataModel
 from m8flow_core.models.process_instance import (
-    WORKFLOW_STATE_JSON_DATA_KEY,
     ProcessInstanceModel,
     ProcessInstanceStatus,
 )
@@ -61,8 +55,15 @@ from m8flow_core.services.authorization import (
 )
 from m8flow_core.services.call_activities import (
     CallActivityContext,
-    CallActivityDefinition,
     CallActivityResolver,
+)
+from m8flow_core.services.compensation_journal import persist_compensation
+from m8flow_core.services.compensation_runtime import (
+    coordinator,
+    execution_workflows,
+    runtime_completed,
+    runtime_task,
+    runtime_tasks,
 )
 from m8flow_core.services.lane_assignment import (
     assign_work_item_potential_owners,
@@ -79,10 +80,8 @@ from m8flow_core.services.scheduler_jobs import (
     delete_scheduler_job,
     upsert_scheduler_job,
 )
-from m8flow_core.services.service_tasks import (
-    ServiceTaskContext,
-    ServiceTaskRequest,
-    resolve_service_task_registry,
+from m8flow_core.services.signal_runtime import (
+    RuntimeSignalDefinition,
 )
 from m8flow_core.services.tenant_users import (
     ensure_user_belongs_to_tenant,
@@ -92,123 +91,43 @@ from m8flow_core.services.work_items import (
     close_work_item,
     prepare_work_item_for_ready_state,
 )
+from m8flow_core.services.workflow_engine import (
+    _WORKFLOW_SERIALIZER as _WORKFLOW_SERIALIZER,
+)
+from m8flow_core.services.workflow_engine import (
+    _WORKFLOW_STATE_SERIALIZER_VERSION as _WORKFLOW_STATE_SERIALIZER_VERSION,
+)
+from m8flow_core.services.workflow_engine import (
+    _build_workflow as _build_workflow,
+)
+from m8flow_core.services.workflow_engine import (
+    _coerce_xml_bytes as _coerce_xml_bytes,
+)
+from m8flow_core.services.workflow_engine import (
+    _restore_workflow as _restore_workflow,
+)
+from m8flow_core.services.workflow_engine import (
+    _RuntimeSpiffBpmnParser as _RuntimeSpiffBpmnParser,
+)
+from m8flow_core.services.workflow_engine import (
+    _service_task_execution_context as _service_task_execution_context,
+)
+from m8flow_core.services.workflow_state import (
+    _persist_workflow_recovery_state as _persist_workflow_recovery_state,
+)
+from m8flow_core.services.workflow_state import (
+    _serialize_runtime_workflow as _serialize_runtime_workflow,
+)
+from m8flow_core.services.workflow_state import (
+    _serialize_workflow_dict as _serialize_workflow_dict,
+)
+from m8flow_core.services.workflow_state import (
+    _sync_bpmn_process_from_workflow as _sync_bpmn_process_from_workflow,
+)
 
 logger = logging.getLogger(__name__)
 
-_WORKFLOW_SERIALIZER = BpmnWorkflowSerializer(
-    registry=BpmnWorkflowSerializer.configure(SPIFF_CONFIG),
-    version="5",
-)
-_WORKFLOW_STATE_SERIALIZER_VERSION = "5"
 _FORCED_DUE_TIMER_EVENT_VALUE = "1970-01-01T00:00:00+00:00"
-
-
-class _NoopDMNEngine:
-    """Minimal DMN engine that leaves task data untouched."""
-
-    def __init__(self, decision_ref: str):
-        self.decision_table = DecisionTable(decision_ref, decision_ref, "UNIQUE")
-
-    def result(self, task: object) -> dict[str, object]:
-        return {}
-
-
-class _RuntimeSpiffBpmnParser(SpiffBpmnParser):
-    """Spiff parser that can fall back to a no-op DMN engine for POC runs."""
-
-    def __init__(self, *args: Any, use_noop_dmn_engine: bool = True, **kwargs: Any):
-        super().__init__(*args, **kwargs)
-        self._use_noop_dmn_engine = use_noop_dmn_engine
-
-    def get_engine(self, decision_ref: str, node: object) -> Any:
-        if not self._use_noop_dmn_engine:
-            return super().get_engine(decision_ref, node)
-        return _NoopDMNEngine(decision_ref)
-
-
-class _RuntimeServiceTaskScriptEngine(PythonScriptEngine):
-    """Script engine that routes Spiff service tasks through the registry."""
-
-    def __init__(
-        self,
-        *,
-        tenant_id: str,
-        process_instance_id: int | None,
-        process_definition_id: int | None,
-    ) -> None:
-        super().__init__()
-        self._tenant_id = tenant_id
-        self._process_instance_id = process_instance_id
-        self._process_definition_id = process_definition_id
-
-    def evaluate(
-        self,
-        task: object,
-        expression: str,
-        external_context: Mapping[str, object] | None = None,
-    ) -> object:
-        merged_context: dict[str, object] = {}
-        workflow_data = getattr(getattr(task, "workflow", None), "data", None)
-        if isinstance(workflow_data, Mapping):
-            merged_context.update(dict(workflow_data))
-        if external_context:
-            merged_context.update(dict(external_context))
-        return super().evaluate(
-            task,
-            expression,
-            external_context=merged_context or None,
-        )
-
-    def call_service(self, task: object, **kwargs: Any) -> str:
-        operation_name = kwargs.get("operation_name")
-        operation_params = kwargs.get("operation_params")
-        if not isinstance(operation_name, str) or not operation_name.strip():
-            raise ServiceTaskExecutionError(
-                "Service task execution is missing its operator id"
-            )
-        if not isinstance(operation_params, Mapping):
-            raise ServiceTaskExecutionError(
-                f"Service task {operation_name!r} is missing its parameters"
-            )
-
-        request = ServiceTaskRequest(
-            operation_id=operation_name,
-            parameters=_service_task_parameter_values(
-                operation_name=operation_name,
-                operation_params=operation_params,
-            ),
-            context=ServiceTaskContext(
-                tenant_id=self._tenant_id,
-                process_instance_id=self._process_instance_id,
-                process_definition_id=self._process_definition_id,
-                task_guid=str(getattr(task, "id", "")) or None,
-                task_name=getattr(getattr(task, "task_spec", None), "name", None),
-                task_type=type(getattr(task, "task_spec", object())).__name__,
-                metadata={
-                    "result_variable": getattr(
-                        getattr(task, "task_spec", None),
-                        "result_variable",
-                        None,
-                    ),
-                },
-            ),
-            task_data=_service_task_task_data(task),
-            metadata={
-                "parameter_types": _service_task_parameter_types(operation_params),
-            },
-        )
-
-        try:
-            result = resolve_service_task_registry().execute(request)
-            return json.dumps(result.payload)
-        except ServiceTaskExecutionError:
-            raise
-        except Exception as exc:
-            raise ServiceTaskExecutionError(
-                "Service task "
-                f"{operation_name!r} failed for process instance "
-                f"{self._process_instance_id or 'unknown'}"
-            ) from exc
 
 
 def initialize_process_instance_workflow(
@@ -306,8 +225,8 @@ def initialize_process_instance_from_definition(
         tenant_id=tenant_id,
         bpmn_process_definition_id=bpmn_process_definition_id,
     )
-    process_model_identifier = (
-        process_definition.process_model_identifier or str(process_definition.id)
+    process_model_identifier = process_definition.process_model_identifier or str(
+        process_definition.id
     )
     require_command_authorization(
         session,
@@ -365,8 +284,8 @@ def _initialize_process_instance_from_timer_start_definition(
         tenant_id=tenant_id,
         bpmn_process_definition_id=process_definition_id,
     )
-    process_model_identifier = (
-        process_definition.process_model_identifier or str(process_definition.id)
+    process_model_identifier = process_definition.process_model_identifier or str(
+        process_definition.id
     )
     process_instance, selected_process_id = _prepare_process_instance_from_definition(
         session,
@@ -420,8 +339,9 @@ def _initialize_process_instance_from_timer_start_definition(
         timer_start_task_spec_name=timer_start_task_spec_name,
     )
     if forced_due:
-        workflow.refresh_waiting_tasks()
-        if not workflow.get_tasks(state=TaskState.READY, manual=True):
+        for tree in execution_workflows(workflow):
+            tree.refresh_timers()
+        if not runtime_tasks(workflow, state=TaskState.READY, manual=True):
             _run_workflow_with_service_task_failure_handling(
                 session,
                 tenant_id=tenant_id,
@@ -457,6 +377,11 @@ def advance_process_instance_workflow(
         return process_instance
     if process_instance.has_terminal_status():
         return process_instance
+    if (
+        process_instance.status == ProcessInstanceStatus.suspended.value
+        and "m8f_compensation" in process_instance.workflow_state_json
+    ):
+        raise InvalidStateError("Cannot advance a suspended compensation workflow")
 
     occurred_at = _resolve_timestamp(completed_at)
     workflow = _restore_workflow(
@@ -467,7 +392,7 @@ def advance_process_instance_workflow(
             process_definition_id=process_instance.bpmn_process_definition_id,
         ),
     )
-    completed_task = workflow.get_task_from_id(UUID(completed_task_guid))
+    completed_task = runtime_task(workflow, UUID(completed_task_guid))
     _apply_metadata_to_task(
         workflow,
         completed_task,
@@ -527,6 +452,20 @@ def _prepare_process_instance_from_definition(
     started_at: datetime | None,
     bpmn_process_id: str | None,
 ) -> tuple[ProcessInstanceModel, str]:
+    # Publications, receipts and signal instances share the caller's transaction.
+    if "signalEventDefinition" in (process_definition.source_bpmn_xml or ""):
+        return _prepare_process_instance_from_definition_in_session(
+            session,
+            tenant_id=tenant_id,
+            process_definition=process_definition,
+            process_model_identifier=process_model_identifier,
+            process_initiator_id=process_initiator_id,
+            submission_metadata=submission_metadata,
+            summary=summary,
+            process_version=process_version,
+            started_at=started_at,
+            bpmn_process_id=bpmn_process_id,
+        )
     autonomous_baseline = _prepare_process_instance_baseline_in_independent_session(
         session,
         tenant_id=tenant_id,
@@ -575,6 +514,8 @@ def _prepare_process_instance_baseline_in_independent_session(
     started_at: datetime | None,
     bpmn_process_id: str | None,
 ) -> tuple[int, str] | None:
+    if "compensateEventDefinition" in (process_definition.source_bpmn_xml or ""):
+        return None
     engine = _session_engine(session)
     if engine is None or process_definition.id is None:
         return None
@@ -634,9 +575,7 @@ def _prepare_process_instance_from_definition_in_session(
     bpmn_process_id: str | None,
 ) -> tuple[ProcessInstanceModel, str]:
     if process_definition.source_bpmn_xml is None:
-        raise ValidationError(
-            "Process definition does not include stored BPMN XML"
-        )
+        raise ValidationError("Process definition does not include stored BPMN XML")
 
     selected_process_id = _select_process_identifier(
         process_definition.source_bpmn_xml,
@@ -663,6 +602,9 @@ def _prepare_process_instance_from_definition_in_session(
         created_at=started_at,
         updated_at=started_at,
     )
+    # Keep the inserted ORM row attached through a caller rollback. A lazy
+    # reload after the flush can leave a second identity for a rolled-back row.
+    process_instance.bpmn_process = bpmn_process
     process_instance.bpmn_version_control_type = (
         process_definition.bpmn_version_control_type
     )
@@ -754,9 +696,7 @@ def _seed_runtime_definitions(
     occurred_at: datetime,
 ) -> None:
     if process_instance.bpmn_process_definition_id is None:
-        raise ValidationError(
-            "Process instance is missing a BPMN process definition"
-        )
+        raise ValidationError("Process instance is missing a BPMN process definition")
 
     _sync_process_definition_from_workflow(
         session,
@@ -798,16 +738,23 @@ def retry_errored_service_task_workflow_if_needed(
     )
     _apply_metadata_to_workflow(workflow, metadata)
 
-    errored_service_task_ids = [
-        task.id for task in _errored_service_tasks(workflow)
-    ]
-    if not errored_service_task_ids:
+    compensation_retry = coordinator(workflow) and coordinator(workflow).retry(metadata)
+    errored_service_task_ids = [task.id for task in _errored_service_tasks(workflow)]
+    if not errored_service_task_ids and not compensation_retry:
         return process_instance
 
     retry_task_data = dict(workflow.data)
     retry_task_data.update(metadata)
-    for task_id in errored_service_task_ids:
-        workflow.reset_from_task_id(task_id, data=retry_task_data)
+    if coordinator(workflow):
+        # Preserve compensation throw occurrences and detached handler trees.
+        # A branch reset can otherwise remove a throw that still owns undo work.
+        for task_id in errored_service_task_ids:
+            task = runtime_task(workflow, task_id)
+            task.data.update(metadata)
+            task._set_state(TaskState.READY)
+    elif not compensation_retry:
+        for task_id in errored_service_task_ids:
+            workflow.reset_from_task_id(task_id, data=retry_task_data)
 
     _run_workflow_with_service_task_failure_handling(
         session,
@@ -881,7 +828,7 @@ def sync_open_work_item_potential_owners(
     )
     ready_tasks = {
         str(task.id): task
-        for task in workflow.get_tasks(state=TaskState.READY, manual=True)
+        for task in runtime_tasks(workflow, state=TaskState.READY, manual=True)
     }
     definition = process_instance.bpmn_process_definition
     for work_item in open_work_items:
@@ -927,7 +874,18 @@ def _refresh_waiting_process_instance_workflow(
             process_definition_id=process_instance.bpmn_process_definition_id,
         ),
     )
-    workflow.refresh_waiting_tasks()
+    if coordinator(workflow):
+        for task in runtime_tasks(workflow, state=TaskState.WAITING):
+            if isinstance(
+                getattr(task.task_spec, "event_definition", None), TimerEventDefinition
+            ):
+                value = _waiting_timer_event_value(task)
+                if _timer_event_run_at_in_seconds(value) <= timestamp.timestamp():
+                    task.internal_data["event_value"] = _forced_due_timer_event_value(
+                        value
+                    )
+    for tree in execution_workflows(workflow):
+        tree.refresh_timers()
     _run_workflow_with_service_task_failure_handling(
         session,
         tenant_id=tenant_id,
@@ -1010,11 +968,27 @@ def _run_workflow_with_service_task_failure_handling(
     occurred_at: datetime,
     autonomous_failure_state_persistence: bool = False,
 ) -> None:
+    from m8flow_core.services.signal_registry import bind_signal_runtime
+
+    bind_signal_runtime(session, process_instance, workflow, occurred_at)
     try:
-        workflow.run_all(halt_on_manual=True)
-    except ServiceTaskExecutionError:
-        if autonomous_failure_state_persistence and (
-            _persist_service_task_failure_state_in_independent_session(
+        if comp := coordinator(workflow):
+            comp.run()
+        else:
+            workflow.run_all(halt_on_manual=True)
+    except (ServiceTaskExecutionError, CompensationExecutionError):
+        if (
+            autonomous_failure_state_persistence
+            and not coordinator(workflow)
+            and not any(
+                isinstance(
+                    getattr(task_spec, "event_definition", None),
+                    RuntimeSignalDefinition,
+                )
+                for spec in [workflow.spec, *workflow.subprocess_specs.values()]
+                for task_spec in spec.task_specs.values()
+            )
+            and _persist_service_task_failure_state_in_independent_session(
                 session,
                 tenant_id=tenant_id,
                 process_instance_id=process_instance.id,
@@ -1146,7 +1120,7 @@ def _transition_process_instance_to_error_for_service_task_failure(
         tenant_id=tenant_id,
         process_instance_id=process_instance.id,
         user_id=None,
-            errored_at=occurred_at,
+        errored_at=occurred_at,
     )
     session.flush()
 
@@ -1154,7 +1128,7 @@ def _transition_process_instance_to_error_for_service_task_failure(
 def _errored_service_tasks(workflow: BpmnWorkflow) -> list[object]:
     return [
         task
-        for task in workflow.get_tasks(state=TaskState.ERROR)
+        for task in runtime_tasks(workflow, state=TaskState.ERROR)
         if type(getattr(task, "task_spec", object())).__name__ == "ServiceTask"
     ]
 
@@ -1227,9 +1201,7 @@ def _ensure_bpmn_version_snapshot(
         if isinstance(bpmn_xml_text, bytes)
         else bpmn_xml_text
     )
-    bpmn_xml_hash = hashlib.sha256(
-        normalized_bpmn_xml.encode("utf-8")
-    ).hexdigest()
+    bpmn_xml_hash = hashlib.sha256(normalized_bpmn_xml.encode("utf-8")).hexdigest()
     snapshot = session.scalar(
         select(ProcessModelBpmnVersionModel).where(
             ProcessModelBpmnVersionModel.m8f_tenant_id == tenant_id,
@@ -1276,185 +1248,6 @@ def _select_process_identifier(
     return bpmn_process_id
 
 
-def _build_workflow(
-    *,
-    bpmn_xml: str | bytes,
-    dmn_xml: str | bytes | None,
-    bpmn_process_id: str | None,
-    service_task_context: ServiceTaskContext | None = None,
-    call_activity_resolver: CallActivityResolver | None = None,
-    call_activity_context: CallActivityContext | None = None,
-) -> BpmnWorkflow:
-    parser = _RuntimeSpiffBpmnParser(
-        validator=None,
-        use_noop_dmn_engine=dmn_xml is None,
-    )
-    parser.add_bpmn_str(
-        _coerce_xml_bytes(bpmn_xml),
-        filename="runtime-workflow.bpmn",
-    )
-    _load_called_process_definitions(
-        parser,
-        root_process_id=bpmn_process_id,
-        resolver=call_activity_resolver,
-        context=call_activity_context,
-    )
-    if dmn_xml is not None:
-        parser.add_dmn_str(
-            _coerce_xml_bytes(dmn_xml),
-            filename="runtime-workflow.dmn",
-        )
-    process_ids = parser.get_process_ids()
-    if bpmn_process_id is None:
-        if len(process_ids) != 1:
-            raise ValidationError(
-                "A BPMN process id must be supplied when the file contains "
-                "multiple executable processes"
-            )
-        selected_process_id = process_ids[0]
-    else:
-        selected_process_id = bpmn_process_id
-
-    spec = parser.get_spec(selected_process_id)
-    subprocess_specs = parser.get_subprocess_specs(selected_process_id)
-    return BpmnWorkflow(
-        spec,
-        subprocess_specs,
-        script_engine=_service_task_script_engine(service_task_context),
-    )
-
-
-def _load_called_process_definitions(
-    parser: _RuntimeSpiffBpmnParser,
-    *,
-    root_process_id: str | None,
-    resolver: CallActivityResolver | None,
-    context: CallActivityContext | None,
-) -> None:
-    """Resolve recursive external call references into Spiff's parser."""
-    root_ids = parser.get_process_ids()
-    if root_process_id is None:
-        if len(root_ids) != 1:
-            raise ValidationError(
-                "A BPMN process id must be supplied when the file contains "
-                "multiple executable processes"
-            )
-        root_process_id = root_ids[0]
-    pending = [root_process_id]
-    inspected: set[str] = set()
-    while pending:
-        process_id = pending.pop()
-        if process_id in inspected:
-            continue
-        inspected.add(process_id)
-        process_parser = parser.get_process_parser(process_id)
-        if process_parser is None:
-            raise CallActivityResolutionError(
-                f"Called process {process_id!r} was not found in the resolved BPMN"
-            )
-        for called_element in process_parser.called_element_ids():
-            if not isinstance(called_element, str) or not called_element.strip():
-                raise CallActivityResolutionError(
-                    f"Call activity in process {process_id!r} has no calledElement"
-                )
-            if parser.get_process_parser(called_element) is None:
-                if resolver is None:
-                    raise CallActivityResolutionError(
-                        f"Call activity references {called_element!r}, but no "
-                        "call_activity_resolver was supplied"
-                    )
-                if context is None:
-                    raise ValidationError(
-                        "Call-activity resolver requires tenant and parent context"
-                    )
-                resolution_context = CallActivityContext(
-                    tenant_id=context.tenant_id,
-                    called_element=called_element,
-                    parent_process_instance_id=context.parent_process_instance_id,
-                    parent_process_definition_id=context.parent_process_definition_id,
-                )
-                try:
-                    result = resolver(resolution_context)
-                except CallActivityResolutionError:
-                    raise
-                except Exception as exc:
-                    raise CallActivityResolutionError(
-                        f"Resolver failed for calledElement {called_element!r} "
-                        f"in tenant {context.tenant_id!r}: {exc}"
-                    ) from exc
-                if result is None:
-                    raise CallActivityResolutionError(
-                        f"No child process definition for calledElement "
-                        f"{called_element!r} in tenant {context.tenant_id!r}"
-                    )
-                if isinstance(result, CallActivityDefinition):
-                    definitions = [result]
-                elif isinstance(result, Sequence) and not isinstance(
-                    result, (str, bytes, bytearray)
-                ):
-                    definitions = list(result)
-                else:
-                    raise CallActivityResolutionError(
-                        f"Resolver returned an invalid result for calledElement "
-                        f"{called_element!r}; return one definition or a sequence"
-                    )
-                if not definitions:
-                    raise CallActivityResolutionError(
-                        f"No child process definition for calledElement "
-                        f"{called_element!r} in tenant {context.tenant_id!r}"
-                    )
-                if len(definitions) != 1:
-                    raise CallActivityResolutionError(
-                        f"Ambiguous child process definition for calledElement "
-                        f"{called_element!r} in tenant {context.tenant_id!r}: "
-                        f"resolver returned {len(definitions)} definitions"
-                    )
-                definition = definitions[0]
-                if not isinstance(definition, CallActivityDefinition):
-                    raise CallActivityResolutionError(
-                        f"Resolver returned an invalid definition for "
-                        f"calledElement {called_element!r}"
-                    )
-                if definition.process_id != called_element:
-                    raise CallActivityResolutionError(
-                        f"Resolved process id {definition.process_id!r} does not "
-                        f"match calledElement {called_element!r}"
-                    )
-                try:
-                    parser.add_bpmn_str(
-                        _coerce_xml_bytes(definition.bpmn_xml),
-                        filename=f"called-process-{called_element}.bpmn",
-                    )
-                    if definition.process_id not in parser.get_process_ids():
-                        raise CallActivityResolutionError(
-                            f"Resolved BPMN does not contain executable process "
-                            f"{definition.process_id!r}"
-                        )
-                    if definition.dmn_xml is not None:
-                        parser.add_dmn_str(
-                            _coerce_xml_bytes(definition.dmn_xml),
-                            filename=f"called-process-{called_element}.dmn",
-                        )
-                except CallActivityResolutionError:
-                    raise
-                except Exception as exc:
-                    raise CallActivityResolutionError(
-                        f"Resolved definition for calledElement "
-                        f"{called_element!r} is invalid: {exc}"
-                    ) from exc
-            pending.append(called_element)
-
-
-def _restore_workflow(
-    serialized_state: str,
-    *,
-    service_task_context: ServiceTaskContext | None = None,
-) -> BpmnWorkflow:
-    workflow = _WORKFLOW_SERIALIZER.deserialize_json(serialized_state)
-    workflow.script_engine = _service_task_script_engine(service_task_context)
-    return workflow
-
-
 def _persist_workflow_state(
     session: Session,
     process_instance: ProcessInstanceModel,
@@ -1462,9 +1255,14 @@ def _persist_workflow_state(
     *,
     occurred_at: datetime,
 ) -> None:
-    serialized_state = _WORKFLOW_SERIALIZER.serialize_json(workflow)
+    from m8flow_core.services.signal_registry import sync_instance_signals
+
+    sync_instance_signals(session, process_instance, workflow, occurred_at)
+    serialized_state = _serialize_runtime_workflow(workflow)
     process_instance.workflow_engine_version = _WORKFLOW_STATE_SERIALIZER_VERSION
     serialized_workflow = _serialize_workflow_dict(workflow)
+    if comp := coordinator(workflow):
+        persist_compensation(session, process_instance, comp, occurred_at)
     _sync_process_definition_from_workflow(
         session,
         process_instance=process_instance,
@@ -1491,29 +1289,28 @@ def _persist_workflow_state(
     )
 
 
-def _persist_workflow_recovery_state(
-    session: Session,
-    process_instance: ProcessInstanceModel,
-    workflow: BpmnWorkflow,
+def _cancel_compensation(
+    session: Session, process_instance: ProcessInstanceModel, occurred_at: datetime
 ) -> None:
-    serialized_state = _WORKFLOW_SERIALIZER.serialize_json(workflow)
-    process_instance.workflow_engine_version = _WORKFLOW_STATE_SERIALIZER_VERSION
-    serialized_workflow = _serialize_workflow_dict(workflow)
-    _sync_bpmn_process_from_workflow(
-        session,
-        process_instance=process_instance,
-        serialized_workflow=serialized_workflow,
-        serialized_state=serialized_state,
+    state = process_instance.workflow_state_json
+    if state is None or "m8f_compensation" not in json.loads(state):
+        return
+    workflow = _restore_workflow(state)
+    comp = coordinator(workflow)
+    if comp is None:
+        raise InvalidStateError("Compensation snapshot is missing its journal")
+    for tree in execution_workflows(workflow):
+        if not tree.completed:
+            tree.cancel()
+    for run in comp.state["runs"].values():
+        if run["status"] in {"running", "failed"}:
+            run["status"] = "cancelled"
+    for record in comp.state["records"].values():
+        if record["status"] not in {"completed", "cancelled"}:
+            record["status"] = "cancelled"
+    _persist_workflow_state(
+        session, process_instance, workflow, occurred_at=occurred_at
     )
-
-
-def _serialize_workflow_dict(workflow: BpmnWorkflow) -> dict[str, Any]:
-    serialized_workflow = _WORKFLOW_SERIALIZER.to_dict(workflow)
-    if not isinstance(serialized_workflow, dict):
-        raise ValidationError("Workflow serializer did not produce a dictionary")
-    if serialized_workflow.get("serializer_version") is None:
-        serialized_workflow["serializer_version"] = _WORKFLOW_STATE_SERIALIZER_VERSION
-    return serialized_workflow
 
 
 def _sync_process_definition_from_workflow(
@@ -1603,46 +1400,6 @@ def _sync_serialized_task_specs(
             )
 
 
-def _sync_bpmn_process_from_workflow(
-    session: Session,
-    *,
-    process_instance: ProcessInstanceModel,
-    serialized_workflow: Mapping[str, Any],
-    serialized_state: str,
-) -> None:
-    bpmn_process = process_instance.bpmn_process
-    if bpmn_process is None:
-        return
-
-    process_payload = {
-        key: value
-        for key, value in serialized_workflow.items()
-        if key
-        not in {
-            "serializer_version",
-            "spec",
-            "subprocess_specs",
-            "subprocesses",
-            "tasks",
-            "data",
-        }
-    }
-    bpmn_process.properties_json = process_payload
-
-    serialized_data = serialized_workflow.get("data")
-    persisted_workflow_data = (
-        dict(serialized_data)
-        if isinstance(serialized_data, Mapping)
-        else {}
-    )
-    persisted_workflow_data[WORKFLOW_STATE_JSON_DATA_KEY] = serialized_state
-    bpmn_process.json_data_hash = JsonDataModel.create_or_update_from_payload(
-        session,
-        process_instance.m8f_tenant_id,
-        persisted_workflow_data,
-    )
-
-
 def _sync_task_models_from_workflow(
     session: Session,
     *,
@@ -1651,9 +1408,7 @@ def _sync_task_models_from_workflow(
     occurred_at: datetime,
 ) -> None:
     if process_instance.bpmn_process_definition_id is None:
-        raise ValidationError(
-            "Process instance is missing a BPMN process definition"
-        )
+        raise ValidationError("Process instance is missing a BPMN process definition")
 
     task_definitions = {
         task_definition.bpmn_identifier: task_definition
@@ -1760,7 +1515,10 @@ def _upsert_task_definition(
 
 
 def _task_definition_identifier_prefix(workflow: object | None) -> str | None:
-    if workflow is None or getattr(workflow, "parent_workflow", None) is None:
+    if (
+        getattr(workflow, "parent_workflow", None) is None
+        and getattr(workflow, "_m8f_compensation_context", None) is None
+    ):
         return None
     spec = getattr(workflow, "spec", None)
     spec_name = getattr(spec, "name", None)
@@ -1911,7 +1669,7 @@ def _current_ready_manual_tasks(
     workflow: BpmnWorkflow,
 ) -> list[object]:
     ready_tasks: list[object] = []
-    for task in workflow.get_tasks(state=TaskState.READY, manual=True):
+    for task in runtime_tasks(workflow, state=TaskState.READY, manual=True):
         task_model = session.get(TaskModel, str(task.id))
         if task_model is None:
             continue
@@ -1993,9 +1751,7 @@ def _materialize_single_manual_task(
     if process_instance.bpmn_process is None:
         raise ValidationError("Process instance is missing a BPMN process")
     if process_instance.bpmn_process_definition_id is None:
-        raise ValidationError(
-            "Process instance is missing a BPMN process definition"
-        )
+        raise ValidationError("Process instance is missing a BPMN process definition")
     if process_instance.process_initiator_id is None:
         raise ValidationError("Process instance is missing a process initiator")
 
@@ -2086,6 +1842,8 @@ def _upsert_task_model(
     serialized_task = _WORKFLOW_SERIALIZER.to_dict(task)
     if not isinstance(serialized_task, Mapping):
         raise ValidationError("Task serializer did not produce a dictionary")
+    if comp := coordinator(task.workflow.top_workflow):
+        serialized_task = comp.encode_payload(dict(serialized_task))
     return _upsert_task_model_from_payload(
         session,
         process_instance=process_instance,
@@ -2166,13 +1924,9 @@ def _upsert_task_model_from_payload(
         task_model.python_env_data_hash = python_env_data_hash
         task_model.runtime_info = runtime_info
         task_model.started_at = (
-            occurred_at
-            if task_model.started_at is None
-            else task_model.started_at
+            occurred_at if task_model.started_at is None else task_model.started_at
         )
-        task_model.ended_at = (
-            occurred_at if task_is_terminal else None
-        )
+        task_model.ended_at = occurred_at if task_is_terminal else None
 
     session.flush()
     return task_model
@@ -2225,7 +1979,7 @@ def _update_process_instance_status_from_workflow(
     *,
     occurred_at: datetime,
 ) -> None:
-    if workflow.completed:
+    if runtime_completed(workflow):
         process_instance.status = ProcessInstanceStatus.complete.value
         process_instance.ended_at = occurred_at
         process_instance.updated_at = occurred_at
@@ -2236,9 +1990,9 @@ def _update_process_instance_status_from_workflow(
         )
         return
 
-    if workflow.get_tasks(state=TaskState.READY, manual=True):
+    if runtime_tasks(workflow, state=TaskState.READY, manual=True):
         process_instance.status = ProcessInstanceStatus.user_input_required.value
-    elif workflow.get_tasks(state=TaskState.WAITING):
+    elif runtime_tasks(workflow, state=TaskState.WAITING):
         process_instance.status = ProcessInstanceStatus.waiting.value
     else:
         process_instance.status = ProcessInstanceStatus.running.value
@@ -2415,7 +2169,7 @@ def _collect_waiting_timer_payloads(
     start_event_type_name: str,
 ) -> list[dict[str, Any]]:
     timer_payloads: list[dict[str, Any]] = []
-    for task in workflow.get_tasks(state=TaskState.WAITING):
+    for task in runtime_tasks(workflow, state=TaskState.WAITING):
         event_definition = getattr(task.task_spec, "event_definition", None)
         if not isinstance(event_definition, TimerEventDefinition):
             continue
@@ -2423,8 +2177,7 @@ def _collect_waiting_timer_payloads(
         # event subprocess's timer start runs inside a live instance, so it is
         # scheduled like an intermediate timer.
         is_start_event = (
-            type(task.task_spec).__name__ == "StartEvent"
-            and task.workflow is workflow
+            type(task.task_spec).__name__ == "StartEvent" and task.workflow is workflow
         )
         if start_event_type_name == "exclude" and is_start_event:
             continue
@@ -2460,7 +2213,7 @@ def _force_waiting_timer_start_task_due(
     if _workflow_has_progressed_past_timer_start(workflow):
         return False
 
-    for task in workflow.get_tasks(state=TaskState.WAITING):
+    for task in runtime_tasks(workflow, state=TaskState.WAITING):
         if type(task.task_spec).__name__ != "StartEvent":
             continue
         event_definition = getattr(task.task_spec, "event_definition", None)
@@ -2486,13 +2239,13 @@ def _force_waiting_timer_start_task_due(
 def _workflow_has_progressed_past_timer_start(
     workflow: BpmnWorkflow,
 ) -> bool:
-    if workflow.completed:
+    if runtime_completed(workflow):
         return True
-    if workflow.get_tasks(state=TaskState.READY):
+    if runtime_tasks(workflow, state=TaskState.READY):
         return True
     return any(
         type(task.task_spec).__name__ != "StartEvent"
-        for task in workflow.get_tasks(state=TaskState.WAITING)
+        for task in runtime_tasks(workflow, state=TaskState.WAITING)
     )
 
 
@@ -2604,82 +2357,6 @@ def _hash_payload(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def _coerce_xml_bytes(xml: str | bytes) -> bytes:
-    if isinstance(xml, bytes):
-        return xml
-    return xml.encode("utf-8")
-
-
-def _service_task_execution_context(
-    *,
-    tenant_id: str,
-    process_instance_id: int | None,
-    process_definition_id: int | None,
-) -> ServiceTaskContext:
-    return ServiceTaskContext(
-        tenant_id=tenant_id,
-        process_instance_id=process_instance_id,
-        process_definition_id=process_definition_id,
-    )
-
-
-def _service_task_script_engine(
-    service_task_context: ServiceTaskContext | None,
-) -> PythonScriptEngine:
-    if service_task_context is None:
-        return PythonScriptEngine()
-    return _RuntimeServiceTaskScriptEngine(
-        tenant_id=service_task_context.tenant_id,
-        process_instance_id=service_task_context.process_instance_id,
-        process_definition_id=service_task_context.process_definition_id,
-    )
-
-
-def _service_task_parameter_values(
-    *,
-    operation_name: str,
-    operation_params: Mapping[str, object],
-) -> dict[str, object]:
-    values: dict[str, object] = {}
-    for name, raw_definition in operation_params.items():
-        if not isinstance(raw_definition, Mapping):
-            raise ServiceTaskExecutionError(
-                "Service task "
-                f"{operation_name!r} parameter {name!r} is not a mapping"
-            )
-        if "value" not in raw_definition:
-            raise ServiceTaskExecutionError(
-                "Service task "
-                f"{operation_name!r} parameter {name!r} is missing its value"
-            )
-        values[str(name)] = raw_definition["value"]
-    return values
-
-
-def _service_task_parameter_types(
-    operation_params: Mapping[str, object],
-) -> dict[str, object]:
-    parameter_types: dict[str, object] = {}
-    for name, raw_definition in operation_params.items():
-        if not isinstance(raw_definition, Mapping):
-            continue
-        parameter_types[str(name)] = raw_definition.get("type")
-    return parameter_types
-
-
-def _service_task_task_data(task: object) -> dict[str, object] | None:
-    merged_task_data: dict[str, object] = {}
-    workflow_data = getattr(getattr(task, "workflow", None), "data", None)
-    if isinstance(workflow_data, Mapping):
-        merged_task_data.update(dict(workflow_data))
-
-    task_data = getattr(task, "data", None)
-    if isinstance(task_data, Mapping):
-        merged_task_data.update(dict(task_data))
-
-    return merged_task_data or None
-
-
 def _load_process_instance(
     session: Session,
     *,
@@ -2697,7 +2374,26 @@ def _load_process_instance(
             "Process instance "
             f"{process_instance_id} was not found for tenant {tenant_id}"
         )
-    return process_instance
+    from m8flow_core.services.signal_registry import lock_signal_instance
+
+    if process_instance.workflow_state_json is not None:
+        payload = json.loads(process_instance.workflow_state_json)
+        if "m8f_compensation" not in payload and process_instance.bpmn_version_id:
+            version = session.scalar(
+                select(ProcessModelBpmnVersionModel).where(
+                    ProcessModelBpmnVersionModel.id == process_instance.bpmn_version_id,
+                    ProcessModelBpmnVersionModel.m8f_tenant_id == tenant_id,
+                )
+            )
+            if (
+                version
+                and "compensateEventDefinition" in version.bpmn_xml_file_contents
+            ):
+                raise InvalidStateError(
+                    "Legacy compensation state has no completion journal; start a "
+                    "new instance"
+                )
+    return lock_signal_instance(session, process_instance)
 
 
 def _resolve_timestamp(timestamp: datetime | None) -> datetime:

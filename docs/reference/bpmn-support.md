@@ -27,9 +27,15 @@ The following elements are supported:
 |---|---|
 | Start event (none) | |
 | End event (none) | |
+| Signal intermediate/end throw | Publishes successfully with zero or more listeners; local delivery is immediate |
+| Signal intermediate catch | Receives matching publications while waiting |
+| Signal boundary event | Interrupting and repeatable non-interrupting handlers |
+| Signal start event | Creates one instance per matching active start subscription and occurrence |
+| Signal event subprocess | Interrupting and repeatable non-interrupting starts, including nested scopes and human tasks |
 | Sequence flow with condition expression | Python expressions evaluated against task data |
 | User task | Becomes a human task that users claim and complete |
 | Manual task | Becomes a human task, like a user task |
+| Compensation boundary/throw/end events | Associations to task/subprocess handlers, `activityRef`, both `waitForCompletion` values, durable reverse completion order and nested default compensation. See [Run compensation handlers](../how-to/run-compensation.md). |
 | Task (untyped) | Becomes a human task, like a user task |
 | Script task | Python script run by the SpiffWorkflow script engine |
 | Business rule task | Evaluates a DMN decision table from the definition's DMN file |
@@ -41,7 +47,11 @@ The following elements are supported:
 | Timer intermediate catch event | The instance waits until the scheduler fires the timer |
 | Interrupting timer boundary event | `timeDate` or `timeDuration`, such as `PT2M`. Cancels the attached task and continues on the timeout path. |
 | Call activity | Resolves `calledElement` through the host-supplied tenant-aware resolver. The child runs in the parent snapshot and parent execution resumes on child completion. See the [resolver contract](api.md#initializeprocessinstancefromdefinitioncommand). |
+| Multi-instance activity | Sequential or parallel, once per item of the collection in `loopDataInputRef` (bound to `inputDataItem`) or `loopCardinality` times. Map results with `loopDataOutputRef` and `outputDataItem`; parallel results aren't ordered. Tested with script tasks; multi-instance user tasks aren't tested yet. |
 | Non-interrupting timer event subprocess | A `subProcess` with `triggeredByEvent="true"` and a timer start event with `isInterrupting="false"`. The scheduler fires it inside the running instance, and the main path keeps going. Needs SpiffWorkflow 3.2.0 or later. Human tasks inside it don't become work items yet. |
+
+Signals need a host-run delivery loop for recipients outside the throwing
+instance. See [Publish and deliver BPMN signals](../how-to/publish-signals.md).
 
 Timers need a scheduler loop. See
 [Run timers and scheduled retries](../how-to/run-timers-and-retries.md).
@@ -89,12 +99,11 @@ names that exist in the BPMN, and none of them may also be a key in
 
 The following elements and behaviors aren't covered:
 
-- Message events, signal events, and message correlation
-- Event subprocesses, other than non-interrupting timer ones
-- Compensation
+- Message events and message correlation
+- Event subprocesses, other than the documented timer and signal forms
 - Error and escalation boundary events
-- Non-interrupting boundary events
-- Multi-instance activities
+- Non-interrupting boundary events other than signals
+- Compound Multiple/Parallel Multiple events and event-based gateways
 - Asynchronous service tasks that complete through a callback
 
 [Limitations](limitations.md#advanced-bpmn-coverage) describes each of them.
@@ -105,3 +114,14 @@ The following elements and behaviors aren't covered:
 - [Run the examples](../how-to/run-the-examples.md): the examples cover most
   supported elements
 - [About scheduling](../explanation/scheduling.md)
+
+### Compensation boundaries
+
+Handlers marked `isForCompensation` remain outside normal sequence flow.
+Human handlers, including those nested in handler subprocesses, become normal
+work items. Completed subprocesses retain their scope data; explicit handlers
+replace default recursive compensation. Parent throws exclude active
+subprocesses. Compensation models requiring event subprocesses, loop or
+multi-instance characteristics, call activities, transactions, or BPMN error
+handling are rejected. Standard timer date/duration literals and existing
+Spiff timer expressions are accepted in compensation models.
