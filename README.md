@@ -58,6 +58,12 @@ The library covers the following:
   that your application polls.
 - **Service tasks.** Run BPMN service tasks through pluggable connectors,
   including an adapter for the m8flow connector proxy.
+- **Signals.** Publish BPMN signals that reach waiting catch events, boundary
+  events, event subprocesses, and signal start events in the same tenant,
+  with durable, idempotent delivery.
+- **Compensation.** Undo completed work in reverse order through BPMN
+  compensation handlers, with a journal that survives restarts and failed
+  handlers you can retry.
 - **Multi-tenancy and authorization.** Every call is scoped to a tenant, and
   stored data, down to workflow payloads, belongs to one tenant. User actions
   are checked against tenant membership and command grants on exact
@@ -65,9 +71,23 @@ The library covers the following:
 - **Caller-owned transactions.** Pass a SQLAlchemy `Connection` and the
   library never commits or rolls back for you.
 
+## Install
+
+m8flow-core needs Python 3.12 or later. To add it to your application,
+install it from PyPI:
+
+```bash
+pip install m8flow-core
+```
+
+With uv, run `uv add m8flow-core` instead. SQLite works out of the box. For
+another database, install its extra, such as `m8flow-core[postgresql]` or
+`m8flow-core[mysql]`. The `celery` extra adds what the Celery scheduler
+example needs.
+
 ## Quick start
 
-You need Python 3.12 and [uv](https://docs.astral.sh/uv/). To install the
+You need Python 3.12 and [uv](https://docs.astral.sh/uv/). To clone the
 project and run a complete purchase-order workflow on an in-memory SQLite
 database, run the following commands:
 
@@ -133,7 +153,10 @@ table:
 | Add the library to my application | [Embed the library in your application](docs/how-to/embed-in-your-application.md) · [Build and install the package](docs/how-to/build-and-install-the-package.md) |
 | Run timers and scheduled retries | [Run timers and scheduled retries](docs/how-to/run-timers-and-retries.md) |
 | Call an external system from a process | [Call external services from service tasks](docs/how-to/call-external-services.md) |
+| Send signals between processes | [Publish and deliver BPMN signals](docs/how-to/publish-signals.md) |
+| Undo completed work | [Run compensation handlers](docs/how-to/run-compensation.md) |
 | Add my own authorization rules | [Customize authorization](docs/how-to/customize-authorization.md) |
+| Fix an error or a stuck process | [Troubleshoot common problems](docs/how-to/troubleshoot.md) |
 | Upgrade from `m8flow-bpmn-core` 0.x | [Upgrade to 1.0](docs/how-to/upgrade-to-1.0.md) |
 | Look up a command, query, or error | [Public API reference](docs/reference/api.md) · [Database schema](docs/reference/database-schema.md) |
 | Check which BPMN elements work | [BPMN support](docs/reference/bpmn-support.md) · [Limitations](docs/reference/limitations.md) |
