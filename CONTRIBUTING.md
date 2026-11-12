@@ -72,6 +72,7 @@ your change before you open a pull request:
 | Check | Command |
 |---|---|
 | Lint | `make lint` |
+| Formatting | `make format-check` (`make format` fixes it) |
 | Type check | `make typecheck` |
 | Security lint | `make security` |
 | License headers | `make license-headers` |

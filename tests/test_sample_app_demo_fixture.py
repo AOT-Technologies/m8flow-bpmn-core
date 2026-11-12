@@ -142,13 +142,11 @@ def test_sample_app_demo_bpmn_uses_dmn_for_finance_threshold() -> None:
     )
 
     finance_condition = root.find(
-        ".//bpmn:sequenceFlow[@id='Flow_gateway_to_finance']"
-        "/bpmn:conditionExpression",
+        ".//bpmn:sequenceFlow[@id='Flow_gateway_to_finance']/bpmn:conditionExpression",
         namespaces,
     )
     review_condition = root.find(
-        ".//bpmn:sequenceFlow[@id='Flow_gateway_to_review']"
-        "/bpmn:conditionExpression",
+        ".//bpmn:sequenceFlow[@id='Flow_gateway_to_review']/bpmn:conditionExpression",
         namespaces,
     )
     assert finance_condition is not None

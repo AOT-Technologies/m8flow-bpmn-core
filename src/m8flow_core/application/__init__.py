@@ -52,8 +52,10 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
-    "PublishSignalCommand", "RunSignalDeliveriesCommand",
-    "GetSignalPublicationQuery", "ListSignalDeliveriesQuery",
+    "PublishSignalCommand",
+    "RunSignalDeliveriesCommand",
+    "GetSignalPublicationQuery",
+    "ListSignalDeliveriesQuery",
     "ClaimTaskCommand",
     "CompleteTaskCommand",
     "CreateProcessInstanceCommand",

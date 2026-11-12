@@ -1466,9 +1466,7 @@ def _iter_serialized_task_rows(
                 if identifier_prefix is not None
                 else task_spec_name
             )
-            rows.append(
-                (str(task_guid), task_definition_identifier, task_payload)
-            )
+            rows.append((str(task_guid), task_definition_identifier, task_payload))
     subprocesses = serialized_workflow.get("subprocesses")
     if isinstance(subprocesses, Mapping):
         for subprocess in subprocesses.values():

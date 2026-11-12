@@ -211,21 +211,30 @@ def test_delete_scheduler_job_is_tenant_scoped(session: Session) -> None:
         updated_at=datetime.fromtimestamp(190, UTC),
     )
 
-    assert delete_scheduler_job(
-        session,
-        tenant_id="tenant-mismatch",
-        job_key=job_key,
-    ) is False
-    assert delete_scheduler_job(
-        session,
-        tenant_id=tenant.id,
-        job_key=job_key,
-    ) is True
-    assert delete_scheduler_job(
-        session,
-        tenant_id=tenant.id,
-        job_key=job_key,
-    ) is False
+    assert (
+        delete_scheduler_job(
+            session,
+            tenant_id="tenant-mismatch",
+            job_key=job_key,
+        )
+        is False
+    )
+    assert (
+        delete_scheduler_job(
+            session,
+            tenant_id=tenant.id,
+            job_key=job_key,
+        )
+        is True
+    )
+    assert (
+        delete_scheduler_job(
+            session,
+            tenant_id=tenant.id,
+            job_key=job_key,
+        )
+        is False
+    )
 
 
 def _seed_scheduler_context(

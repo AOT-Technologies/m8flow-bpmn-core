@@ -70,12 +70,8 @@ __all__ = [
 ]
 
 _EXPORT_MODULES = {
-    "advance_process_instance_workflow": (
-        "m8flow_core.services.workflow_runtime"
-    ),
-    "initialize_process_instance_workflow": (
-        "m8flow_core.services.workflow_runtime"
-    ),
+    "advance_process_instance_workflow": ("m8flow_core.services.workflow_runtime"),
+    "initialize_process_instance_workflow": ("m8flow_core.services.workflow_runtime"),
     "resolve_lane_assignment_id": "m8flow_core.services.lane_assignment",
     "claim_task": "m8flow_core.services.tasks",
     "complete_task": "m8flow_core.services.tasks",
@@ -85,35 +81,17 @@ _EXPORT_MODULES = {
     "error_process_instance": "m8flow_core.services.process_instances",
     "get_process_instance_events": "m8flow_core.services.process_instances",
     "get_process_instance_metadata": "m8flow_core.services.process_instances",
-    "list_error_process_instances": (
-        "m8flow_core.services.process_instances"
-    ),
-    "list_suspended_process_instances": (
-        "m8flow_core.services.process_instances"
-    ),
-    "list_terminated_process_instances": (
-        "m8flow_core.services.process_instances"
-    ),
-    "record_process_instance_event": (
-        "m8flow_core.services.process_instances"
-    ),
-    "schedule_process_instance_retry": (
-        "m8flow_core.services.process_instances"
-    ),
-    "resume_process_instance": (
-        "m8flow_core.services.process_instance_reactivation"
-    ),
-    "retry_process_instance": (
-        "m8flow_core.services.process_instance_reactivation"
-    ),
+    "list_error_process_instances": ("m8flow_core.services.process_instances"),
+    "list_suspended_process_instances": ("m8flow_core.services.process_instances"),
+    "list_terminated_process_instances": ("m8flow_core.services.process_instances"),
+    "record_process_instance_event": ("m8flow_core.services.process_instances"),
+    "schedule_process_instance_retry": ("m8flow_core.services.process_instances"),
+    "resume_process_instance": ("m8flow_core.services.process_instance_reactivation"),
+    "retry_process_instance": ("m8flow_core.services.process_instance_reactivation"),
     "run_due_scheduler_jobs": "m8flow_core.services.scheduler_runtime",
     "suspend_process_instance": "m8flow_core.services.process_instances",
-    "terminate_process_instance": (
-        "m8flow_core.services.process_instance_termination"
-    ),
-    "upsert_process_instance_metadata": (
-        "m8flow_core.services.process_instances"
-    ),
+    "terminate_process_instance": ("m8flow_core.services.process_instance_termination"),
+    "upsert_process_instance_metadata": ("m8flow_core.services.process_instances"),
 }
 
 

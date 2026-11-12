@@ -58,6 +58,7 @@ Exact values to look up:
 
 - [Public API reference](reference/api.md)
 - [Database schema](reference/database-schema.md)
+- [Versioning policy](reference/versioning.md)
 - [BPMN support](reference/bpmn-support.md)
 - [Configuration](reference/configuration.md)
 - [Repository layout](reference/repository-layout.md)

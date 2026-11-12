@@ -9,7 +9,10 @@ SPDX-License-Identifier: Apache-2.0
 All notable changes to m8flow-core are recorded in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Each release
 lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
-**Fixed**, and **Security**.
+**Fixed**, and **Security**. Versions follow
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html); the
+[versioning policy](docs/reference/versioning.md) defines the public contract
+and what each version part means.
 
 ## [Unreleased]
 
@@ -24,6 +27,12 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 - The source distribution includes `LICENSES/`, `NOTICE.license`, and
   `REUSE.toml`, and the wheel ships `LICENSES/Apache-2.0.txt` with `LICENSE`
   and `NOTICE`.
+- A [versioning policy](docs/reference/versioning.md) that defines the
+  public contract, when each part of the version changes, how deprecations
+  work, and which Python versions are supported.
+- `make format` and `make format-check` run the Ruff formatter. CI and
+  pre-commit now fail on unformatted Python, including Python code blocks in
+  Markdown.
 
 ### Changed
 

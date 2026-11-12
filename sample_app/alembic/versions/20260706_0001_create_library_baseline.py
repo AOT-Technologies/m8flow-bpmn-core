@@ -5,6 +5,7 @@ from __future__ import annotations
 from alembic import op
 
 from m8flow_core.models import Base as BpmnCoreBase
+
 revision = "20260706_0001"
 down_revision = None
 branch_labels = None

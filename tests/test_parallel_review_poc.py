@@ -48,9 +48,7 @@ from m8flow_core.services.authorization import (
     ensure_v1_role,
 )
 
-EXAMPLE_BPMN_PATH = (
-    Path(__file__).with_name("fixtures") / "parallel_review_poc.bpmn"
-)
+EXAMPLE_BPMN_PATH = Path(__file__).with_name("fixtures") / "parallel_review_poc.bpmn"
 PROCESS_ID = "Process_parallel_review_poc"
 LANE_OWNERS = {
     "Finance": ["finance_user"],

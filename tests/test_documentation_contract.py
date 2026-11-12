@@ -40,6 +40,4 @@ def test_public_documentation_uses_datetime_timestamp_contract() -> None:
         if name in path.read_text(encoding="utf-8")
     ]
 
-    assert not violations, "Removed timestamp API names found: " + "; ".join(
-        violations
-    )
+    assert not violations, "Removed timestamp API names found: " + "; ".join(violations)

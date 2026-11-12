@@ -22,8 +22,7 @@ DEFAULT_POLL_SECONDS = 1.0
 DEFAULT_LOGICAL_WORKER_ID_PREFIX = "m8flow-core-celery"
 POLL_TASK_NAME = "m8flow_core.poc.poll_due_scheduler_jobs"
 DEFAULT_SHARED_DATABASE_URL = (
-    "postgresql+psycopg://postgres:postgres@localhost:6843/postgres"
-    "?connect_timeout=1"
+    "postgresql+psycopg://postgres:postgres@localhost:6843/postgres?connect_timeout=1"
 )
 
 
@@ -53,34 +52,36 @@ def _resolve_poll_seconds() -> float:
     try:
         poll_seconds = float(raw_value)
     except ValueError as exc:
-        raise RuntimeError(
-            "M8FLOW_CORE_CELERY_POLL_SECONDS must be a number"
-        ) from exc
+        raise RuntimeError("M8FLOW_CORE_CELERY_POLL_SECONDS must be a number") from exc
     if poll_seconds <= 0:
-        raise RuntimeError(
-            "M8FLOW_CORE_CELERY_POLL_SECONDS must be greater than zero"
-        )
+        raise RuntimeError("M8FLOW_CORE_CELERY_POLL_SECONDS must be greater than zero")
     return poll_seconds
 
 
 def resolve_config() -> CelerySchedulerPocConfig:
-    broker_url = _env_first(
-        "M8FLOW_CORE_CELERY_BROKER_URL",
-        "M8FLOW_BACKEND_CELERY_BROKER_URL",
-    ) or DEFAULT_BROKER_URL
-    result_backend = _env_first(
-        "M8FLOW_CORE_CELERY_RESULT_BACKEND",
-        "M8FLOW_BACKEND_CELERY_RESULT_BACKEND",
-    ) or broker_url
-    database_url = _env_first(
-        "M8FLOW_CORE_CELERY_DATABASE_URL",
-        "M8FLOW_EXAMPLE_DATABASE_URL",
-        "M8FLOW_DATABASE_URL",
-    ) or DEFAULT_SHARED_DATABASE_URL
-    queue_name = (
-        os.getenv("M8FLOW_CORE_CELERY_QUEUE", "").strip()
-        or DEFAULT_QUEUE_NAME
+    broker_url = (
+        _env_first(
+            "M8FLOW_CORE_CELERY_BROKER_URL",
+            "M8FLOW_BACKEND_CELERY_BROKER_URL",
+        )
+        or DEFAULT_BROKER_URL
     )
+    result_backend = (
+        _env_first(
+            "M8FLOW_CORE_CELERY_RESULT_BACKEND",
+            "M8FLOW_BACKEND_CELERY_RESULT_BACKEND",
+        )
+        or broker_url
+    )
+    database_url = (
+        _env_first(
+            "M8FLOW_CORE_CELERY_DATABASE_URL",
+            "M8FLOW_EXAMPLE_DATABASE_URL",
+            "M8FLOW_DATABASE_URL",
+        )
+        or DEFAULT_SHARED_DATABASE_URL
+    )
+    queue_name = os.getenv("M8FLOW_CORE_CELERY_QUEUE", "").strip() or DEFAULT_QUEUE_NAME
     tenant_id = os.getenv("M8FLOW_CORE_CELERY_TENANT_ID", "").strip() or None
     worker_id_prefix = (
         os.getenv("M8FLOW_CORE_CELERY_WORKER_ID", "").strip()
@@ -165,10 +166,7 @@ def main() -> None:
     print(pformat(asdict(CONFIG), sort_dicts=False, width=100))
     print()
     print("Recommended beat command:")
-    print(
-        "celery -A examples.celery_scheduler:celery_app beat "
-        "--loglevel info"
-    )
+    print("celery -A examples.celery_scheduler:celery_app beat --loglevel info")
     print()
     print("Recommended worker command:")
     print(

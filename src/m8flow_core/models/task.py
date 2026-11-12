@@ -72,9 +72,7 @@ class TaskModel(M8fTenantScopedMixin, TenantScoped, Base):
             return M8F_TERMINATED_TASK_STATE
         try:
             state_value = (
-                value
-                if isinstance(value, int)
-                else TaskState.get_value(value)
+                value if isinstance(value, int) else TaskState.get_value(value)
             )
             if state_value not in TaskState._values:
                 raise ValueError(f"Unknown TaskState value: {state_value}")

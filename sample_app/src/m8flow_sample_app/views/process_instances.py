@@ -84,7 +84,9 @@ def register_process_instance_routes(app: Flask) -> None:
                                 )
                             )
                 else:
-                    flash("Select a valid definition before starting a workflow.", "error")
+                    flash(
+                        "Select a valid definition before starting a workflow.", "error"
+                    )
 
             selected_definition_id = request.args.get("definition_id", "").strip()
             if selected_definition_id and selected_definition_id.isdigit():
@@ -104,7 +106,7 @@ def register_process_instance_routes(app: Flask) -> None:
                     )
             if definitions:
                 definition_options = "".join(
-                    f"<option value=\"{definition.id}\""
+                    f'<option value="{definition.id}"'
                     + (
                         " selected"
                         if selected_definition_id == str(definition.id)
@@ -123,15 +125,13 @@ def register_process_instance_routes(app: Flask) -> None:
     id="summary"
     name="summary"
     type="text"
-    value="{escape(f'Started by {identity.user.username} from the sample app')}"
+    value="{escape(f"Started by {identity.user.username} from the sample app")}"
   /><br /><br />
   <button type="submit">Start workflow</button>
 </form>
 """
             else:
-                form_html = (
-                    "<p>No stored definitions are available yet. Deploy the demo workflow first.</p>"
-                )
+                form_html = "<p>No stored definitions are available yet. Deploy the demo workflow first.</p>"
 
             body = f"""
 <p>This screen starts a workflow through
@@ -226,8 +226,8 @@ def register_process_instance_routes(app: Flask) -> None:
 <tr>
   <td>{event.id}</td>
   <td>{escape(event.event_type)}</td>
-  <td>{escape(event.task_guid or '')}</td>
-  <td>{escape((event.user.display_name or event.user.username) if event.user else '')}</td>
+  <td>{escape(event.task_guid or "")}</td>
+  <td>{escape((event.user.display_name or event.user.username) if event.user else "")}</td>
   <td>{format_timestamp(event.occurred_at)}</td>
 </tr>
 """
@@ -258,15 +258,18 @@ def register_process_instance_routes(app: Flask) -> None:
   <td>{human_task.id}</td>
   <td>{escape(human_task.task_title or human_task.task_name)}</td>
   <td>{escape(human_task.task_status)}</td>
-  <td>{escape(human_task.lane_name or '')}</td>
-  <td>{human_task.actual_owner_id or ''}</td>
+  <td>{escape(human_task.lane_name or "")}</td>
+  <td>{human_task.actual_owner_id or ""}</td>
   <td>{
-      (
-          f'<a href="{escape(url_for("task_detail", work_item_id=human_task.id))}">Open task</a>'
-          if any(owner.id == identity.user.id for owner in human_task.potential_owners)
-          else "Not assigned to active user"
-      )
-  }</td>
+                    (
+                        f'<a href="{escape(url_for("task_detail", work_item_id=human_task.id))}">Open task</a>'
+                        if any(
+                            owner.id == identity.user.id
+                            for owner in human_task.potential_owners
+                        )
+                        else "Not assigned to active user"
+                    )
+                }</td>
 </tr>
 """
                 for human_task in detail.work_items
@@ -293,7 +296,7 @@ def register_process_instance_routes(app: Flask) -> None:
 
             body = f"""
 <p><strong>Status:</strong> {escape(detail.process_instance.status)}</p>
-<p><strong>Summary:</strong> {escape(detail.process_instance.summary or '')}</p>
+<p><strong>Summary:</strong> {escape(detail.process_instance.summary or "")}</p>
 <p><strong>Process model identifier:</strong> {escape(detail.process_instance.process_model_identifier)}</p>
 <p><strong>Started by:</strong> {escape(detail.process_instance.process_initiator.username)}</p>
 <p><strong>Started:</strong> {format_timestamp(detail.process_instance.started_at)}</p>

@@ -51,15 +51,15 @@ def register_process_definition_routes(app: Flask) -> None:
   <td>{definition.id}</td>
   <td>{escape(definition.process_model_identifier)}</td>
   <td>{escape(definition.bpmn_identifier)}</td>
-  <td>{escape(definition.bpmn_name or '')}</td>
+  <td>{escape(definition.bpmn_name or "")}</td>
   <td>{format_timestamp(definition.updated_at)}</td>
   <td>{
-      (
-          f'<a href="{escape(url_for("start_workflow", definition_id=definition.id))}">Start from this definition</a>'
-          if definition.id in startable_definition_ids
-          else "History only"
-      )
-  }</td>
+                    (
+                        f'<a href="{escape(url_for("start_workflow", definition_id=definition.id))}">Start from this definition</a>'
+                        if definition.id in startable_definition_ids
+                        else "History only"
+                    )
+                }</td>
 </tr>
 """
                 for definition in definitions
@@ -163,9 +163,7 @@ latest definition for each process model can be started from the sample app.</p>
             bpmn_name = (
                 request.form.get("bpmn_name", "").strip() or DEFAULT_DEMO_BPMN_NAME
             )
-            audit_context = current_app.extensions.get(
-                SHARED_M8FLOW_AUDIT_CONTEXT_KEY
-            )
+            audit_context = current_app.extensions.get(SHARED_M8FLOW_AUDIT_CONTEXT_KEY)
 
             try:
                 deployment = deploy_demo_definition(
@@ -199,9 +197,9 @@ latest definition for each process model can be started from the sample app.</p>
             if identity is None:
                 return redirect(url_for("select_identity"))
 
-            process_model_identifier = (
-                request.form.get("process_model_identifier", "").strip()
-            )
+            process_model_identifier = request.form.get(
+                "process_model_identifier", ""
+            ).strip()
             bpmn_name = request.form.get("bpmn_name", "").strip() or None
             uploaded_file = request.files.get("bpmn_file")
             if uploaded_file is None or not (uploaded_file.filename or "").strip():
@@ -214,9 +212,7 @@ latest definition for each process model can be started from the sample app.</p>
                 flash("The uploaded BPMN file must be UTF-8 encoded text.", "error")
                 return redirect(url_for("process_definitions_page"))
 
-            audit_context = current_app.extensions.get(
-                SHARED_M8FLOW_AUDIT_CONTEXT_KEY
-            )
+            audit_context = current_app.extensions.get(SHARED_M8FLOW_AUDIT_CONTEXT_KEY)
             try:
                 deployment = deploy_definition_from_uploaded_bpmn(
                     db_session,
@@ -251,15 +247,15 @@ latest definition for each process model can be started from the sample app.</p>
             if identity is None:
                 return redirect(url_for("select_identity"))
 
-            process_model_identifier = (
-                request.form.get("process_model_identifier", "").strip()
-            )
+            process_model_identifier = request.form.get(
+                "process_model_identifier", ""
+            ).strip()
             bpmn_name = request.form.get("bpmn_name", "").strip() or None
-            audit_context = current_app.extensions.get(
-                SHARED_M8FLOW_AUDIT_CONTEXT_KEY
-            )
+            audit_context = current_app.extensions.get(SHARED_M8FLOW_AUDIT_CONTEXT_KEY)
             if not isinstance(audit_context, SharedM8flowAuditContext):
-                flash("The local m8flow catalog is not available in this mode.", "error")
+                flash(
+                    "The local m8flow catalog is not available in this mode.", "error"
+                )
                 return redirect(url_for("process_definitions_page"))
 
             try:
@@ -297,9 +293,7 @@ latest definition for each process model can be started from the sample app.</p>
                 request.form.get("bpmn_name", "").strip()
                 or DEFAULT_TIMEOUT_ESCALATION_BPMN_NAME
             )
-            audit_context = current_app.extensions.get(
-                SHARED_M8FLOW_AUDIT_CONTEXT_KEY
-            )
+            audit_context = current_app.extensions.get(SHARED_M8FLOW_AUDIT_CONTEXT_KEY)
 
             try:
                 deployment = deploy_timeout_escalation_definition(

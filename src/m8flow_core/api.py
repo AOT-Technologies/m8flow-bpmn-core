@@ -162,44 +162,68 @@ from m8flow_core.services.workflow_runtime import (
 
 
 def publish_signal(
-    session_or_connection: Session | Connection, *, tenant_id: str,
-    signal_name: str, user_id: int, occurrence_id: str, payload: Any = None,
+    session_or_connection: Session | Connection,
+    *,
+    tenant_id: str,
+    signal_name: str,
+    user_id: int,
+    occurrence_id: str,
+    payload: Any = None,
     published_at: datetime | None = None,
 ) -> SignalPublicationModel:
     with _session_scope(session_or_connection) as session:
         return _publish_signal(
-            session, tenant_id=tenant_id, signal_name=signal_name, user_id=user_id,
-            occurrence_id=occurrence_id, payload=payload, published_at=published_at,
+            session,
+            tenant_id=tenant_id,
+            signal_name=signal_name,
+            user_id=user_id,
+            occurrence_id=occurrence_id,
+            payload=payload,
+            published_at=published_at,
         )
 
 
 def run_signal_deliveries(
-    session_or_connection: Session | Connection, *, tenant_id: str,
-    limit: int = 100, now: datetime | None = None,
+    session_or_connection: Session | Connection,
+    *,
+    tenant_id: str,
+    limit: int = 100,
+    now: datetime | None = None,
 ) -> list[SignalDeliveryModel]:
     with _session_scope(session_or_connection) as session:
         return _run_signal_deliveries(
-            session, tenant_id=tenant_id, limit=limit, now=now,
+            session,
+            tenant_id=tenant_id,
+            limit=limit,
+            now=now,
         )
 
 
 def get_signal_publication(
-    session_or_connection: Session | Connection, *,
-    tenant_id: str, occurrence_id: str,
+    session_or_connection: Session | Connection,
+    *,
+    tenant_id: str,
+    occurrence_id: str,
 ) -> SignalPublicationModel:
     with _session_scope(session_or_connection) as session:
         return _get_signal_publication(
-            session, tenant_id=tenant_id, occurrence_id=occurrence_id,
+            session,
+            tenant_id=tenant_id,
+            occurrence_id=occurrence_id,
         )
 
 
 def list_signal_deliveries(
-    session_or_connection: Session | Connection, *,
-    tenant_id: str, occurrence_id: str,
+    session_or_connection: Session | Connection,
+    *,
+    tenant_id: str,
+    occurrence_id: str,
 ) -> list[SignalDeliveryModel]:
     with _session_scope(session_or_connection) as session:
         return _list_signal_deliveries(
-            session, tenant_id=tenant_id, occurrence_id=occurrence_id,
+            session,
+            tenant_id=tenant_id,
+            occurrence_id=occurrence_id,
         )
 
 
@@ -222,10 +246,15 @@ def run_due_scheduler_jobs(
 
 
 __all__ = [
-    "PublishSignalCommand", "RunSignalDeliveriesCommand",
-    "GetSignalPublicationQuery", "ListSignalDeliveriesQuery",
-    "SIGNAL_PUBLISH_COMMAND", "publish_signal", "run_signal_deliveries",
-    "get_signal_publication", "list_signal_deliveries",
+    "PublishSignalCommand",
+    "RunSignalDeliveriesCommand",
+    "GetSignalPublicationQuery",
+    "ListSignalDeliveriesQuery",
+    "SIGNAL_PUBLISH_COMMAND",
+    "publish_signal",
+    "run_signal_deliveries",
+    "get_signal_publication",
+    "list_signal_deliveries",
     "AuthorizationError",
     "AuthorizationDecision",
     "AuthorizationPolicy",

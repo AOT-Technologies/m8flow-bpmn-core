@@ -80,11 +80,7 @@ def upsert_scheduler_job(
             run_at=run_at,
             payload_json=normalized_payload,
             updated_at=occurred_at,
-            created_at=(
-                created_at
-                if created_at is not None
-                else occurred_at
-            ),
+            created_at=(created_at if created_at is not None else occurred_at),
         )
         session.add(job)
     else:

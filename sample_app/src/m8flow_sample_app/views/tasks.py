@@ -78,9 +78,9 @@ def register_task_routes(app: Flask) -> None:
   <td>{work_item.id}</td>
   <td>{escape(work_item.task_title or work_item.task_name)}</td>
   <td>{escape(work_item.task_status)}</td>
-  <td>{escape(work_item.lane_name or '')}</td>
+  <td>{escape(work_item.lane_name or "")}</td>
   <td>{work_item.process_instance_id}</td>
-  <td class="actions">{''.join(actions)}</td>
+  <td class="actions">{"".join(actions)}</td>
 </tr>
 """
                 )
@@ -97,7 +97,7 @@ def register_task_routes(app: Flask) -> None:
       <th>Actions</th>
     </tr>
   </thead>
-  <tbody>{''.join(rows)}</tbody>
+  <tbody>{"".join(rows)}</tbody>
 </table>
 """
                 if tasks
@@ -170,13 +170,13 @@ tenant and user.</p>
             body = f"""
 <p><strong>Task:</strong> {escape(task.task_title or task.task_name)}</p>
 <p><strong>Status:</strong> {escape(task.task_status)}</p>
-<p><strong>Lane:</strong> {escape(task.lane_name or '')}</p>
+<p><strong>Lane:</strong> {escape(task.lane_name or "")}</p>
 <p><strong>Process instance:</strong>
   <a href="{escape(url_for("process_instance_detail", process_instance_id=task.process_instance_id))}">
     {task.process_instance_id}
   </a>
 </p>
-<p><strong>Actual owner ID:</strong> {task.actual_owner_id or ''}</p>
+<p><strong>Actual owner ID:</strong> {task.actual_owner_id or ""}</p>
 {claim_html}
 {complete_html}
 """

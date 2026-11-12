@@ -373,7 +373,9 @@ def _load_shared_seeded_admin() -> tuple[M8flowTenantModel, UserModel]:
 
 
 def _demo_bpmn_xml() -> str:
-    fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "sample_app_demo.bpmn"
+    fixture_path = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "sample_app_demo.bpmn"
+    )
     return fixture_path.read_text(encoding="utf-8")
 
 

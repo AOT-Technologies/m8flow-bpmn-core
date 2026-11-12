@@ -63,9 +63,7 @@ BOUNDARY_TIMER_DELAY_SECONDS = 60
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROCESS_GROUP_ID = "m8flow-core-examples"
 PROCESS_GROUP_DISPLAY_NAME = "m8flow-core Examples"
-PROCESS_GROUP_DESCRIPTION = (
-    "Process models published by the m8flow-core examples."
-)
+PROCESS_GROUP_DESCRIPTION = "Process models published by the m8flow-core examples."
 PROCESS_MODEL_ID = "scheduled-boundary-timer-poc"
 PROCESS_MODEL_IDENTIFIER = f"{PROCESS_GROUP_ID}/{PROCESS_MODEL_ID}"
 PROCESS_MODEL_DISPLAY_NAME = "Scheduled Boundary Timer Example"
@@ -338,10 +336,7 @@ def _provision_shared_db_keycloak_context(
             for user_spec in DEMO_USERS.values()
         ],
     )
-    print(
-        "Status: Keycloak shared realm issuer is "
-        f"{keycloak_context.service_issuer}."
-    )
+    print(f"Status: Keycloak shared realm issuer is {keycloak_context.service_issuer}.")
     print(
         "Status: demo users are "
         + ", ".join(sorted(keycloak_context.users_by_username))
@@ -382,13 +377,11 @@ def _run_boundary_timer_poc(
     )
     print(SECTION_SEPARATOR)
     _pause(
-        "Press Enter to stamp a fresh boundary due time and execute the import "
-        "command."
+        "Press Enter to stamp a fresh boundary due time and execute the import command."
     )
 
-    boundary_due_at = (
-        datetime.now(UTC).replace(microsecond=0)
-        + timedelta(seconds=BOUNDARY_TIMER_DELAY_SECONDS)
+    boundary_due_at = datetime.now(UTC).replace(microsecond=0) + timedelta(
+        seconds=BOUNDARY_TIMER_DELAY_SECONDS
     )
     bpmn_xml = _render_boundary_timer_bpmn_xml(boundary_due_at)
     import_timestamp = datetime.now(UTC).replace(microsecond=0)
@@ -526,9 +519,7 @@ def _run_boundary_timer_poc(
         ),
     )
     if operator_tasks_after_timeout is None:
-        raise RuntimeError(
-            "Post-timeout pending-task query did not return a task list"
-        )
+        raise RuntimeError("Post-timeout pending-task query did not return a task list")
     timeout_task = _require_single_task(
         operator_tasks_after_timeout,
         "boundary timeout task",
@@ -559,9 +550,7 @@ def _run_boundary_timer_poc(
                         "cancelled_review_task": _summarize_human_task(
                             cancelled_review_task
                         ),
-                        "ready_timeout_task": _summarize_human_task(
-                            ready_timeout_task
-                        ),
+                        "ready_timeout_task": _summarize_human_task(ready_timeout_task),
                     },
                     sort_dicts=False,
                     width=100,
@@ -602,9 +591,7 @@ def _run_boundary_timer_poc(
             task_payload={
                 "completed_after_boundary_timeout": "true",
                 "completed_by": context.operator_username,
-                "completed_at": datetime.now(UTC).replace(
-                    microsecond=0
-                ).isoformat(),
+                "completed_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
             },
         ),
     )

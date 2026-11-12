@@ -13,6 +13,13 @@ repos:
         pass_filenames: false
         files: ^(src/|tests/|alembic/versions/|sample_app/src/|sample_app/tests/)
 
+      - id: ruff-format
+        name: Ruff format
+        entry: uv run --locked ruff format --check .
+        language: system
+        pass_filenames: false
+        types_or: [python, markdown]
+
       - id: mypy
         name: mypy
         entry: uv run --locked mypy

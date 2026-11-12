@@ -39,25 +39,13 @@ def test_publish_process_model_to_m8flow_backend_creates_catalog_files(
 
     group_json = tmp_path / "org-alpha" / "sample-app" / "process_group.json"
     model_json = (
-        tmp_path
-        / "org-alpha"
-        / "sample-app"
-        / "demo-approval"
-        / "process_model.json"
+        tmp_path / "org-alpha" / "sample-app" / "demo-approval" / "process_model.json"
     )
     bpmn_path = (
-        tmp_path
-        / "org-alpha"
-        / "sample-app"
-        / "demo-approval"
-        / "sample_app_demo.bpmn"
+        tmp_path / "org-alpha" / "sample-app" / "demo-approval" / "sample_app_demo.bpmn"
     )
     dmn_path = (
-        tmp_path
-        / "org-alpha"
-        / "sample-app"
-        / "demo-approval"
-        / "sample_app_demo.dmn"
+        tmp_path / "org-alpha" / "sample-app" / "demo-approval" / "sample_app_demo.dmn"
     )
     assert group_json.exists()
     assert model_json.exists()
@@ -126,11 +114,7 @@ def test_publish_process_model_to_m8flow_backend_updates_existing_model(
     assert updated.status == "updated"
 
     model_json = (
-        tmp_path
-        / "org-alpha"
-        / "sample-app"
-        / "demo-approval"
-        / "process_model.json"
+        tmp_path / "org-alpha" / "sample-app" / "demo-approval" / "process_model.json"
     )
     model_payload = json.loads(model_json.read_text(encoding="utf-8"))
     assert model_payload["display_name"] == "Updated Sample App Demo Workflow"

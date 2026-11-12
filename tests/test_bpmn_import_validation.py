@@ -23,9 +23,7 @@ from m8flow_core.models.tenant import M8flowTenantModel
 from m8flow_core.models.user import UserModel
 from m8flow_core.services.authorization import ROLE_ADMIN, ensure_v1_role
 
-VALID_BPMN_PATH = (
-    Path(__file__).with_name("fixtures") / "invoice_approval_poc.bpmn"
-)
+VALID_BPMN_PATH = Path(__file__).with_name("fixtures") / "invoice_approval_poc.bpmn"
 TENANT_ID = "tenant-bpmn-validation"
 TENANT_SLUG = "bpmn-validation"
 
@@ -90,7 +88,7 @@ def test_import_rejects_xml_with_no_executable_process(session: Session) -> None
     # Well-formed BPMN file but with no <bpmn:process> defined.
     empty_bpmn = (
         '<?xml version="1.0" encoding="UTF-8"?>'
-        '<bpmn:definitions '
+        "<bpmn:definitions "
         'xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" '
         'targetNamespace="http://example.com/bpmn" />'
     )

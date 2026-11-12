@@ -141,9 +141,7 @@ def list_tenants(session: Session) -> list[M8flowTenantModel]:
 def list_users_for_tenant(session: Session, *, tenant_id: str) -> list[UserModel]:
     tenant_identifiers = tenant_identifiers_for(session, tenant_id)
     users = list(session.scalars(select(UserModel).order_by(UserModel.username.asc())))
-    return [
-        user for user in users if user_belongs_to_tenant(user, tenant_identifiers)
-    ]
+    return [user for user in users if user_belongs_to_tenant(user, tenant_identifiers)]
 
 
 def find_user_for_service_identity(

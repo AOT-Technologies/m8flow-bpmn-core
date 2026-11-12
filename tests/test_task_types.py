@@ -25,4 +25,4 @@ def test_task_definition_uses_central_user_task_vocabulary() -> None:
     assert not TaskDefinitionModel(
         typename="ScriptTask",
         properties_json={},
-        ).is_user_task()
+    ).is_user_task()

@@ -92,9 +92,7 @@ class BpmnProcessDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
 
     @property
     def explicit_process_model_identifier(self) -> str | None:
-        value = (self.properties_json or {}).get(
-            PROCESS_MODEL_IDENTIFIER_PROPERTY_KEY
-        )
+        value = (self.properties_json or {}).get(PROCESS_MODEL_IDENTIFIER_PROPERTY_KEY)
         return value if isinstance(value, str) else None
 
     @property

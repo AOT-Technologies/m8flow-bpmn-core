@@ -104,8 +104,12 @@ def seed(session: Session) -> tuple[UserModel, UserModel]:
     )
     session.add_all([admin, approver])
     session.flush()
-    ensure_v1_role(session, tenant_id=TENANT_ID, role_name=ROLE_ADMIN, user_ids=[admin.id])
-    ensure_v1_role(session, tenant_id=TENANT_ID, role_name=ROLE_USER, user_ids=[approver.id])
+    ensure_v1_role(
+        session, tenant_id=TENANT_ID, role_name=ROLE_ADMIN, user_ids=[admin.id]
+    )
+    ensure_v1_role(
+        session, tenant_id=TENANT_ID, role_name=ROLE_USER, user_ids=[approver.id]
+    )
     return admin, approver
 ```
 

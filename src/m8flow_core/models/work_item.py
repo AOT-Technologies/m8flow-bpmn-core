@@ -25,9 +25,7 @@ class WorkItemModel(M8fTenantScopedMixin, TenantScoped, Base):
     process_instance_id: Mapped[int] = mapped_column(
         ForeignKey("process_instance.id"), index=True, nullable=False
     )
-    task_guid: Mapped[str | None] = mapped_column(
-        ForeignKey("task.guid"), index=True
-    )
+    task_guid: Mapped[str | None] = mapped_column(ForeignKey("task.guid"), index=True)
     lane_assignment_id: Mapped[int | None] = mapped_column(
         ForeignKey("m8f_group.id"), index=True
     )
@@ -44,9 +42,7 @@ class WorkItemModel(M8fTenantScopedMixin, TenantScoped, Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    process_instance = relationship(
-        "ProcessInstanceModel", back_populates="work_items"
-    )
+    process_instance = relationship("ProcessInstanceModel", back_populates="work_items")
     task_model = relationship(
         "TaskModel", foreign_keys=[task_guid], back_populates="work_items"
     )

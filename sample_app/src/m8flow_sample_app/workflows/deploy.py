@@ -151,7 +151,9 @@ def deploy_definition_from_m8flow_catalog(
         tenant_slug=tenant_slug,
         user_id=user_id,
         process_model_identifier=process_model_identifier,
-        bpmn_name=(bpmn_name.strip() if bpmn_name and bpmn_name.strip() else source.bpmn_name),
+        bpmn_name=(
+            bpmn_name.strip() if bpmn_name and bpmn_name.strip() else source.bpmn_name
+        ),
         source_bpmn_xml=source.source_bpmn_xml,
         source_dmn_xml=source.source_dmn_xml,
         bpmn_version_control_type="m8flow-backend-catalog",
@@ -250,9 +252,7 @@ def deploy_built_in_definition(
     bpmn_path = _built_in_bpmn_path(workflow.fixture_file_name)
     source_bpmn_xml = bpmn_path.read_text(encoding="utf-8")
     source_dmn_xml = (
-        _built_in_bpmn_path(workflow.dmn_fixture_file_name).read_text(
-            encoding="utf-8"
-        )
+        _built_in_bpmn_path(workflow.dmn_fixture_file_name).read_text(encoding="utf-8")
         if workflow.dmn_fixture_file_name is not None
         else None
     )

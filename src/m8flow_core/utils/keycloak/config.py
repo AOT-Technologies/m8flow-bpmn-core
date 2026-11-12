@@ -27,9 +27,7 @@ def _get(name: str, default: str | None = None) -> str | None:
 
 def keycloak_url() -> str:
     return (
-        _get("KEYCLOAK_URL")
-        or _get("M8FLOW_KEYCLOAK_URL")
-        or DEFAULT_KEYCLOAK_URL
+        _get("KEYCLOAK_URL") or _get("M8FLOW_KEYCLOAK_URL") or DEFAULT_KEYCLOAK_URL
     ).rstrip("/")
 
 
@@ -55,4 +53,3 @@ def shared_realm_name() -> str:
 
 def master_realm_name() -> str:
     return _get("M8FLOW_KEYCLOAK_MASTER_REALM") or DEFAULT_MASTER_REALM_NAME
-

@@ -79,8 +79,8 @@ def test_backend_deployment_writes_process_group_model_and_files(
     bpmn_text = (model_dir / example_poc.EXAMPLE_BPMN_PATH.name).read_text(
         encoding="utf-8"
     )
-    assert '"Manager" : [\'poc-manager\', \'poc-reviewer\']' in bpmn_text
-    assert '"Finance" : [\'poc-finance\']' in bpmn_text
+    assert "\"Manager\" : ['poc-manager', 'poc-reviewer']" in bpmn_text
+    assert "\"Finance\" : ['poc-finance']" in bpmn_text
 
 
 def test_backend_deployment_warns_and_does_not_overwrite_existing_model(
@@ -116,12 +116,9 @@ def test_backend_deployment_warns_and_does_not_overwrite_existing_model(
 
     assert second_deployment.deployed is False
     assert second_deployment.already_deployed is True
+    assert any("already deployed" in warning for warning in second_deployment.warnings)
     assert any(
-        "already deployed" in warning for warning in second_deployment.warnings
-    )
-    assert any(
-        "differs from the current example sources"
-        in warning
+        "differs from the current example sources" in warning
         for warning in second_deployment.warnings
     )
     assert json.loads(model_json_path.read_text(encoding="utf-8")) == sentinel_payload
@@ -304,9 +301,7 @@ def test_seed_demo_context_uses_keycloak_user_ids_for_shared_db(
     assert foreign_noise.service == "http://localhost:6842/realms/m8flow"
     assert foreign_noise.service_id == "kc-foreign-noise"
     assert foreign_noise.external_org_id == "org-noise-a"
-    assert foreign_noise.realm_identifier == (
-        example_poc.OTHER_DEMO_TENANTS[0]["slug"]
-    )
+    assert foreign_noise.realm_identifier == (example_poc.OTHER_DEMO_TENANTS[0]["slug"])
 
 
 def test_confirm_shared_database_usage_keeps_shared_database_when_confirmed(
@@ -317,15 +312,13 @@ def test_confirm_shared_database_usage_keeps_shared_database_when_confirmed(
     selection = example_poc._confirm_shared_database_usage(
         "postgresql+psycopg://postgres:postgres@localhost:6843/postgres"
         "?connect_timeout=1",
-        "postgresql+psycopg://postgres:***@localhost:6843/postgres"
-        "?connect_timeout=1",
+        "postgresql+psycopg://postgres:***@localhost:6843/postgres?connect_timeout=1",
     )
 
     assert selection == (
         "postgresql+psycopg://postgres:postgres@localhost:6843/postgres"
         "?connect_timeout=1",
-        "postgresql+psycopg://postgres:***@localhost:6843/postgres"
-        "?connect_timeout=1",
+        "postgresql+psycopg://postgres:***@localhost:6843/postgres?connect_timeout=1",
         None,
     )
 
@@ -338,10 +331,8 @@ def test_confirm_shared_database_usage_uses_docker_fallback_when_declined(
         example_poc,
         "_start_temporary_postgres_container",
         lambda: (
-            "postgresql+psycopg://postgres@127.0.0.1:55432/"
-            "m8flow_core_example",
-            "postgresql+psycopg://postgres@127.0.0.1:55432/"
-            "m8flow_core_example",
+            "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_core_example",
+            "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_core_example",
             "temp-container-123",
         ),
     )
@@ -349,15 +340,12 @@ def test_confirm_shared_database_usage_uses_docker_fallback_when_declined(
     selection = example_poc._confirm_shared_database_usage(
         "postgresql+psycopg://postgres:postgres@localhost:6843/postgres"
         "?connect_timeout=1",
-        "postgresql+psycopg://postgres:***@localhost:6843/postgres"
-        "?connect_timeout=1",
+        "postgresql+psycopg://postgres:***@localhost:6843/postgres?connect_timeout=1",
     )
 
     assert selection == (
-        "postgresql+psycopg://postgres@127.0.0.1:55432/"
-        "m8flow_core_example",
-        "postgresql+psycopg://postgres@127.0.0.1:55432/"
-        "m8flow_core_example",
+        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_core_example",
+        "postgresql+psycopg://postgres@127.0.0.1:55432/m8flow_core_example",
         "temp-container-123",
     )
 
@@ -450,9 +438,7 @@ def test_get_or_create_user_backfills_principal_for_reused_shared_db_user(
     assert user.service == "http://localhost:6842/realms/m8flow"
     assert user.service_id == "kc-manager"
     assert principal_user_id == user.id
-    assert any(
-        "different service identity" in warning for warning in warnings
-    )
+    assert any("different service identity" in warning for warning in warnings)
     assert any(
         "Created missing principal row for user 'poc-manager'" in warning
         for warning in warnings
@@ -532,8 +518,9 @@ def test_extract_process_models_mount_source_prefers_backend_env_target() -> Non
     )
 
 
-def test_extract_process_models_mount_source_normalizes_docker_desktop_host_mnt(
-) -> None:
+def test_extract_process_models_mount_source_normalizes_docker_desktop_host_mnt() -> (
+    None
+):
     inspect_payload = [
         {
             "Config": {
@@ -556,9 +543,12 @@ def test_extract_process_models_mount_source_normalizes_docker_desktop_host_mnt(
 
 
 def test_normalize_docker_desktop_mount_source_handles_slash_form() -> None:
-    assert example_poc._normalize_docker_desktop_mount_source(
-        "/host_mnt/c/dev/repos/m8flow/data/process_models"
-    ) == "C:\\dev\\repos\\m8flow\\data\\process_models"
+    assert (
+        example_poc._normalize_docker_desktop_mount_source(
+            "/host_mnt/c/dev/repos/m8flow/data/process_models"
+        )
+        == "C:\\dev\\repos\\m8flow\\data\\process_models"
+    )
 
 
 def test_realign_existing_example_process_model_identifiers_updates_rows(
@@ -694,6 +684,4 @@ def test_realign_existing_example_process_model_identifiers_updates_rows(
         example_poc.CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER
     ]
     assert warnings
-    assert (
-        example_poc.CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER in warnings[0]
-    )
+    assert example_poc.CONDITIONAL_APPROVAL_PROCESS_MODEL_IDENTIFIER in warnings[0]

@@ -352,7 +352,12 @@ class CompensationBpmnParser(SpiffBpmnParser):
                 flow_ids = (helper_id + "_flow_0", helper_id + "_flow_1")
                 lanes_id, lane_id = helper_id + "_lanes", helper_id + "_lane"
                 generated_ids = {
-                    helper_id, start_id, end_id, *flow_ids, lanes_id, lane_id
+                    helper_id,
+                    start_id,
+                    end_id,
+                    *flow_ids,
+                    lanes_id,
+                    lane_id,
                 }
                 if reserved_ids.isdisjoint(generated_ids):
                     reserved_ids.update(generated_ids)

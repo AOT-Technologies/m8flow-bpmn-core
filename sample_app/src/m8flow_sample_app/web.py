@@ -82,9 +82,7 @@ claim and completion, metadata persistence, and event listing.</p>
     @app.route("/session/select", methods=["GET", "POST"])
     def select_identity():
         with session_scope() as db_session:
-            audit_context = current_app.extensions.get(
-                SHARED_M8FLOW_AUDIT_CONTEXT_KEY
-            )
+            audit_context = current_app.extensions.get(SHARED_M8FLOW_AUDIT_CONTEXT_KEY)
             shared_mode = (
                 isinstance(audit_context, SharedM8flowAuditContext)
                 and audit_context.uses_shared_m8flow
@@ -127,13 +125,13 @@ claim and completion, metadata persistence, and event listing.</p>
             )
 
             tenant_options = "".join(
-                f"<option value=\"{escape(tenant.id)}\""
+                f'<option value="{escape(tenant.id)}"'
                 + (" selected" if tenant.id == selected_tenant_id else "")
                 + f">{escape(tenant.name)} ({escape(tenant.slug)})</option>"
                 for tenant in tenants
             )
             user_options = "".join(
-                f"<option value=\"{user.id}\">{escape(user.display_name or user.username)}"
+                f'<option value="{user.id}">{escape(user.display_name or user.username)}'
                 f" [{escape(user.username)}]</option>"
                 for user in users
             )
@@ -192,7 +190,9 @@ claim and completion, metadata persistence, and event listing.</p>
             and audit_context.uses_shared_m8flow
         )
         if not shared_mode:
-            flash("Shared Keycloak login is only available in shared audit mode.", "error")
+            flash(
+                "Shared Keycloak login is only available in shared audit mode.", "error"
+            )
             return redirect(url_for("select_identity"))
 
         tenant_id = request.values.get("tenant_id", "").strip()
@@ -241,7 +241,10 @@ claim and completion, metadata persistence, and event listing.</p>
         )
         if not shared_mode:
             clear_pending_shared_login()
-            flash("Shared Keycloak callback is only available in shared audit mode.", "error")
+            flash(
+                "Shared Keycloak callback is only available in shared audit mode.",
+                "error",
+            )
             return redirect(url_for("select_identity"))
 
         pending_login = get_pending_shared_login()
@@ -253,20 +256,26 @@ claim and completion, metadata persistence, and event listing.</p>
         if returned_state != pending_login.state:
             clear_pending_shared_login()
             flash("The shared Keycloak login response could not be validated.", "error")
-            return redirect(url_for("select_identity", tenant_id=pending_login.tenant_id))
+            return redirect(
+                url_for("select_identity", tenant_id=pending_login.tenant_id)
+            )
 
         login_error = request.args.get("error", "").strip()
         if login_error:
             description = request.args.get("error_description", "").strip()
             clear_pending_shared_login()
             flash(description or login_error, "error")
-            return redirect(url_for("select_identity", tenant_id=pending_login.tenant_id))
+            return redirect(
+                url_for("select_identity", tenant_id=pending_login.tenant_id)
+            )
 
         code = request.args.get("code", "").strip()
         if not code:
             clear_pending_shared_login()
             flash("Keycloak did not return an authorization code.", "error")
-            return redirect(url_for("select_identity", tenant_id=pending_login.tenant_id))
+            return redirect(
+                url_for("select_identity", tenant_id=pending_login.tenant_id)
+            )
 
         try:
             authenticated_user = exchange_shared_realm_authorization_code(
@@ -278,7 +287,9 @@ claim and completion, metadata persistence, and event listing.</p>
         except KeycloakLoginError as exc:
             clear_pending_shared_login()
             flash(str(exc), "error")
-            return redirect(url_for("select_identity", tenant_id=pending_login.tenant_id))
+            return redirect(
+                url_for("select_identity", tenant_id=pending_login.tenant_id)
+            )
 
         with session_scope() as db_session:
             resolved_user = find_user_for_service_identity(
@@ -315,8 +326,7 @@ claim and completion, metadata persistence, and event listing.</p>
             user_id=resolved_user_id,
         )
         flash(
-            "Shared Keycloak login succeeded for "
-            f"{resolved_username}.",
+            f"Shared Keycloak login succeeded for {resolved_username}.",
             "success",
         )
         return redirect(url_for("home"))

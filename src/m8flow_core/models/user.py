@@ -20,14 +20,10 @@ class UserModel(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(
-        String(255), index=True, nullable=False
-    )
+    username: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     email: Mapped[str | None] = mapped_column(String(255), index=True)
     service: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
-    service_id: Mapped[str] = mapped_column(
-        String(255), index=True, nullable=False
-    )
+    service_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(255))
     realm_identifier: Mapped[str | None] = mapped_column(String(255))
     external_org_id: Mapped[str | None] = mapped_column(String(255))

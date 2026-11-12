@@ -100,9 +100,7 @@ def test_prepare_connector_proxy_registry_returns_registry_when_required_command
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = api.ServiceTaskRegistry(
-        connectors=(
-            _FakeConnector("http", "GetRequestV2", "PostRequestV2"),
-        )
+        connectors=(_FakeConnector("http", "GetRequestV2", "PostRequestV2"),)
     )
     monkeypatch.setattr(example_poc, "_pause", lambda _prompt: None)
     monkeypatch.setattr(
@@ -123,9 +121,7 @@ def test_prepare_connector_proxy_registry_rejects_missing_required_operation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = api.ServiceTaskRegistry(
-        connectors=(
-            _FakeConnector("http", "GetRequest"),
-        )
+        connectors=(_FakeConnector("http", "GetRequest"),)
     )
     monkeypatch.setattr(example_poc, "_pause", lambda _prompt: None)
     monkeypatch.setattr(
@@ -192,7 +188,6 @@ def test_deploy_service_task_definition_to_m8flow_backend_warns_on_refresh(
     assert refreshed_deployment.deployed is True
     assert refreshed_deployment.already_deployed is False
     assert any(
-        "Refreshed the existing service-task connector example deployment"
-        in warning
+        "Refreshed the existing service-task connector example deployment" in warning
         for warning in refreshed_deployment.warnings
     )

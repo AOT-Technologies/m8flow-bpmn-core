@@ -26,4 +26,3 @@ __all__ = [
     "ensure_shared_realm_organizations_and_users",
     "shared_realm_service_issuer",
 ]
-

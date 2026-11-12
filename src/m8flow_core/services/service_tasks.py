@@ -270,11 +270,11 @@ class ServiceTaskRegistry:
 
 
 _DEFAULT_SERVICE_TASK_REGISTRY_FACTORY: ServiceTaskRegistryFactory
-_ACTIVE_SERVICE_TASK_REGISTRY_FACTORY: ContextVar[
-    ServiceTaskRegistryFactory | None
-] = ContextVar(
-    "m8flow_core_service_task_registry_factory",
-    default=None,
+_ACTIVE_SERVICE_TASK_REGISTRY_FACTORY: ContextVar[ServiceTaskRegistryFactory | None] = (
+    ContextVar(
+        "m8flow_core_service_task_registry_factory",
+        default=None,
+    )
 )
 
 _DEFAULT_SERVICE_TASK_REGISTRY_FACTORY = ServiceTaskRegistry

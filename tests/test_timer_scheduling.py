@@ -244,8 +244,7 @@ def test_initialize_workflow_schedules_waiting_boundary_timer(
     )
 
     assert (
-        process_instance.status
-        == api.ProcessInstanceStatus.user_input_required.value
+        process_instance.status == api.ProcessInstanceStatus.user_input_required.value
     )
     assert process_instance.workflow_state_json is not None
     pending_tasks = api.execute_query(

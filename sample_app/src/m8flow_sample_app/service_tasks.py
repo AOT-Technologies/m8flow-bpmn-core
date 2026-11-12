@@ -169,7 +169,9 @@ def _resolve_secret_references(
     return value
 
 
-def _parameter_types_from_request(request: api.ServiceTaskRequest) -> Mapping[str, object]:
+def _parameter_types_from_request(
+    request: api.ServiceTaskRequest,
+) -> Mapping[str, object]:
     metadata = request.metadata or {}
     parameter_types = metadata.get("parameter_types")
     return parameter_types if isinstance(parameter_types, Mapping) else {}

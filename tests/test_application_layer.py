@@ -85,7 +85,7 @@ def test_application_layer_handles_tasks_events_and_metadata(
         RecordProcessInstanceEventCommand(
             tenant_id=tenant.id,
             process_instance_id=process_instance.id,
-        event_type=ProcessLifecycleEventType.process_instance_created,
+            event_type=ProcessLifecycleEventType.process_instance_created,
             task_guid=task.guid,
             user_id=user.id,
             occurred_at=datetime.fromtimestamp(100.25, UTC),
@@ -144,7 +144,7 @@ def test_application_layer_handles_tasks_events_and_metadata(
         session,
         CompleteTaskCommand(
             tenant_id=tenant.id,
-                work_item_id=human_task.id,
+            work_item_id=human_task.id,
             user_id=user.id,
             completed_at=datetime.fromtimestamp(130, UTC),
             task_payload={"routing_hint": "manual"},
@@ -165,9 +165,12 @@ def test_application_layer_handles_tasks_events_and_metadata(
         "routing_hint": "manual",
     }
 
-    assert execute_query(
-        session, GetPendingTasksQuery(tenant_id=tenant.id, user_id=user.id)
-    ) == []
+    assert (
+        execute_query(
+            session, GetPendingTasksQuery(tenant_id=tenant.id, user_id=user.id)
+        )
+        == []
+    )
 
 
 def test_application_layer_supports_connection_transaction_control(
@@ -315,15 +318,19 @@ def test_process_lifecycle_commands_and_queries(session: Session) -> None:
     assert terminated_process_instance.tasks[0].future_task is not None
     assert terminated_process_instance.tasks[0].future_task.completed is True
     assert (
-        terminated_process_instance.tasks[0]
-        .future_task.archived_for_process_instance_status
+        terminated_process_instance.tasks[
+            0
+        ].future_task.archived_for_process_instance_status
         is True
     )
     assert terminated_process_instance.work_items[0].completed is True
     assert terminated_process_instance.work_items[0].task_status == "TERMINATED"
-    assert execute_query(
-        session, GetPendingTasksQuery(tenant_id=tenant.id, user_id=user.id)
-    ) == []
+    assert (
+        execute_query(
+            session, GetPendingTasksQuery(tenant_id=tenant.id, user_id=user.id)
+        )
+        == []
+    )
     assert [
         item.id
         for item in execute_query(
@@ -367,8 +374,9 @@ def test_error_and_retry_lifecycle_commands(session: Session) -> None:
     assert errored_process_instance.tasks[0].future_task is not None
     assert errored_process_instance.tasks[0].future_task.completed is True
     assert (
-        errored_process_instance.tasks[0]
-        .future_task.archived_for_process_instance_status
+        errored_process_instance.tasks[
+            0
+        ].future_task.archived_for_process_instance_status
         is True
     )
     assert errored_process_instance.work_items[0].completed is True
@@ -407,8 +415,9 @@ def test_error_and_retry_lifecycle_commands(session: Session) -> None:
     assert retried_process_instance.tasks[0].future_task is not None
     assert retried_process_instance.tasks[0].future_task.completed is False
     assert (
-        retried_process_instance.tasks[0]
-        .future_task.archived_for_process_instance_status
+        retried_process_instance.tasks[
+            0
+        ].future_task.archived_for_process_instance_status
         is False
     )
     assert retried_process_instance.work_items[0].completed is False
@@ -421,9 +430,10 @@ def test_error_and_retry_lifecycle_commands(session: Session) -> None:
             session, GetPendingTasksQuery(tenant_id=tenant.id, user_id=user.id)
         )
     ] == [human_task.id]
-    assert execute_query(
-        session, ListErrorProcessInstancesQuery(tenant_id=tenant.id)
-    ) == []
+    assert (
+        execute_query(session, ListErrorProcessInstancesQuery(tenant_id=tenant.id))
+        == []
+    )
     assert [
         event.event_type
         for event in execute_query(
@@ -477,12 +487,15 @@ def test_schedule_retry_command_persists_scheduler_job(session: Session) -> None
         ),
     )
 
-    assert session.scalar(
-        select(SchedulerJobModel).where(
-            SchedulerJobModel.m8f_tenant_id == tenant.id,
-            SchedulerJobModel.process_instance_id == process_instance.id,
+    assert (
+        session.scalar(
+            select(SchedulerJobModel).where(
+                SchedulerJobModel.m8f_tenant_id == tenant.id,
+                SchedulerJobModel.process_instance_id == process_instance.id,
+            )
         )
-    ) is None
+        is None
+    )
 
 
 def test_application_layer_imports_bpmn_process_definition(session: Session) -> None:
@@ -511,13 +524,13 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
 
     bpmn_xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
-        '<bpmn:definitions '
+        "<bpmn:definitions "
         'xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" '
         'targetNamespace="http://example.com/bpmn">'
         '<bpmn:process id="Process_import_1" isExecutable="true">'
         '<bpmn:startEvent id="Start_1"/>'
-        '</bpmn:process>'
-        '</bpmn:definitions>'
+        "</bpmn:process>"
+        "</bpmn:definitions>"
     )
     dmn_xml = None
     definition = execute_command(
@@ -542,9 +555,10 @@ def test_application_layer_imports_bpmn_process_definition(session: Session) -> 
     assert definition.bpmn_name == "Imported Process"
     assert definition.source_bpmn_xml == bpmn_xml
     assert definition.source_dmn_xml == dmn_xml
-    assert definition.process_xml_digest == hashlib.sha256(
-        bpmn_xml.encode("utf-8")
-    ).hexdigest()
+    assert (
+        definition.process_xml_digest
+        == hashlib.sha256(bpmn_xml.encode("utf-8")).hexdigest()
+    )
     public_properties = {
         key: value
         for key, value in definition.properties_json.items()

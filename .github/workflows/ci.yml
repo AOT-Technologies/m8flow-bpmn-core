@@ -43,6 +43,9 @@ jobs:
       - name: Run Ruff
         run: uv run --locked ruff check src tests alembic/versions
 
+      - name: Check formatting
+        run: uv run --locked ruff format --check .
+
       - name: Run mypy
         run: uv run --locked mypy
 
@@ -171,6 +174,10 @@ jobs:
       - name: Run sample app Ruff
         working-directory: sample_app
         run: uv run --locked ruff check src tests
+
+      - name: Check sample app formatting
+        working-directory: sample_app
+        run: uv run --locked ruff format --check src tests
 
       - name: Run sample app tests
         working-directory: sample_app

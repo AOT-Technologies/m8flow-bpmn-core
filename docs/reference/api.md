@@ -8,7 +8,8 @@ SPDX-License-Identifier: Apache-2.0
 
 This page is the contract for the public surface of m8flow-core. Every name on
 it is exported from `m8flow_core.api`. Anything not on this page is internal
-and can change in any release. To use the API, import the module:
+and can change in any release. Changes to this contract follow the
+[versioning policy](versioning.md). To use the API, import the module:
 
 ```python
 from m8flow_core import api
@@ -238,6 +239,7 @@ def resolve_child(context: api.CallActivityContext):
         bpmn_xml=row.bpmn_xml,
         dmn_xml=row.dmn_xml,
     )
+
 
 command = api.InitializeProcessInstanceFromDefinitionCommand(
     tenant_id=tenant_id,

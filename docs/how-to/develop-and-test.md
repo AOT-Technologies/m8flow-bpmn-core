@@ -45,11 +45,12 @@ make precommit-install
 
 ## Run the static checks
 
-CI runs four static checks. To run them yourself, use the following
+CI runs five static checks. To run them yourself, use the following
 commands:
 
 ```bash
 make lint
+make format-check
 make typecheck
 make security
 make license-headers
@@ -57,6 +58,9 @@ make license-headers
 
 `make lint` runs [Ruff](https://docs.astral.sh/ruff/) for linting and import
 ordering; `make lint-fix` applies the fixes Ruff can make on its own.
+`make format-check` runs the Ruff formatter in check mode on the whole
+repository, including Python code blocks in Markdown; `make format`
+reformats the files.
 `make typecheck` runs mypy on `src/m8flow_core/`. `make security` runs
 [Bandit](https://bandit.readthedocs.io/) on the library and the sample app.
 `make license-headers` runs [REUSE](https://reuse.software/) to check that
@@ -148,6 +152,7 @@ bash sample_app/scripts/stage_local_wheel.sh
 cd sample_app
 uv sync --locked
 uv run --locked ruff check src tests
+uv run --locked ruff format --check src tests
 uv run --locked pytest
 ```
 

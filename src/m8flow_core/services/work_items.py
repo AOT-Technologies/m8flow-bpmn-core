@@ -99,9 +99,7 @@ def reopen_work_item(item: WorkItemModel, *, occurred_at: datetime) -> None:
     item.updated_at = occurred_at
 
 
-def prepare_work_item_for_ready_state(
-    item: Any, *, occurred_at: datetime
-) -> None:
+def prepare_work_item_for_ready_state(item: Any, *, occurred_at: datetime) -> None:
     item.task_status = WorkItemState.READY.value
     item.completed = False
     item.completed_by_user_id = None

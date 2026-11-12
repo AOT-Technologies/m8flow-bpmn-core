@@ -197,6 +197,7 @@ def test_service_tasks_execute_before_and_after_manual_task(
         == []
     )
 
+
 def test_lane_owners_sync_into_lane_group_membership_on_import(
     session: Session,
 ) -> None:
@@ -266,9 +267,7 @@ def test_lane_group_reuses_legacy_bare_identifier(
     )
     session.add(legacy_group)
     session.flush()
-    session.add(
-        UserGroupAssignmentModel(user_id=user.id, group_id=legacy_group.id)
-    )
+    session.add(UserGroupAssignmentModel(user_id=user.id, group_id=legacy_group.id))
     session.flush()
 
     resolved_group = find_or_create_lane_group(
@@ -280,12 +279,15 @@ def test_lane_group_reuses_legacy_bare_identifier(
     assert resolved_group is not None
     assert resolved_group.id == legacy_group.id
     assert resolved_group.identifier == "operations"
-    assert session.scalar(
-        select(UserGroupAssignmentModel.id).where(
-            UserGroupAssignmentModel.user_id == user.id,
-            UserGroupAssignmentModel.group_id == resolved_group.id,
+    assert (
+        session.scalar(
+            select(UserGroupAssignmentModel.id).where(
+                UserGroupAssignmentModel.user_id == user.id,
+                UserGroupAssignmentModel.group_id == resolved_group.id,
+            )
         )
-    ) is not None
+        is not None
+    )
 
 
 def test_lane_group_with_mixed_case_identifier_is_normalized(
@@ -494,11 +496,14 @@ def test_empty_lane_does_not_block_process_start(
         user_id=reviewer.id,
     )
     assert [task.id for task in assigned_tasks] == [pending_tasks[0].id]
-    assert api.assign_pending_tasks_for_user(
-        session,
-        tenant_id=tenant.id,
-        user_id=reviewer.id,
-    ) == []
+    assert (
+        api.assign_pending_tasks_for_user(
+            session,
+            tenant_id=tenant.id,
+            user_id=reviewer.id,
+        )
+        == []
+    )
     reviewer_pending_tasks = api.execute_query(
         session,
         api.GetPendingTasksQuery(tenant_id=tenant.id, user_id=reviewer.id),
@@ -679,8 +684,8 @@ def test_initialize_workflow_service_task_failure_persists_error_state_across_ro
                 updated_at=datetime.fromtimestamp(10, UTC),
             ),
         )
-        process_model_identifier = (
-            definition.process_model_identifier or str(definition.id)
+        process_model_identifier = definition.process_model_identifier or str(
+            definition.id
         )
         process_instance, selected_process_id = (
             _prepare_process_instance_from_definition_in_session(
@@ -689,9 +694,7 @@ def test_initialize_workflow_service_task_failure_persists_error_state_across_ro
                 process_definition=definition,
                 process_model_identifier=process_model_identifier,
                 process_initiator_id=user.id,
-                submission_metadata={
-                    "submission_message": "hello-service-task"
-                },
+                submission_metadata={"submission_message": "hello-service-task"},
                 summary="initialize-workflow-session-scope",
                 process_version=1,
                 started_at=datetime.fromtimestamp(15, UTC),
@@ -1006,8 +1009,7 @@ def test_retry_process_instance_reruns_failed_service_task(
     )
 
     assert (
-        retried_process_instance.status
-        == api.ProcessInstanceStatus.user_input_required
+        retried_process_instance.status == api.ProcessInstanceStatus.user_input_required
     )
     assert retried_process_instance.ended_at is None
     assert len(pending_tasks) == 1
@@ -1127,6 +1129,7 @@ def test_scheduled_retry_reruns_failed_service_task(
         api.ProcessLifecycleEventType.process_instance_retried.value,
     ]
 
+
 def test_failed_scheduled_retry_keeps_scheduler_job_available_for_retry(
     session: Session,
 ) -> None:
@@ -1219,6 +1222,8 @@ def test_failed_scheduled_retry_keeps_scheduler_job_available_for_retry(
         api.TaskEventType.task_failed.value,
         api.ProcessLifecycleEventType.process_instance_error.value,
     ]
+
+
 def _seed_tenant_and_admin(
     session: Session,
 ) -> tuple[M8flowTenantModel, UserModel]:

@@ -93,13 +93,13 @@ def _update_uv_lock(
         (
             r"\g<1>"
             f"{wheel_version}"
-            r'\g<2>'
+            r"\g<2>"
             f"{relative_wheel_path}"
-            r'\g<3>'
+            r"\g<3>"
             f"{wheel_filename}"
-            r'\g<4>'
+            r"\g<4>"
             f"{wheel_hash}"
-            r'\g<5>'
+            r"\g<5>"
         ),
         original_text,
         count=1,
@@ -119,8 +119,7 @@ def _update_uv_lock(
     )
     if substitutions != 1:
         raise RuntimeError(
-            "Could not update the sample-app lockfile dependency path for "
-            "m8flow-core."
+            "Could not update the sample-app lockfile dependency path for m8flow-core."
         )
 
     uv_lock_path.write_text(updated_text, encoding="utf-8")
@@ -234,8 +233,7 @@ def _resolve_uv_command(uv_executable: str) -> str:
     resolved = shutil.which(uv_executable)
     if resolved is None:
         raise RuntimeError(
-            "Could not find the 'uv' executable needed to refresh "
-            "sample_app/uv.lock."
+            "Could not find the 'uv' executable needed to refresh sample_app/uv.lock."
         )
     return resolved
 
@@ -254,10 +252,7 @@ def _wheel_version_from_filename(filename: str) -> str:
         filename,
     )
     if match is None:
-        raise RuntimeError(
-            "Could not determine the wheel version from "
-            f"'{filename}'."
-        )
+        raise RuntimeError(f"Could not determine the wheel version from '{filename}'.")
     return match.group("version")
 
 

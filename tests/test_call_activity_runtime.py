@@ -27,13 +27,12 @@ class _FailingConnector:
 
     def list_commands(self):
         return (
-            api.ServiceTaskCommandDefinition(
-                connector_key="demo", command_name="Fail"
-            ),
+            api.ServiceTaskCommandDefinition(connector_key="demo", command_name="Fail"),
         )
 
     def execute(self, _request):
         raise RuntimeError("child connector failed")
+
 
 FIXTURES = Path(__file__).with_name("fixtures")
 PARENT_BPMN = (FIXTURES / "simple-call-activity.bpmn").read_text(encoding="utf-8")
@@ -191,8 +190,7 @@ def test_child_task_id_does_not_overwrite_parent_task_definition(
         )
     ).all()
     actual_names = {
-        definition.bpmn_identifier: definition.bpmn_name
-        for definition in definitions
+        definition.bpmn_identifier: definition.bpmn_name for definition in definitions
     }
     assert actual_names == {
         "call_child": "Call child",
@@ -214,9 +212,7 @@ def test_call_activity_passes_inputs_and_returns_child_outputs(
         session,
         tenant,
         user,
-        lambda _context: api.CallActivityDefinition(
-            "child_process", MAPPED_CHILD_BPMN
-        ),
+        lambda _context: api.CallActivityDefinition("child_process", MAPPED_CHILD_BPMN),
         submission_metadata={"child_input": "hello"},
     )
     assert instance.status == api.ProcessInstanceStatus.complete
@@ -273,8 +269,10 @@ def test_call_activity_resolution_is_tenant_scoped_by_contract(
         observed.append(context.tenant_id)
         # A host lookup should filter by the supplied tenant. A definition found
         # in another tenant is represented as unresolved to this execution.
-        return None if context.tenant_id == tenant.id else api.CallActivityDefinition(
-            "child_process", CHILD_BPMN
+        return (
+            None
+            if context.tenant_id == tenant.id
+            else api.CallActivityDefinition("child_process", CHILD_BPMN)
         )
 
     definition = api.execute_command(

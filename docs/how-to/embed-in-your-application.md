@@ -136,7 +136,7 @@ a mapping from lane name to a list of user identifiers (username, email, or
 `service_id`):
 
 ```python
-properties_json={"lane_owners": {"Manager": ["manager1"], "Finance": ["finance1"]}}
+properties_json = {"lane_owners": {"Manager": ["manager1"], "Finance": ["finance1"]}}
 ```
 
 Import also adds each owner to the tenant's lane group for that lane, so later
@@ -152,7 +152,7 @@ A task with no lane goes to the user who started the instance. To send a
 lane's tasks to that user too, list the lane in `initiator_lanes`:
 
 ```python
-properties_json={
+properties_json = {
     "initiator_lanes": ["Requester"],
     "lane_owners": {"Manager": ["manager1"]},
 }

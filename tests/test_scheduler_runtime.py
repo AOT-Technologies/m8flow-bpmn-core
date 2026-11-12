@@ -37,7 +37,8 @@ from m8flow_core.services.scheduler_jobs import (
     upsert_scheduler_job,
 )
 
-INTERMEDIATE_TIMER_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
+INTERMEDIATE_TIMER_BPMN = (
+    """<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -50,10 +51,12 @@ INTERMEDIATE_TIMER_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
       <bpmn:incoming>Flow_1</bpmn:incoming>
       <bpmn:outgoing>Flow_2</bpmn:outgoing>
       <bpmn:timerEventDefinition>
-""" + (
-    "        <bpmn:timeDate xsi:type=\"bpmn:tFormalExpression\">"
-    "'2099-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
-) + """
+"""
+    + (
+        '        <bpmn:timeDate xsi:type="bpmn:tFormalExpression">'
+        "'2099-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
+    )
+    + """
       </bpmn:timerEventDefinition>
     </bpmn:intermediateCatchEvent>
     <bpmn:sequenceFlow id="Flow_2" sourceRef="TimerCatch_1" targetRef="Task_1" />
@@ -63,8 +66,10 @@ INTERMEDIATE_TIMER_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
   </bpmn:process>
 </bpmn:definitions>
 """
+)
 
-TIMER_START_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
+TIMER_START_BPMN = (
+    """<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -73,10 +78,12 @@ TIMER_START_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
   <bpmn:process id="Process_timer_start_runtime" isExecutable="true">
     <bpmn:startEvent id="StartEvent_timer_start" name="StartEvent_timer_start">
       <bpmn:timerEventDefinition>
-""" + (
-    "        <bpmn:timeDate xsi:type=\"bpmn:tFormalExpression\">"
-    "'2099-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
-) + """
+"""
+    + (
+        '        <bpmn:timeDate xsi:type="bpmn:tFormalExpression">'
+        "'2099-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
+    )
+    + """
       </bpmn:timerEventDefinition>
     </bpmn:startEvent>
     <bpmn:sequenceFlow
@@ -90,8 +97,10 @@ TIMER_START_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
   </bpmn:process>
 </bpmn:definitions>
 """
+)
 
-TIMER_START_LANE_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
+TIMER_START_LANE_BPMN = (
+    """<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -105,10 +114,12 @@ TIMER_START_LANE_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
     </bpmn:laneSet>
     <bpmn:startEvent id="StartEvent_timer_start" name="StartEvent_timer_start">
       <bpmn:timerEventDefinition>
-""" + (
-    "        <bpmn:timeDate xsi:type=\"bpmn:tFormalExpression\">"
-    "'2099-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
-) + """
+"""
+    + (
+        '        <bpmn:timeDate xsi:type="bpmn:tFormalExpression">'
+        "'2099-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
+    )
+    + """
       </bpmn:timerEventDefinition>
     </bpmn:startEvent>
     <bpmn:sequenceFlow
@@ -122,8 +133,10 @@ TIMER_START_LANE_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
   </bpmn:process>
 </bpmn:definitions>
 """
+)
 
-TIMER_START_CYCLE_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
+TIMER_START_CYCLE_BPMN = (
+    """<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -132,10 +145,12 @@ TIMER_START_CYCLE_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
   <bpmn:process id="Process_timer_start_cycle_runtime" isExecutable="true">
     <bpmn:startEvent id="StartEvent_timer_cycle" name="StartEvent_timer_cycle">
       <bpmn:timerEventDefinition>
-""" + (
-    "        <bpmn:timeCycle xsi:type=\"bpmn:tFormalExpression\">"
-    "'R3/PT5M'</bpmn:timeCycle>\n"
-) + """
+"""
+    + (
+        '        <bpmn:timeCycle xsi:type="bpmn:tFormalExpression">'
+        "'R3/PT5M'</bpmn:timeCycle>\n"
+    )
+    + """
       </bpmn:timerEventDefinition>
     </bpmn:startEvent>
     <bpmn:sequenceFlow
@@ -149,8 +164,10 @@ TIMER_START_CYCLE_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
   </bpmn:process>
 </bpmn:definitions>
 """
+)
 
-BOUNDARY_TIMER_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
+BOUNDARY_TIMER_BPMN = (
+    """<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -171,10 +188,12 @@ BOUNDARY_TIMER_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
       attachedToRef="Task_review"
       cancelActivity="true">
       <bpmn:timerEventDefinition>
-""" + (
-    "        <bpmn:timeDate xsi:type=\"bpmn:tFormalExpression\">"
-    "'2099-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
-) + """
+"""
+    + (
+        '        <bpmn:timeDate xsi:type="bpmn:tFormalExpression">'
+        "'2099-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
+    )
+    + """
       </bpmn:timerEventDefinition>
     </bpmn:boundaryEvent>
     <bpmn:sequenceFlow
@@ -198,8 +217,10 @@ BOUNDARY_TIMER_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
   </bpmn:process>
 </bpmn:definitions>
 """
+)
 
-TIMER_EVENT_SUBPROCESS_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
+TIMER_EVENT_SUBPROCESS_BPMN = (
+    """<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -210,10 +231,12 @@ TIMER_EVENT_SUBPROCESS_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
     <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="TimerCatch_1" />
     <bpmn:intermediateCatchEvent id="TimerCatch_1" name="TimerCatch_1">
       <bpmn:timerEventDefinition>
-""" + (
-    "        <bpmn:timeDate xsi:type=\"bpmn:tFormalExpression\">"
-    "'2099-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
-) + """
+"""
+    + (
+        '        <bpmn:timeDate xsi:type="bpmn:tFormalExpression">'
+        "'2099-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
+    )
+    + """
       </bpmn:timerEventDefinition>
     </bpmn:intermediateCatchEvent>
     <bpmn:sequenceFlow id="Flow_2" sourceRef="TimerCatch_1" targetRef="EndEvent_1" />
@@ -221,10 +244,12 @@ TIMER_EVENT_SUBPROCESS_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
     <bpmn:subProcess id="Reminder" triggeredByEvent="true">
       <bpmn:startEvent id="ReminderStart" isInterrupting="false">
         <bpmn:timerEventDefinition>
-""" + (
-    "          <bpmn:timeDate xsi:type=\"bpmn:tFormalExpression\">"
-    "'2098-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
-) + """
+"""
+    + (
+        '          <bpmn:timeDate xsi:type="bpmn:tFormalExpression">'
+        "'2098-01-01T00:00:00+00:00'</bpmn:timeDate>\n"
+    )
+    + """
         </bpmn:timerEventDefinition>
       </bpmn:startEvent>
       <bpmn:sequenceFlow
@@ -245,6 +270,7 @@ TIMER_EVENT_SUBPROCESS_BPMN = """<?xml version="1.0" encoding="UTF-8"?>
   </bpmn:process>
 </bpmn:definitions>
 """
+)
 
 
 def test_run_due_scheduler_jobs_reschedules_stale_due_timer(
@@ -451,8 +477,7 @@ def test_run_due_scheduler_jobs_executes_interrupting_boundary_timer(
     assert cancelled_review_human_task is not None
 
     assert (
-        process_instance.status
-        == api.ProcessInstanceStatus.user_input_required.value
+        process_instance.status == api.ProcessInstanceStatus.user_input_required.value
     )
     assert [task.task_name for task in pending_tasks] == ["Task_timeout"]
     assert pending_tasks[0].task_status == "READY"
@@ -842,9 +867,7 @@ def test_run_due_scheduler_jobs_reschedules_recurring_timer_start_job(
     )
     scheduler_job = _load_scheduler_job(session, tenant_id=tenant.id)
     human_tasks = list(
-        session.scalars(
-            select(WorkItemModel).order_by(WorkItemModel.id)
-        ).all()
+        session.scalars(select(WorkItemModel).order_by(WorkItemModel.id)).all()
     )
 
     assert len(process_instances) == 1
@@ -1024,8 +1047,7 @@ def test_run_due_scheduler_jobs_raises_summary_for_multiple_job_errors(
     assert second_job.locked_by is None
     assert second_job.locked_at is None
     assert (
-        str(exc_info.value)
-        == "2 scheduler jobs failed in one batch: "
+        str(exc_info.value) == "2 scheduler jobs failed in one batch: "
         f"{first_job_key}: ValidationError: first failure, "
         f"{second_job_key}: NotFoundError: second failure"
     )
@@ -1144,9 +1166,7 @@ def _load_scheduler_job(
     tenant_id: str,
 ) -> SchedulerJobModel:
     scheduler_job = session.scalar(
-        select(SchedulerJobModel).where(
-            SchedulerJobModel.m8f_tenant_id == tenant_id
-        )
+        select(SchedulerJobModel).where(SchedulerJobModel.m8f_tenant_id == tenant_id)
     )
     assert scheduler_job is not None
     return scheduler_job

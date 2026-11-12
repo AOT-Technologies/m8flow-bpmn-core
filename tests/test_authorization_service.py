@@ -407,32 +407,44 @@ def test_authorization_setup_is_idempotent(session: Session) -> None:
         select(GroupModel.id).where(GroupModel.identifier == group_identifier)
     )
     assert group_id is not None
-    assert session.scalar(
-        select(func.count())
-        .select_from(GroupModel)
-        .where(GroupModel.identifier == group_identifier)
-    ) == 1
-    assert session.scalar(
-        select(func.count())
-        .select_from(UserGroupAssignmentModel)
-        .where(
-            UserGroupAssignmentModel.user_id == user.id,
-            UserGroupAssignmentModel.group_id == group_id,
+    assert (
+        session.scalar(
+            select(func.count())
+            .select_from(GroupModel)
+            .where(GroupModel.identifier == group_identifier)
         )
-    ) == 1
-    assert session.scalar(
-        select(func.count())
-        .select_from(PrincipalModel)
-        .where(PrincipalModel.group_id == group_id)
-    ) == 1
-    assert session.scalar(
-        select(func.count())
-        .select_from(PermissionTargetModel)
-        .where(PermissionTargetModel.command == TASK_CLAIM_COMMAND)
-    ) == 1
-    assert session.scalar(
-        select(func.count()).select_from(PermissionAssignmentModel)
-    ) == 3
+        == 1
+    )
+    assert (
+        session.scalar(
+            select(func.count())
+            .select_from(UserGroupAssignmentModel)
+            .where(
+                UserGroupAssignmentModel.user_id == user.id,
+                UserGroupAssignmentModel.group_id == group_id,
+            )
+        )
+        == 1
+    )
+    assert (
+        session.scalar(
+            select(func.count())
+            .select_from(PrincipalModel)
+            .where(PrincipalModel.group_id == group_id)
+        )
+        == 1
+    )
+    assert (
+        session.scalar(
+            select(func.count())
+            .select_from(PermissionTargetModel)
+            .where(PermissionTargetModel.command == TASK_CLAIM_COMMAND)
+        )
+        == 1
+    )
+    assert (
+        session.scalar(select(func.count()).select_from(PermissionAssignmentModel)) == 3
+    )
 
 
 def test_authorization_group_key_allows_duplicate_legacy_identifiers(

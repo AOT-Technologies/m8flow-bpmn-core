@@ -74,9 +74,7 @@ def build_shared_realm_authorization_url(
     if not normalized_state:
         raise KeycloakLoginError("An OIDC state value is required for shared login.")
     if not normalized_code_challenge:
-        raise KeycloakLoginError(
-            "A PKCE code challenge is required for shared login."
-        )
+        raise KeycloakLoginError("A PKCE code challenge is required for shared login.")
 
     query_params = {
         "response_type": "code",
@@ -173,8 +171,7 @@ def ensure_shared_realm_browser_client(
         "clientId": normalized_client_id,
         "name": "m8flow-core Sample App",
         "description": (
-            "Browser login client provisioned for the m8flow-core "
-            "sample app."
+            "Browser login client provisioned for the m8flow-core sample app."
         ),
         "enabled": True,
         "protocol": "openid-connect",
@@ -258,9 +255,7 @@ def _authenticated_user_from_token_response(
 
     issuer = str(claims.get("iss", "")).strip() or shared_realm_service_issuer()
     if issuer != shared_realm_service_issuer():
-        raise KeycloakLoginError(
-            "Keycloak returned a token from an unexpected issuer."
-        )
+        raise KeycloakLoginError("Keycloak returned a token from an unexpected issuer.")
 
     audience = claims.get("aud")
     if audience is not None and not _audience_contains_client_id(audience, client_id):
@@ -311,13 +306,11 @@ def _token_request(
         if exc.code == 400 and error_description:
             raise KeycloakLoginError(error_description) from exc
         raise KeycloakLoginError(
-            "Keycloak login request failed with status "
-            f"{exc.code}: {body_text[:500]}"
+            f"Keycloak login request failed with status {exc.code}: {body_text[:500]}"
         ) from exc
     except URLError as exc:
         raise KeycloakLoginError(
-            "Unable to reach Keycloak for shared login: "
-            f"{exc.reason}"
+            f"Unable to reach Keycloak for shared login: {exc.reason}"
         ) from exc
 
     payload = _json_loads(body_text, error_type=KeycloakLoginError)
@@ -374,8 +367,7 @@ def _get_realm_client_by_client_id(
     matches = [
         item
         for item in payload
-        if isinstance(item, dict)
-        and str(item.get("clientId", "")).strip() == client_id
+        if isinstance(item, dict) and str(item.get("clientId", "")).strip() == client_id
     ]
     if len(matches) != 1:
         return None
@@ -603,8 +595,7 @@ def _json_loads(body_text: str, *, error_type: type[Exception]) -> Any | None:
         return json.loads(normalized_body)
     except json.JSONDecodeError as exc:
         raise error_type(
-            "Keycloak returned invalid JSON: "
-            f"{normalized_body[:500]}"
+            f"Keycloak returned invalid JSON: {normalized_body[:500]}"
         ) from exc
 
 

@@ -147,7 +147,9 @@ m8flow-core 1.0 is the first stable release. The public surface is the
 `m8flow_core.api` module, documented in the
 [API reference](docs/reference/api.md), together with the
 [database schema](docs/reference/database-schema.md). The
-[changelog](CHANGELOG.md) records every change to either. Coming from
+[changelog](CHANGELOG.md) records every change to either. Releases follow
+[Semantic Versioning](docs/reference/versioning.md): a breaking change to
+the public contract ships only in a new major version. Coming from
 `m8flow-bpmn-core` 0.x? Follow [Upgrade to 1.0](docs/how-to/upgrade-to-1.0.md). Messaging and correlation, and
 tenant and user management aren't covered yet. [Limitations](docs/reference/limitations.md) lists every known
 gap.

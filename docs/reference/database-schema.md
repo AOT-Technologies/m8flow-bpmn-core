@@ -16,7 +16,8 @@ no parent and builds the 1.0 schema on an empty database. Signal revision
 
 Table and column names are part of the compatibility contract, because host
 applications such as m8flow share the database. Renaming or removing one is a
-breaking change. Don't write to these tables directly; use the
+breaking change and ships only in a new major version; see the
+[versioning policy](versioning.md). Don't write to these tables directly; use the
 [public API](api.md).
 
 ## Conventions

@@ -234,14 +234,10 @@ def lane_owner_usernames_for_tenant(
         if user.lane_name == "Operations"
     ]
     finance_owners = [
-        user.username
-        for user in tenant_definition.users
-        if user.lane_name == "Finance"
+        user.username for user in tenant_definition.users if user.lane_name == "Finance"
     ]
     review_owners = [
-        user.username
-        for user in tenant_definition.users
-        if user.lane_name == "Review"
+        user.username for user in tenant_definition.users if user.lane_name == "Review"
     ]
     supervisor_owners = [
         user.username
@@ -294,9 +290,7 @@ def _ensure_tenant(
         keycloak_context=keycloak_context,
     )
     tenant = session.scalar(
-        select(M8flowTenantModel).where(
-            M8flowTenantModel.id == canonical_tenant_id
-        )
+        select(M8flowTenantModel).where(M8flowTenantModel.id == canonical_tenant_id)
     )
     if tenant is None:
         tenant = session.scalar(
