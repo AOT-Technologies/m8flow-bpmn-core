@@ -16,6 +16,9 @@ project's [Apache License 2.0](LICENSE), and you certify the
 for each commit. See [Sign off your commits](#sign-off-your-commits).
 
 Read the [code of conduct](CODE_OF_CONDUCT.md) before you take part.
+[GOVERNANCE.md](GOVERNANCE.md) explains how decisions are made, and
+[MAINTAINERS.md](MAINTAINERS.md) lists who reviews and merges changes. Check
+the [roadmap](ROADMAP.md) before you start on a large feature.
 
 ## Prerequisites
 
@@ -173,8 +176,10 @@ To submit a change, follow these steps:
 3. Run the [checks](#checks).
 4. Open a pull request against `main`. Describe the change and why you made
    it, and link any related issue.
-5. A maintainer reviews your pull request. Address feedback by pushing more
-   commits to your branch.
+5. A [maintainer](MAINTAINERS.md) reviews your pull request. Address feedback
+   by pushing more commits to your branch. Public API, schema, and dependency
+   changes need an issue first and approval from two maintainers; see
+   [GOVERNANCE.md](GOVERNANCE.md#how-decisions-are-made).
 
 ## Reporting bugs and requesting features
 

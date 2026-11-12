@@ -11,3 +11,6 @@ contact_links:
   - name: Documentation
     url: https://github.com/AOT-Technologies/m8flow-core/blob/main/docs/README.md
     about: Check the documentation and the list of known limitations before you open an issue.
+  - name: Roadmap
+    url: https://github.com/AOT-Technologies/m8flow-core/blob/main/ROADMAP.md
+    about: Check whether a feature is already planned before you request it.

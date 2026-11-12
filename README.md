@@ -188,6 +188,9 @@ Use the following resources:
   [SECURITY.md](SECURITY.md). Don't open a public issue.
 - Before you open a pull request, read the [contributing guide](CONTRIBUTING.md).
 - Everyone who takes part follows the [code of conduct](CODE_OF_CONDUCT.md).
+- See the [roadmap](ROADMAP.md) for planned work, [GOVERNANCE.md](GOVERNANCE.md)
+  for how decisions are made, and [MAINTAINERS.md](MAINTAINERS.md) for who
+  maintains the project.
 - Release notes are in the [changelog](CHANGELOG.md).
 
 ## License
