@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from datetime import datetime
 from typing import Any, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -18,8 +17,6 @@ from SpiffWorkflow.bpmn.specs.event_definitions.simple import CancelEventDefinit
 from SpiffWorkflow.bpmn.util import BpmnEvent
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
 from SpiffWorkflow.util.task import TaskState
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from m8flow_core.errors import (
     CompensationExecutionError,
@@ -27,17 +24,7 @@ from m8flow_core.errors import (
     NotFoundError,
     ServiceTaskExecutionError,
 )
-from m8flow_core.models.compensation import (
-    CompensationRecordModel,
-    CompensationRunModel,
-    CompensationScopeModel,
-)
-from m8flow_core.models.json_data import JsonDataModel
 from m8flow_core.models.process_instance_event import TaskEventType
-from m8flow_core.services.process_instances import (
-    get_process_instance,
-    record_process_instance_event,
-)
 
 
 def coordinator(workflow: Any) -> CompensationCoordinator | None:
@@ -457,12 +444,12 @@ class CompensationCoordinator:
         return {
             **deepcopy(self.state),
             "handlers": {
-                key: self._handler_snapshot(handler)
+                key: self.handler_snapshot(handler)
                 for key, handler in self.handlers.items()
             },
         }
 
-    def _handler_snapshot(self, handler: Any) -> dict[str, Any]:
+    def handler_snapshot(self, handler: Any) -> dict[str, Any]:
         return cast(dict[str, Any], json.loads(self.serializer.serialize_json(handler)))
 
     def restore_handlers(self, payload: dict[str, Any]) -> None:
@@ -473,82 +460,3 @@ class CompensationCoordinator:
             self.bind(handler)
             self.handlers[key] = handler
             self._context(self.state["records"][key], handler)
-
-    def persist(self, session: Session, instance: Any, occurred_at: datetime) -> None:
-        with session.no_autoflush:
-            self._persist(session, instance, occurred_at)
-
-    def _persist(self, session: Session, instance: Any, occurred_at: datetime) -> None:
-        tenant_id = instance.m8f_tenant_id
-        for model, collection, identity in (
-            (CompensationScopeModel, "scopes", "scope_id"),
-            (CompensationRunModel, "runs", "throw_task_guid"),
-            (CompensationRecordModel, "records", "source_task_guid"),
-        ):
-            existing = {
-                getattr(row, identity): row
-                for row in session.scalars(
-                    select(model).where(
-                        model.m8f_tenant_id == tenant_id,
-                        model.process_instance_id == instance.id,
-                    )
-                )
-            }
-            for value in self.state[collection].values():
-                row: Any = existing.get(value[identity])
-                if row is None:
-                    row = model(
-                        m8f_tenant_id=tenant_id,
-                        process_instance_id=instance.id,
-                        created_at=occurred_at,
-                    )
-                    session.add(row)
-                for column in model.__table__.columns:
-                    if column.name in value and column.name != "created_at":
-                        setattr(row, column.name, value[column.name])
-                row.updated_at = occurred_at
-                if "data" in value:
-                    row.data_hash = JsonDataModel.create_or_update_from_payload(
-                        session, tenant_id, value["data"]
-                    )
-                if (
-                    collection == "records"
-                    and value["source_task_guid"] in self.handlers
-                ):
-                    handler = self.handlers[value["source_task_guid"]]
-                    row.workflow_state_hash = (
-                        JsonDataModel.create_or_update_from_payload(
-                            session, tenant_id, self._handler_snapshot(handler)
-                        )
-                    )
-        for event_type, task_guid in self.events:
-            record_process_instance_event(
-                session,
-                tenant_id=tenant_id,
-                process_instance_id=instance.id,
-                event_type=event_type,
-                task_guid=task_guid,
-                occurred_at=occurred_at,
-            )
-        self.events.clear()
-
-
-def get_process_instance_compensations(
-    session: Session,
-    *,
-    tenant_id: str,
-    process_instance_id: int,
-) -> list[CompensationRecordModel]:
-    get_process_instance(
-        session, tenant_id=tenant_id, process_instance_id=process_instance_id
-    )
-    return list(
-        session.scalars(
-            select(CompensationRecordModel)
-            .where(
-                CompensationRecordModel.m8f_tenant_id == tenant_id,
-                CompensationRecordModel.process_instance_id == process_instance_id,
-            )
-            .order_by(CompensationRecordModel.completion_sequence)
-        )
-    )

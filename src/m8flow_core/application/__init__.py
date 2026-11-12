@@ -11,9 +11,11 @@ from m8flow_core.application.commands import (
     ImportBpmnProcessDefinitionCommand,
     InitializeProcessInstanceFromDefinitionCommand,
     InitializeProcessInstanceWorkflowCommand,
+    PublishSignalCommand,
     RecordProcessInstanceEventCommand,
     ResumeProcessInstanceCommand,
     RetryProcessInstanceCommand,
+    RunSignalDeliveriesCommand,
     ScheduleProcessInstanceRetryCommand,
     SuspendProcessInstanceCommand,
     TerminateProcessInstanceCommand,
@@ -25,8 +27,10 @@ from m8flow_core.application.queries import (
     GetProcessInstanceEventsQuery,
     GetProcessInstanceMetadataQuery,
     GetProcessInstanceQuery,
+    GetSignalPublicationQuery,
     ListErrorProcessInstancesQuery,
     ListProcessInstancesQuery,
+    ListSignalDeliveriesQuery,
     ListSuspendedProcessInstancesQuery,
     ListTerminatedProcessInstancesQuery,
 )
@@ -43,6 +47,8 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
+    "PublishSignalCommand", "RunSignalDeliveriesCommand",
+    "GetSignalPublicationQuery", "ListSignalDeliveriesQuery",
     "ClaimTaskCommand",
     "CompleteTaskCommand",
     "CreateProcessInstanceCommand",

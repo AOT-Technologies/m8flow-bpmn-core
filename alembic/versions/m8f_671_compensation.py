@@ -1,19 +1,19 @@
 """Add durable compensation journal.
 
-Revision ID: l3m4n5o6p7q8
-Revises: k2l3m4n5o6p7
+Revision ID: m8f_671_compensation
+Revises: l3m4n5o6p7q8
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "l3m4n5o6p7q8"
-down_revision = "k2l3m4n5o6p7"
+revision = "m8f_671_compensation"
+down_revision = "l3m4n5o6p7q8"
 branch_labels = None
 depends_on = None
 
 
-def _common() -> list[sa.Column]:
+def _common() -> list[sa.Column | sa.ForeignKeyConstraint]:
     return [
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column(
@@ -22,11 +22,10 @@ def _common() -> list[sa.Column]:
             sa.ForeignKey("m8flow_tenant.id"),
             nullable=False,
         ),
-        sa.Column(
-            "process_instance_id",
-            sa.Integer(),
-            sa.ForeignKey("process_instance.id"),
-            nullable=False,
+        sa.Column("process_instance_id", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["m8f_tenant_id", "process_instance_id"],
+            ["process_instance.m8f_tenant_id", "process_instance.id"],
         ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),

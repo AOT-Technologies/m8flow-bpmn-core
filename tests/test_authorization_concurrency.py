@@ -141,13 +141,13 @@ def test_authorization_initialization_is_race_safe(tmp_path: Path) -> None:
                     session.scalar(
                         select(func.count()).select_from(PermissionTargetModel)
                     )
-                    == 4
+                    == 5
                 )
                 assert (
                     session.scalar(
                         select(func.count()).select_from(PermissionAssignmentModel)
                     )
-                    == 4
+                    == 5
                 )
         finally:
             verification_engine.dispose()

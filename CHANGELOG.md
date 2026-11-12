@@ -12,7 +12,22 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 - BPMN Transaction cancellation stops active work and timers, runs recorded
   compensation handlers, and follows the attached Cancel Boundary Event once.
   `validate_compensation_bpmn` lets hosts check supported forms before saving.
-
+- Durable tenant-scoped BPMN signal publication, subscription indexing, and
+  idempotent delivery receipts. Intermediate/end throws broadcast to waiting
+  intermediate catches, boundary events, event subprocesses, and Signal Start
+  definitions. Local handlers react immediately; hosts run queued deliveries
+  with `RunSignalDeliveriesCommand` or `run_signal_deliveries`.
+- `PublishSignalCommand`, `RunSignalDeliveriesCommand`,
+  `GetSignalPublicationQuery`, `ListSignalDeliveriesQuery`, matching service
+  functions, and `SIGNAL_PUBLISH_COMMAND`. Managers and admins can publish with
+  the new tenant-scoped permission. An additive Alembic revision
+  `l3m4n5o6p7q8` introduces the four signal registry tables.
+- An interactive SQLite signal broadcast example and embedding guide.
+- Signal-bearing workflows keep instance creation, service-failure recovery,
+  publication, and consumption in the caller's transaction. Rollback restores
+  them together; commit an error state to retain it.
+- Overlapping signal runner calls serialize per tenant. The registry enforces
+  same-tenant publication sources and required subscription references.
 - BPMN call activities through the tenant-aware `CallActivityResolver` API.
   Called child workflows are stored inside the parent workflow snapshot and
   their human tasks use the existing parent process instance worklist.
@@ -21,7 +36,10 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
   and durable reverse completion ordering with nested scope isolation.
 - Tenant-scoped compensation journals and progress query, compensation lifecycle
   events, connector idempotency context, and retry of failed undo handlers.
-- Additive Alembic revision `l3m4n5o6p7q8` and a restartable compensation example.
+- Alembic revision `m8f_671_compensation` follows the signal registry revision
+  and enforces same-tenant process references in all three journal tables.
+- An interactive compensation walkthrough shows committed progress across an
+  engine restart and supports `--non-interactive` for scripted runs.
   Compensation checkpoints use caller-owned transactions; callers must commit
   captured failures to retain them for retry. Legacy compensation snapshots
   without completion journals cannot continue compensation.
@@ -44,6 +62,31 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 - Added the compensation journal tables to the sample app's migration chain,
   so tenant realignment can run against databases migrated by the app.
 - Removed import cycles in compensation persistence and process termination.
+- Signal starts can be retried after a caller rollback on SQLite without
+  retaining a stale workflow row in the session.
+- Removed unused runtime compatibility imports and made the signal service
+  facade's exports explicit. Workflow serializer configuration now uses the
+  shared version constant, addressing the remaining CodeQL unused-symbol
+  alerts without changing the public API or serialized format.
+
+- Removed cyclic imports introduced by signal publication. Engine construction,
+  workflow-state persistence, and signal indexing now form lower-level internal
+  modules; Spiff signal throws use an injected publisher callback. Public API
+  exports and persisted workflow formats are unchanged.
+- Added sample-app revision `20261104_0003` for the signal registry and its
+  composite parent indexes. The app now upgrades existing databases and adopts
+  existing signal tables without changing the host's Alembic version state.
+  This fixes sample-app startup and CI failures on missing signal tables.
+
+
+- Unmatched signal throws are covered by regressions: publication succeeds
+  without a catcher and downstream execution continues (BPMN-03). Signal end
+  events now publish instead of silently behaving as none end events.
+- Non-interrupting signal boundaries re-arm for repeated occurrences;
+  interrupting signal event subprocesses cancel competing scope execution.
+  Tasks in signal-triggered subprocesses are persisted and materialized.
+
+
 - A timer start event inside an event subprocess is now scheduled as a timer
   of the running instance. Before, importing the definition scheduled it as a
   process timer start, which started extra instances, and the running instance

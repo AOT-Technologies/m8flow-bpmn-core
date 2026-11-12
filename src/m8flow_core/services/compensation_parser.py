@@ -8,23 +8,23 @@ not Spiff's normal boundary-event split/join branches.
 from __future__ import annotations
 
 from copy import deepcopy
+from itertools import count
 from typing import Any
 
-# Construction/serialization only; untrusted parsing uses defusedxml below.
-from xml.etree import ElementTree as Xml  # nosec B405
-
 from defusedxml import ElementTree
+from lxml import etree
 from SpiffWorkflow.bpmn.parser.BpmnParser import full_tag
 from SpiffWorkflow.bpmn.serializer.default.task_spec import EventConverter
 from SpiffWorkflow.bpmn.specs.defaults import EndEvent, IntermediateThrowEvent
 from SpiffWorkflow.bpmn.specs.event_definitions.simple import NoneEventDefinition
-from SpiffWorkflow.spiff.parser.event_parsers import (
-    SpiffEndEventParser,
-    SpiffIntermediateThrowEventParser,
-)
 from SpiffWorkflow.spiff.parser.process import SpiffBpmnParser
 
 from m8flow_core.errors import ValidationError
+from m8flow_core.services.signal_runtime import (
+    SignalEndParser,
+    SignalThrowParser,
+    signal_parser_overrides,
+)
 
 BPMN = "{http://www.omg.org/spec/BPMN/20100524/MODEL}"
 ACTIVITIES = {
@@ -78,7 +78,7 @@ class CompensationEventConverter(EventConverter):
         }
 
 
-class _ThrowParser(SpiffIntermediateThrowEventParser):
+class _ThrowParser(SignalThrowParser):
     def create_task(self) -> Any:
         event = self.node.find(full_tag("compensateEventDefinition"))
         if event is None:
@@ -93,7 +93,7 @@ class _ThrowParser(SpiffIntermediateThrowEventParser):
         )
 
 
-class _EndParser(SpiffEndEventParser):
+class _EndParser(SignalEndParser):
     def create_task(self) -> Any:
         event = self.node.find(full_tag("compensateEventDefinition"))
         if event is None:
@@ -122,6 +122,7 @@ class _EndParser(SpiffEndEventParser):
 class CompensationBpmnParser(SpiffBpmnParser):
     OVERRIDE_PARSER_CLASSES = {
         **SpiffBpmnParser.OVERRIDE_PARSER_CLASSES,
+        **signal_parser_overrides(),
         full_tag("intermediateThrowEvent"): (_ThrowParser, IntermediateThrowEvent),
         full_tag("endEvent"): (_EndParser, EndEvent),
     }
@@ -150,25 +151,31 @@ class CompensationBpmnParser(SpiffBpmnParser):
             for node in root.iter()
         ):
             self.has_compensation = True
-            self._compile(root)
-            bpmn_str = Xml.tostring(root, encoding="utf-8")
-        super().add_bpmn_str(bpmn_str, filename=filename)
+            # Use the original namespace declarations for QName-valued references
+            # such as signalRef. The defused parse above rejects unsafe XML first.
+            parser = etree.XMLParser(resolve_entities=False, no_network=True)
+            compiled = etree.fromstring(bpmn_str, parser=parser)
+            self._compile(compiled)
+            super().add_bpmn_xml(compiled, filename=filename)
+        else:
+            super().add_bpmn_str(bpmn_str, filename=filename)
 
     def _compile(self, root: Any) -> None:
         ids = [
             node.get("id")
-            for node in root.iter()
+            for node in root.iter("*")
             if node.tag.startswith(BPMN) and node.get("id")
         ]
         if len(ids) != len(set(ids)):
             raise ValidationError("BPMN compensation identifiers must be unique")
         nodes: dict[str, Any] = {
-            node.get("id"): node for node in root.iter() if node.get("id")
+            node.get("id"): node for node in root.iter("*") if node.get("id")
         }
+        reserved_ids = set(nodes)
         parents: dict[Any, Any] = {
-            child: parent for parent in root.iter() for child in parent
+            child: parent for parent in root.iter("*") for child in parent
         }
-        for node in list(root.iter()):
+        for node in list(root.iter("*")):
             for ref in list(node.findall(BPMN + "eventDefinitionRef")):
                 definition = nodes.get((ref.text or "").strip().split(":")[-1])
                 if definition is not None and definition.tag in {
@@ -182,7 +189,9 @@ class CompensationBpmnParser(SpiffBpmnParser):
             compensation = node.findall(BPMN + "compensateEventDefinition")
             if compensation:
                 event_definitions = [
-                    child for child in node if child.tag.endswith("EventDefinition")
+                    child
+                    for child in node.iterchildren("*")
+                    if child.tag.endswith("EventDefinition")
                 ]
                 if len(compensation) != 1 or len(event_definitions) != 1:
                     raise ValidationError(
@@ -195,10 +204,10 @@ class CompensationBpmnParser(SpiffBpmnParser):
         self._validate_cancel_events(root, nodes, parents)
         scopes = {
             node
-            for node in root.iter()
+            for node in root.iter("*")
             if node.tag in {BPMN + "process", BPMN + "subProcess", BPMN + "transaction"}
         }
-        for node in root.iter():
+        for node in root.iter("*"):
             # Spiff evaluates timer content as Python; accept standard BPMN
             # literals as well as the existing expression dialect.
             if node.tag in {BPMN + "timeDate", BPMN + "timeDuration"}:
@@ -227,7 +236,7 @@ class CompensationBpmnParser(SpiffBpmnParser):
 
         handlers = [
             node
-            for node in root.iter()
+            for node in root.iter("*")
             if node.get("isForCompensation") in {"true", "1"}
         ]
         bound: set[str] = set()
@@ -345,28 +354,34 @@ class CompensationBpmnParser(SpiffBpmnParser):
                 raise ValidationError(
                     "Compensation handler has no boundary association"
                 )
-            helper_id = f"__m8f_compensation_{handler_id}"
-            if helper_id in nodes:
-                raise ValidationError(
-                    "BPMN identifier conflicts with a compensation helper"
-                )
-            helper = Xml.SubElement(
+            base = f"__m8f_compensation_{handler_id}"
+            for suffix in count():
+                helper_id = f"{base}_{suffix}" if suffix else base
+                start_id, end_id = helper_id + "_start", helper_id + "_end"
+                flow_ids = (helper_id + "_flow_0", helper_id + "_flow_1")
+                lanes_id, lane_id = helper_id + "_lanes", helper_id + "_lane"
+                generated_ids = {
+                    helper_id, start_id, end_id, *flow_ids, lanes_id, lane_id
+                }
+                if reserved_ids.isdisjoint(generated_ids):
+                    reserved_ids.update(generated_ids)
+                    break
+            helper = etree.SubElement(
                 root, BPMN + "process", {"id": helper_id, "isExecutable": "true"}
             )
-            start_id, end_id = helper_id + "_start", helper_id + "_end"
-            Xml.SubElement(helper, BPMN + "startEvent", {"id": start_id})
+            etree.SubElement(helper, BPMN + "startEvent", {"id": start_id})
             copy = deepcopy(handler)
             copy.attrib.pop("isForCompensation", None)
             helper.append(copy)
-            Xml.SubElement(helper, BPMN + "endEvent", {"id": end_id})
-            for index, (source, target) in enumerate(
-                ((start_id, handler_id), (handler_id, end_id))
+            etree.SubElement(helper, BPMN + "endEvent", {"id": end_id})
+            for flow_id, (source, target) in zip(
+                flow_ids, ((start_id, handler_id), (handler_id, end_id)), strict=True
             ):
-                Xml.SubElement(
+                etree.SubElement(
                     helper,
                     BPMN + "sequenceFlow",
                     {
-                        "id": f"{helper_id}_flow_{index}",
+                        "id": flow_id,
                         "sourceRef": source,
                         "targetRef": target,
                     },
@@ -377,15 +392,16 @@ class CompensationBpmnParser(SpiffBpmnParser):
                 if any(
                     ref.text == handler_id for ref in lane.findall(BPMN + "flowNodeRef")
                 ):
-                    lane_set = Xml.SubElement(
-                        helper, BPMN + "laneSet", {"id": helper_id + "_lanes"}
+                    lane_set = etree.SubElement(
+                        helper, BPMN + "laneSet", {"id": lanes_id}
                     )
-                    copied_lane = Xml.SubElement(
+                    copied_lane = etree.SubElement(
                         lane_set,
                         BPMN + "lane",
-                        {"id": helper_id + "_lane", "name": lane.get("name", "")},
+                        {"id": lane_id, "name": lane.get("name", "")},
                     )
-                    Xml.SubElement(copied_lane, BPMN + "flowNodeRef").text = handler_id
+                    lane_ref = etree.SubElement(copied_lane, BPMN + "flowNodeRef")
+                    lane_ref.text = handler_id
                     break
             parents[handler].remove(handler)
             self.compensation_handlers[handler_id] = helper_id

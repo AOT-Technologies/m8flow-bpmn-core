@@ -1,8 +1,10 @@
 """Inventory/payment/shipment compensation, with a durable restart.
 
-Run with ``uv run python examples/compensation.py``. No external services needed.
+Run with ``uv run python examples/compensation.py``. Add ``--non-interactive``
+to run the same walkthrough without prompts.
 """
 
+from argparse import ArgumentParser
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -18,16 +20,23 @@ FIXTURE = Path(__file__).resolve().parents[1] / "tests/fixtures/compensation_sag
 TENANT = "compensation-demo"
 
 
-def finish(session: Session, user_id: int, expected: str) -> None:
+def finish(session: Session, user_id: int, expected: str, *, interactive: bool) -> None:
     items = api.execute_query(session, api.GetPendingTasksQuery(TENANT, user_id))
     assert [item.task_name for item in items] == [expected]
     item = items[0]
+    print(f"Pending handler {item.task_name} (work item {item.id})")
+    if interactive:
+        input("Press Enter to claim and complete this handler. ")
     api.execute_command(session, api.ClaimTaskCommand(TENANT, item.id, user_id))
     api.execute_command(session, api.CompleteTaskCommand(TENANT, item.id, user_id))
     print(f"Completed {expected}")
 
 
 def main() -> None:
+    parser = ArgumentParser(description=__doc__)
+    parser.add_argument("--non-interactive", action="store_true")
+    interactive = not parser.parse_args().non_interactive
+
     with TemporaryDirectory(prefix="m8flow-compensation-") as directory:
         url = f"sqlite+pysqlite:///{Path(directory) / 'saga.db'}"
         engine = build_engine(url)
@@ -64,23 +73,41 @@ def main() -> None:
             )
             instance_id, user_id = instance.id, user.id
             print("Reserved inventory, charged payment, arranged shipment.")
-            finish(session, user_id, "undo_shipment")
+            finish(session, user_id, "undo_shipment", interactive=interactive)
             session.commit()
         engine.dispose()
 
-        print("Restarting the engine after committing shipment undo...")
+        print("Shipment undo is committed.")
+        if interactive:
+            input("Press Enter to reopen the database with a fresh engine. ")
+        print("Restarting the engine...")
         engine = build_engine(url)
         try:
             with Session(engine) as session:
-                finish(session, user_id, "undo_payment")
+                recovered = api.execute_query(
+                    session,
+                    api.GetProcessInstanceCompensationsQuery(TENANT, instance_id),
+                )
+                print("Journal after restart")
+                for record in reversed(recovered):
+                    print(
+                        f"  {record.handler_id} is {record.status} "
+                        f"(attempts {record.attempts})"
+                    )
+                assert [record.status for record in recovered] == [
+                    "queued",
+                    "running",
+                    "completed",
+                ]
+                finish(session, user_id, "undo_payment", interactive=interactive)
                 session.commit()
-                finish(session, user_id, "undo_inventory")
+                finish(session, user_id, "undo_inventory", interactive=interactive)
                 session.commit()
                 records = api.execute_query(
                     session,
                     api.GetProcessInstanceCompensationsQuery(TENANT, instance_id),
                 )
-                assert all(
+                assert len(records) == 3 and all(
                     record.status == "completed" and record.attempts == 1
                     for record in records
                 )

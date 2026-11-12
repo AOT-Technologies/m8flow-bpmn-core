@@ -54,6 +54,10 @@ is saved durably and can be retried.
 
 Missing:
 
+- **Independent recovery writes for signal workflows.** Signal-bearing
+  workflows keep service failures, publications, and receipts in the caller's
+  transaction. Commit a failure state to retain it; rollback restores all of
+  them together.
 - **Durable failures after task completion.** A service task that fails after
   `CompleteTaskCommand` shares your transaction, so a rollback undoes the
   failure state too.
@@ -106,7 +110,10 @@ Missing:
 
 ## Messaging and correlation
 
-The library doesn't support BPMN messaging.
+The library supports tenant-scoped BPMN signal publication. Hosts run one
+signal delivery loop per tenant; multi-worker signal delivery and external
+broker delivery are not supported. See [Publish signals](../how-to/publish-signals.md).
+BPMN message correlation remains unsupported.
 
 Missing:
 
@@ -114,8 +121,7 @@ Missing:
   as `invoice.received` instead of an explicit start command.
 - **Intermediate message events**, such as sending `payment.requested` and
   waiting for `payment.confirmed` before continuing.
-- **Signal events**, which broadcast to every listening instance at once.
-- **Correlation keys and subscriptions**, which match an inbound payload such
+- **Message correlation keys and subscriptions**, which match an inbound payload such
   as `order_id=123` to the instance waiting for it.
 - **Inbound message routing**, an entry point that turns a webhook or event-bus
   message into "resume this instance at this catch event".
@@ -129,20 +135,20 @@ the [API reference](api.md#initializeprocessinstancefromdefinitioncommand).
 The following BPMN features aren't tested in the library:
 
 - **Event subprocesses**, triggered by events inside a running parent process,
-  often for cancellation or exception handling. Only non-interrupting timer
-  event subprocesses are covered.
+  often for cancellation or exception handling. Non-interrupting timer and
+  interrupting/non-interrupting signal event subprocesses are covered.
 - **Advanced compensation combinations.** Boundary handlers and scoped
-  throws/end events are supported. Compensation event subprocesses, loop and
-  multi-instance integration, call activities, nested cancellable Transactions,
-  and automatic compensation from BPMN errors are outside this release. Compensation
-  models requiring them are rejected. See [Run compensation handlers](../how-to/run-compensation.md).
+  throws and end events are supported, as is Transaction cancellation.
+  Compensation models that require event subprocesses, loops, multi-instance
+  activities, call activities, nested Transactions inside a cancellable
+  Transaction, or automatic compensation from BPMN errors are rejected. See
+  [Run compensation handlers](../how-to/run-compensation.md).
 - **Error and escalation boundary events**, for typed business errors such as
   a service task raising `INSUFFICIENT_FUNDS`. Timer boundary events are
   covered; these aren't.
 - **Multi-instance activities**, which run a task once per item in a
   collection, in sequence or in parallel.
-- **Non-interrupting events**, which start side work, such as a reminder task,
-  without cancelling the current path.
+- **Other non-interrupting events**, beyond the tested timer and signal forms.
 
 ## Operations and observability
 
