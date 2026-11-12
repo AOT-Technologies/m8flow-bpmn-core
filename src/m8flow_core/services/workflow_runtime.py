@@ -190,14 +190,30 @@ def initialize_process_instance_workflow(
             process_instance_id=process_instance_id,
         ),
     )
-    _run_workflow_with_service_task_failure_handling(
-        session,
-        tenant_id=tenant_id,
-        process_instance=process_instance,
-        workflow=workflow,
-        occurred_at=occurred_at,
-        autonomous_failure_state_persistence=True,
-    )
+    try:
+        _run_workflow_with_service_task_failure_handling(
+            session,
+            tenant_id=tenant_id,
+            process_instance=process_instance,
+            workflow=workflow,
+            occurred_at=occurred_at,
+            autonomous_failure_state_persistence=True,
+        )
+    except WorkflowTaskException:
+        # A failing script left the new instance with no workflow state, so no
+        # record of where it failed. Save that snapshot, as a service-task
+        # failure does, but leave the status to the host, which handles script
+        # failures itself.
+        if _failure_state_may_use_independent_session(workflow):
+            _persist_service_task_failure_state_in_independent_session(
+                session,
+                tenant_id=tenant_id,
+                process_instance_id=process_instance.id,
+                workflow=workflow,
+                occurred_at=occurred_at,
+                transition_to_error=False,
+            )
+        raise
 
     return _finalize_initialized_process_instance_workflow(
         session,
@@ -965,6 +981,18 @@ def repair_process_instance_runtime_representation(
     return process_instance
 
 
+def _failure_state_may_use_independent_session(workflow: BpmnWorkflow) -> bool:
+    """False for compensation or signal workflows, which keep failure state in
+    the caller's transaction so a rollback restores everything together."""
+    return not coordinator(workflow) and not any(
+        isinstance(
+            getattr(task_spec, "event_definition", None), RuntimeSignalDefinition
+        )
+        for spec in [workflow.spec, *workflow.subprocess_specs.values()]
+        for task_spec in spec.task_specs.values()
+    )
+
+
 def _run_workflow_with_service_task_failure_handling(
     session: Session,
     *,
@@ -985,15 +1013,7 @@ def _run_workflow_with_service_task_failure_handling(
     except (ServiceTaskExecutionError, CompensationExecutionError):
         if (
             autonomous_failure_state_persistence
-            and not coordinator(workflow)
-            and not any(
-                isinstance(
-                    getattr(task_spec, "event_definition", None),
-                    RuntimeSignalDefinition,
-                )
-                for spec in [workflow.spec, *workflow.subprocess_specs.values()]
-                for task_spec in spec.task_specs.values()
-            )
+            and _failure_state_may_use_independent_session(workflow)
             and _persist_service_task_failure_state_in_independent_session(
                 session,
                 tenant_id=tenant_id,
@@ -1098,6 +1118,7 @@ def _persist_service_task_failure_state_in_independent_session(
     process_instance_id: int,
     workflow: BpmnWorkflow,
     occurred_at: datetime,
+    transition_to_error: bool = True,
 ) -> bool:
     engine = _session_engine(session)
     if engine is None:
@@ -1119,14 +1140,19 @@ def _persist_service_task_failure_state_in_independent_session(
             autonomous_session.rollback()
             return False
 
-        _transition_process_instance_to_error_for_service_task_failure(
-            autonomous_session,
-            tenant_id=tenant_id,
-            process_instance=process_instance,
-            workflow=workflow,
-            occurred_at=occurred_at,
-            recovery_only=True,
-        )
+        if transition_to_error:
+            _transition_process_instance_to_error_for_service_task_failure(
+                autonomous_session,
+                tenant_id=tenant_id,
+                process_instance=process_instance,
+                workflow=workflow,
+                occurred_at=occurred_at,
+                recovery_only=True,
+            )
+        else:
+            _persist_workflow_recovery_state(
+                autonomous_session, process_instance, workflow
+            )
         autonomous_session.commit()
         return True
     except Exception:

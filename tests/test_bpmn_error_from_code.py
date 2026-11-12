@@ -14,6 +14,7 @@ from xml.sax.saxutils import escape
 
 import pytest
 from SpiffWorkflow.util.task import TaskState
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from m8flow_core import api
@@ -156,6 +157,9 @@ def _start(session: Session, bpmn_xml: str) -> ProcessInstanceModel:
             updated_at=datetime.fromtimestamp(10, UTC),
         ),
     )
+    # As a host does before starting: core saves start failures on its own
+    # session, which only sees committed rows.
+    session.commit()
     return api.execute_command(
         session,
         api.InitializeProcessInstanceFromDefinitionCommand(
@@ -226,7 +230,32 @@ def test_connector_error_code_without_catcher_stays_a_service_task_failure(
         with pytest.raises(api.ServiceTaskExecutionError) as exc_info:
             _start(session, _bpmn(_SERVICE, "HttpError404"))
     assert exc_info.value.error_code == "HttpError500"
+    # Core saved the Error on its own session; drop this session's stale copy.
+    session.expire_all()
     instances = api.execute_query(
         session, api.ListProcessInstancesQuery(tenant_id="tenant-m8f675")
     )
     assert [pi.status for pi in instances] == [api.ProcessInstanceStatus.error]
+
+
+def test_script_failure_at_start_saves_a_snapshot_of_the_failed_task(
+    engine, session: Session
+) -> None:
+    """Core moves an instance to Error for a service-task failure at start, but
+    a failing script left nothing behind: no workflow state, so no diagram of
+    where it failed. The snapshot is saved; the status is the host's call."""
+    if engine.dialect.name == "sqlite":
+        pytest.xfail(
+            "SQLite cannot reliably validate autonomous failure-state "
+            "persistence while the outer failing transaction is still open."
+        )
+    with pytest.raises(Exception, match="boom"):
+        _start(session, _bpmn(_script('raise Exception("boom")'), "E1"))
+
+    session.expire_all()
+    instance = session.scalars(select(ProcessInstanceModel)).one()
+    assert instance.status == api.ProcessInstanceStatus.not_started
+    assert instance.workflow_state_json is not None
+    workflow = _restore_workflow(instance.workflow_state_json)
+    work = [t for t in workflow.get_tasks() if t.task_spec.name == "Work"]
+    assert [t.state for t in work] == [TaskState.ERROR]
