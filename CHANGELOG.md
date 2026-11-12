@@ -46,6 +46,10 @@ and what each version part means.
   for BPMN import and workflow execution.
 - The PostgreSQL CI job runs every integration test in `integration/`, not
   only the compensation test.
+- The publish workflow records GitHub build provenance attestations for the
+  wheel and sdist, in addition to the PyPI attestations.
+  [Publish a release](docs/how-to/publish-a-release.md#signing-and-provenance)
+  describes the signing plan and how to verify an artifact.
 
 ### Changed
 
@@ -108,6 +112,16 @@ and what each version part means.
 - Non-interrupting signal boundaries re-arm for repeated occurrences;
   interrupting signal event subprocesses cancel competing scope execution.
   Tasks in signal-triggered subprocesses are persisted and materialized.
+
+### Security
+
+- The connector proxy and Keycloak HTTP helpers reject URLs that aren't
+  absolute `http` or `https` URLs before opening them, so a misconfigured
+  base URL can't read local files through `file://`.
+  `build_connector_proxy_service_task_registry` raises `ValidationError`.
+- The secret scan covers every commit on every ref, not only the checked-out
+  tree, and no longer exempts whole directories such as `tests/` and
+  `examples/`.
 
 ## [1.0.0] - 2026-11-11
 

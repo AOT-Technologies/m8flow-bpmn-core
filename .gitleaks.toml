@@ -9,19 +9,9 @@ title = "m8flow-core Gitleaks Config"
 useDefault = true
 
 [[allowlists]]
-description = "Intentional documentation, fixtures, and test assets with sample credentials"
+description = "Sample environment file with local-development defaults"
 paths = [
-  '''^README\.md$''',
-  '''^doc/''',
-  '''^examples/''',
-  '''^integration/''',
-  '''^reference/''',
-  '''^tests/''',
   '''^sample\.env$''',
-  '''^sample_app/README\.md$''',
-  '''^sample_app/docs/''',
-  '''^sample_app/fixtures/''',
-  '''^sample_app/tests/''',
 ]
 
 [[allowlists]]

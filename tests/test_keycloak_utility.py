@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from m8flow_core.utils.keycloak import service as keycloak_service
 
 
@@ -214,3 +216,19 @@ def test_ensure_shared_realm_organizations_and_users_reuses_existing_rows(
     assert any(
         "alice" in warning and "reconciled" in warning for warning in result.warnings
     )
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["file:///etc/passwd", "ftp://keycloak.example.com/realms", "localhost:6842"],
+)
+def test_keycloak_request_rejects_non_http_urls(url: str, monkeypatch) -> None:
+    def fail_urlopen(*args: object, **kwargs: object) -> None:
+        raise AssertionError("urlopen must not be called for a rejected URL")
+
+    monkeypatch.setattr(keycloak_service, "urlopen", fail_urlopen)
+
+    with pytest.raises(
+        keycloak_service.KeycloakProvisioningError, match="http or https"
+    ):
+        keycloak_service._request("GET", url)

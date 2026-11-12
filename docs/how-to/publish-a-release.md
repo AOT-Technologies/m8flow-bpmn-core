@@ -114,6 +114,33 @@ follow these steps:
 The first successful run creates the project on PyPI. After that, the
 publisher appears under the project's **Publishing** settings.
 
+## Signing and provenance
+
+Release artifacts are signed with [Sigstore](https://www.sigstore.dev/)
+through the workflow's GitHub identity, so no signing key is stored. Each
+release carries the following:
+
+| What | How it's produced | How to check it |
+|---|---|---|
+| PyPI attestations for the wheel and sdist | `pypa/gh-action-pypi-publish` with `attestations: true` | The **Provenance** section of the file on pypi.org, or `pypi-attestations verify pypi` |
+| GitHub build provenance for the wheel and sdist | `actions/attest-build-provenance` in the **Test and build** job | `gh attestation verify` |
+| SHA-256 checksums | The **Record checksums** step, uploaded as a workflow artifact | `sha256sum --check` |
+
+Release tags are annotated but not GPG-signed. Only the **Create release
+tag** workflow creates them, and the attestations above tie each artifact to
+the workflow run and commit it was built from.
+
+To verify a downloaded wheel, run the following commands, replacing the
+version as needed:
+
+```bash
+gh attestation verify m8flow_core-1.0.0-py3-none-any.whl \
+    --repo AOT-Technologies/m8flow-core
+uvx pypi-attestations verify pypi \
+    --repository https://github.com/AOT-Technologies/m8flow-core \
+    pypi:m8flow_core-1.0.0-py3-none-any.whl
+```
+
 ## Related pages
 
 - [Changelog](../../CHANGELOG.md)

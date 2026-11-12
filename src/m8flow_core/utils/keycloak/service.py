@@ -9,7 +9,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 from m8flow_core.utils.keycloak.config import (
@@ -746,8 +746,14 @@ def _request(
         payload = urlencode(form_body).encode("utf-8")
         request_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
 
+    parts = urlsplit(url)
+    if parts.scheme.lower() not in {"http", "https"} or not parts.netloc:
+        raise KeycloakProvisioningError(
+            f"Keycloak URL must be an absolute http or https URL: {url!r}"
+        )
     request = Request(url, data=payload, headers=request_headers, method=method)
     try:
+        # The URL scheme is restricted to http and https above.
         with urlopen(request, timeout=timeout) as response:  # nosec B310
             body = response.read().decode("utf-8", errors="replace")
             return _HttpResponse(
