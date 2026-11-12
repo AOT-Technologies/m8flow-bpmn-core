@@ -25,7 +25,7 @@ The workflow has two channels:
 | Channel | Publishes | Requirements |
 |---|---|---|
 | `beta` | A pre-release derived from the version in `pyproject.toml`: `1.0.0b1`, then `1.0.0b2`, and so on. The workflow picks the next number from what's already on PyPI. | None |
-| `release` | The version in `pyproject.toml`, unchanged, such as `1.0.0` | A dated `CHANGELOG.md` entry, a GitHub Release for the version whose tag points at the commit you publish, and a version that isn't on PyPI yet |
+| `release` | The version in `pyproject.toml`, unchanged, such as `1.0.0` | A dated `CHANGELOG.md` entry, a GitHub Release for the version (draft or published) whose tag points at the commit you publish, and a version that isn't on PyPI yet |
 
 `pip install m8flow-core` never installs a beta. To try one, install it by
 version, such as `pip install m8flow-core==1.0.0b1`, or pass `--pre`.
@@ -63,18 +63,22 @@ To publish a release, follow these steps:
    version, then tags the tip of `main` with the bare version, with no `v`
    prefix. m8flow refers to core versions by this tag.
 5. Go to **Actions** > **GitHub Release**, click **Run workflow**, enter the
-   same version, and click **Run workflow**. The workflow creates the GitHub
-   Release for the tag, with the version's changelog section as release notes
-   and a software bill of materials (`sbom.json`) of the runtime dependencies
-   attached.
-6. Go to **Actions** > **Publish m8flow-core** and click **Run workflow**.
-7. In **Use workflow from**, choose the tag, such as `1.0.1`.
-8. In **Release channel**, choose `release`, then click **Run workflow**.
+   same version, and click **Run workflow**. The workflow creates a draft
+   GitHub Release for the tag, with the version's changelog section as release
+   notes and a software bill of materials (`sbom.json`) of the runtime
+   dependencies attached.
+6. On the repository's **Releases** page, open the draft and review its notes
+   and assets. Don't publish it yet.
+7. Go to **Actions** > **Publish m8flow-core** and click **Run workflow**.
+8. In **Use workflow from**, choose the tag, such as `1.0.1`.
+9. In **Release channel**, choose `release`, then click **Run workflow**.
+10. When the version is on PyPI, open the draft release, click **Edit**, and
+    click **Publish release**.
 
 **Create release tag** stops without tagging if the tag already exists or the
 version and changelog don't match. **GitHub Release** stops if a release for
-the version already exists. Because the GitHub Release is published as soon
-as it's created, review the release notes in the changelog pull request.
+the version already exists, draft or published. To regenerate a draft, delete
+it first; the tag stays.
 
 The publish workflow stops before uploading anything if a check fails: for example,
 if the version is already on PyPI, the changelog entry or link is missing, the
