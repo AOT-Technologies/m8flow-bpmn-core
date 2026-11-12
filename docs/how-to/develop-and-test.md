@@ -172,8 +172,9 @@ uv run --locked pytest
 
 ## Smoke test the built wheel
 
-CI and the publish workflow install the built wheel into a clean environment,
-outside the source tree, and run `tools/smoke_test.py`. The script imports the
+CI installs the built wheel into a clean environment, outside the source tree,
+and runs `tools/smoke_test.py`; the publish workflow does the same for both the
+wheel and the sdist. The script imports the
 installed package and runs the parallel-review workflow to completion. To do
 the same, run the following commands from the repository root:
 

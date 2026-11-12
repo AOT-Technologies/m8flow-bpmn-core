@@ -323,10 +323,13 @@ jobs:
               errors.append("wheel metadata does not declare Apache-2.0")
 
           # The sdist must hold only the allowlisted project files.
+          # Keep in sync with [tool.hatch.build.targets.sdist] only-include in
+          # pyproject.toml; tests/test_packaging.py enforces this.
           allowed = {
               "src", "tests", "integration", "alembic", "alembic.ini", "docs",
               "examples", "sample.env", "Makefile", "README.md", "CHANGELOG.md",
-              "LICENSE", "NOTICE", "pyproject.toml", "PKG-INFO", ".gitignore",
+              "LICENSE", "LICENSES", "NOTICE", "NOTICE.license", "REUSE.toml",
+              "pyproject.toml", "PKG-INFO", ".gitignore",
           }
           with tarfile.open(sdist) as tf:
               top = {m.name.split("/")[1] for m in tf.getmembers() if "/" in m.name}
@@ -340,17 +343,21 @@ jobs:
               sys.exit(1)
           print(f"PASS: {wheel} and {sdist}")
 
-      # Install the built wheel into a clean environment, outside the source
-      # tree, then import it and run a representative BPMN workflow.
-      - name: Smoke test the installed wheel
+      # Install each built artifact into its own clean environment, outside
+      # the source tree, then import it and run a representative BPMN workflow.
+      - name: Smoke test the installed wheel and sdist
         run: |
-          smoke_dir="$RUNNER_TEMP/smoke"
-          uv venv --python 3.12 "$smoke_dir/venv"
-          uv pip install --python "$smoke_dir/venv/bin/python" dist/*.whl
-          cd "$smoke_dir"
-          "$smoke_dir/venv/bin/python" -I "$GITHUB_WORKSPACE/tools/smoke_test.py" \
-            "$GITHUB_WORKSPACE/tests/fixtures/parallel_review_poc.bpmn" \
-            --expect-installed
+          for artifact in dist/*.whl dist/*.tar.gz; do
+            smoke_dir="$RUNNER_TEMP/smoke-$(basename "$artifact")"
+            uv venv --python 3.12 "$smoke_dir/venv"
+            uv pip install --python "$smoke_dir/venv/bin/python" "$artifact"
+            (
+              cd "$smoke_dir"
+              "$smoke_dir/venv/bin/python" -I "$GITHUB_WORKSPACE/tools/smoke_test.py" \
+                "$GITHUB_WORKSPACE/tests/fixtures/parallel_review_poc.bpmn" \
+                --expect-installed
+            )
+          done
 
       # Records SLSA build provenance for the wheel and sdist in GitHub, so
       # `gh attestation verify` can check them. PyPI gets its own attestations
