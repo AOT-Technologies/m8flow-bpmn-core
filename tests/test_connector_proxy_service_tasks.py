@@ -220,6 +220,30 @@ def test_connector_proxy_connector_surfaces_proxy_error_payload() -> None:
 
     assert "http/GetRequestV2" in str(exc_info.value)
     assert "upstream exploded" in str(exc_info.value)
+    assert exc_info.value.error_code is None
+
+
+@pytest.mark.parametrize("proxy_status", [200, 500])
+def test_connector_proxy_error_keeps_the_proxy_error_code(proxy_status: int) -> None:
+    state = _FakeConnectorProxyState(
+        command_catalog=[{"id": "http/GetRequestV2", "parameters": []}],
+        responses_by_path={
+            ("POST", "/v1/do/http/GetRequestV2"): _ProxyResponse(
+                status_code=proxy_status,
+                payload={
+                    "error": {"error_code": "HttpError404", "message": "Received Error"}
+                },
+            )
+        },
+    )
+
+    with _fake_connector_proxy_server(state) as base_url:
+        registry = api.build_connector_proxy_service_task_registry(base_url)
+        with pytest.raises(api.ServiceTaskExecutionError) as exc_info:
+            registry.execute(api.ServiceTaskRequest(operation_id="http/GetRequestV2"))
+
+    assert exc_info.value.error_code == "HttpError404"
+    assert "Received Error" in str(exc_info.value)
 
 
 def test_connector_proxy_connector_rejects_reserved_request_keys() -> None:

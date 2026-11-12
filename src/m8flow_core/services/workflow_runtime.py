@@ -11,7 +11,12 @@ from typing import Any
 from uuid import UUID
 
 from defusedxml import ElementTree
+from SpiffWorkflow.bpmn.exceptions import WorkflowTaskException
+from SpiffWorkflow.bpmn.specs.event_definitions.item_aware_event import (
+    ErrorEventDefinition,
+)
 from SpiffWorkflow.bpmn.specs.event_definitions.timer import TimerEventDefinition
+from SpiffWorkflow.bpmn.util import BpmnEvent
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
 from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import select
@@ -97,6 +102,7 @@ from m8flow_core.services.workflow_engine import (
 from m8flow_core.services.workflow_engine import (
     _WORKFLOW_STATE_SERIALIZER_VERSION as _WORKFLOW_STATE_SERIALIZER_VERSION,
 )
+from m8flow_core.services.workflow_engine import BpmnError as BpmnError
 from m8flow_core.services.workflow_engine import (
     _build_workflow as _build_workflow,
 )
@@ -184,14 +190,30 @@ def initialize_process_instance_workflow(
             process_instance_id=process_instance_id,
         ),
     )
-    _run_workflow_with_service_task_failure_handling(
-        session,
-        tenant_id=tenant_id,
-        process_instance=process_instance,
-        workflow=workflow,
-        occurred_at=occurred_at,
-        autonomous_failure_state_persistence=True,
-    )
+    try:
+        _run_workflow_with_service_task_failure_handling(
+            session,
+            tenant_id=tenant_id,
+            process_instance=process_instance,
+            workflow=workflow,
+            occurred_at=occurred_at,
+            autonomous_failure_state_persistence=True,
+        )
+    except WorkflowTaskException:
+        # A failing script left the new instance with no workflow state, so no
+        # record of where it failed. Save that snapshot, as a service-task
+        # failure does, but leave the status to the host, which handles script
+        # failures itself.
+        if _failure_state_may_use_independent_session(workflow):
+            _persist_service_task_failure_state_in_independent_session(
+                session,
+                tenant_id=tenant_id,
+                process_instance_id=process_instance.id,
+                workflow=workflow,
+                occurred_at=occurred_at,
+                transition_to_error=False,
+            )
+        raise
 
     return _finalize_initialized_process_instance_workflow(
         session,
@@ -959,6 +981,18 @@ def repair_process_instance_runtime_representation(
     return process_instance
 
 
+def _failure_state_may_use_independent_session(workflow: BpmnWorkflow) -> bool:
+    """False for compensation or signal workflows, which keep failure state in
+    the caller's transaction so a rollback restores everything together."""
+    return not coordinator(workflow) and not any(
+        isinstance(
+            getattr(task_spec, "event_definition", None), RuntimeSignalDefinition
+        )
+        for spec in [workflow.spec, *workflow.subprocess_specs.values()]
+        for task_spec in spec.task_specs.values()
+    )
+
+
 def _run_workflow_with_service_task_failure_handling(
     session: Session,
     *,
@@ -975,19 +1009,11 @@ def _run_workflow_with_service_task_failure_handling(
         if comp := coordinator(workflow):
             comp.run()
         else:
-            workflow.run_all(halt_on_manual=True)
+            _run_all_catching_bpmn_errors(workflow)
     except (ServiceTaskExecutionError, CompensationExecutionError):
         if (
             autonomous_failure_state_persistence
-            and not coordinator(workflow)
-            and not any(
-                isinstance(
-                    getattr(task_spec, "event_definition", None),
-                    RuntimeSignalDefinition,
-                )
-                for spec in [workflow.spec, *workflow.subprocess_specs.values()]
-                for task_spec in spec.task_specs.values()
-            )
+            and _failure_state_may_use_independent_session(workflow)
             and _persist_service_task_failure_state_in_independent_session(
                 session,
                 tenant_id=tenant_id,
@@ -1007,6 +1033,84 @@ def _run_workflow_with_service_task_failure_handling(
         raise
 
 
+def _run_all_catching_bpmn_errors(workflow: BpmnWorkflow) -> None:
+    """Run the workflow, handing BPMN errors raised by task code to a catcher.
+
+    A script's ``BpmnError`` or a connector's coded ``ServiceTaskExecutionError``
+    goes to the nearest waiting error boundary that matches its code (M8F-675).
+    Any other failure, or one with no catcher, propagates unchanged.
+    """
+    while True:
+        try:
+            workflow.run_all(halt_on_manual=True)
+            return
+        except Exception as exc:
+            if not _throw_bpmn_error_from_task_code(workflow, exc):
+                raise
+
+
+def _throw_bpmn_error_from_task_code(workflow: BpmnWorkflow, exc: Exception) -> bool:
+    """Deliver ``exc`` to a matching error catcher; True when one caught it."""
+    # Spiff wraps a script's exception without keeping it, raising the wrapper
+    # while handling it, so the script's own exception is the wrapper's context.
+    cause = exc.__context__ if isinstance(exc, WorkflowTaskException) else exc
+    if isinstance(cause, BpmnError):
+        code, message = cause.code, cause.message
+    elif isinstance(cause, ServiceTaskExecutionError) and cause.error_code:
+        code, message = cause.error_code, str(cause)
+    else:
+        return False
+    failed = _failed_task(workflow, exc)
+    if failed is None:
+        return False
+    catcher = _nearest_error_catcher(failed, code)
+    if catcher is None:
+        return False
+    # Spiff marked the task ERROR. Put it back to running so the interrupting
+    # boundary cancels it, as it would any activity it interrupts.
+    failed._set_state(TaskState.STARTED)
+    definition = catcher.task_spec.event_definition
+    catcher.task_spec.catch(
+        catcher, BpmnEvent(definition, payload={"code": code, "message": message})
+    )
+    catcher.task_spec._update(catcher)
+    return True
+
+
+def _failed_task(workflow: BpmnWorkflow, exc: Exception) -> Any:
+    task = getattr(exc, "task", None)
+    if task is not None:
+        return task
+    # A connector error escapes Spiff without its task; it is the one in ERROR.
+    errored = [
+        task
+        for scope in (workflow, *workflow.subprocesses.values())
+        for task in scope.get_tasks(state=TaskState.ERROR)
+    ]
+    return errored[0] if len(errored) == 1 else None
+
+
+def _nearest_error_catcher(failed: Any, code: str) -> Any:
+    """The waiting error catcher closest to ``failed``, scope by scope outward.
+
+    Matches on the error code; a catcher with no code catches every error.
+    Error event subprocesses are not covered here.
+    """
+    waiting = list(failed.workflow.top_workflow.event_manager.tasks.values())
+    scope = failed.workflow
+    while scope is not None:
+        for task in waiting:
+            definition = task.task_spec.event_definition
+            if (
+                task.workflow is scope
+                and isinstance(definition, ErrorEventDefinition)
+                and definition.code in (None, code)
+            ):
+                return task
+        scope = scope.parent_workflow
+    return None
+
+
 def _persist_service_task_failure_state_in_independent_session(
     session: Session,
     *,
@@ -1014,6 +1118,7 @@ def _persist_service_task_failure_state_in_independent_session(
     process_instance_id: int,
     workflow: BpmnWorkflow,
     occurred_at: datetime,
+    transition_to_error: bool = True,
 ) -> bool:
     engine = _session_engine(session)
     if engine is None:
@@ -1035,14 +1140,19 @@ def _persist_service_task_failure_state_in_independent_session(
             autonomous_session.rollback()
             return False
 
-        _transition_process_instance_to_error_for_service_task_failure(
-            autonomous_session,
-            tenant_id=tenant_id,
-            process_instance=process_instance,
-            workflow=workflow,
-            occurred_at=occurred_at,
-            recovery_only=True,
-        )
+        if transition_to_error:
+            _transition_process_instance_to_error_for_service_task_failure(
+                autonomous_session,
+                tenant_id=tenant_id,
+                process_instance=process_instance,
+                workflow=workflow,
+                occurred_at=occurred_at,
+                recovery_only=True,
+            )
+        else:
+            _persist_workflow_recovery_state(
+                autonomous_session, process_instance, workflow
+            )
         autonomous_session.commit()
         return True
     except Exception:
