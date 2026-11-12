@@ -413,3 +413,44 @@ def test_script_exception_is_not_caught_as_a_bpmn_error(catcher):
     xml = _process(_work(thrower), catcher)
     with pytest.raises(Exception, match="division by zero"):
         _run(xml)
+
+
+def _condition(flow_id: str, source: str, target: str, expression: str) -> str:
+    return (
+        f'<bpmn:sequenceFlow id="{flow_id}" sourceRef="{source}" '
+        f'targetRef="{target}"><bpmn:conditionExpression>{expression}'
+        "</bpmn:conditionExpression></bpmn:sequenceFlow>"
+    )
+
+
+@pytest.mark.parametrize("interrupting", [True, False])
+def test_caught_event_does_not_rewire_a_scope_that_runs_again(interrupting):
+    """Work runs twice and throws only the first time; its handler runs once."""
+    work = (
+        '<bpmn:subProcess id="Work"><bpmn:startEvent id="WorkStart" />'
+        '<bpmn:exclusiveGateway id="Once" default="skip" />'
+        f'<bpmn:intermediateThrowEvent id="Boom">{ESCALATION}'
+        '</bpmn:intermediateThrowEvent><bpmn:endEvent id="WorkEnd" />'
+        f"{_flow('k1', 'WorkStart', 'Once')}"
+        f"{_condition('throw', 'Once', 'Boom', 'runs == 0')}"
+        f"{_flow('skip', 'Once', 'WorkEnd')}{_flow('k2', 'Boom', 'WorkEnd')}"
+        f"{_handler('H', ESCALATION, 'inner_handled', interrupting=interrupting)}"
+        "</bpmn:subProcess>"
+    )
+    xml = _bpmn(
+        f'<bpmn:startEvent id="StartEvent" />'
+        f"{_script('Mark', 'before_throw = True; runs = 0')}{work}"
+        f"{_script('Again', 'runs = runs + 1')}"
+        '<bpmn:exclusiveGateway id="Loop" default="out" />'
+        '<bpmn:endEvent id="EndEvent" />'
+        f"{_flow('f0', 'StartEvent', 'Mark')}{_flow('f1', 'Mark', 'Work')}"
+        f"{_flow('f2', 'Work', 'Again')}{_flow('f3', 'Again', 'Loop')}"
+        f"{_condition('back', 'Loop', 'Work', 'runs &lt; 2')}"
+        f"{_flow('out', 'Loop', 'EndEvent')}"
+    )
+    workflow = _run(xml)
+
+    assert workflow.completed
+    assert workflow.data["runs"] == 2
+    handled = workflow.get_tasks(spec_name="HH", state=TaskState.COMPLETED)
+    assert len(handled) == 1

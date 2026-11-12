@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from m8flow_core import api
+from m8flow_core.models.process_instance_event import ProcessInstanceEventModel
 from m8flow_core.models.task import TaskModel
 from m8flow_core.models.task_definition import TaskDefinitionModel
 from m8flow_core.models.tenant import M8flowTenantModel
@@ -137,8 +138,9 @@ def test_escalation_event_subprocess_and_a_waiting_user_task(
     assert len(_pending(session, tenant, user)) == pending
 
 
+@pytest.mark.parametrize("after_has_history", [False, True])
 def test_error_thrown_after_a_restore_reaches_its_event_subprocess(
-    session: Session,
+    session: Session, after_has_history: bool
 ) -> None:
     xml = _bpmn(
         f"{MAIN_START}{REVIEW}{_work(_error_end(ERROR('ErrB')))}"
@@ -149,6 +151,27 @@ def test_error_thrown_after_a_restore_reaches_its_event_subprocess(
     )
     tenant, user, instance = _start(session, xml)
     [task] = _pending(session, tenant, user)
+    if after_has_history:
+        # A reset can put a step that already ran back into FUTURE; its events
+        # are history, so the row they refer to must stay.
+        after_guid = session.scalars(
+            select(TaskModel.guid)
+            .join(TaskDefinitionModel)
+            .where(
+                TaskModel.process_instance_id == instance.id,
+                TaskDefinitionModel.bpmn_identifier == "After",
+            )
+        ).one()
+        session.add(
+            ProcessInstanceEventModel(
+                m8f_tenant_id=tenant.id,
+                process_instance_id=instance.id,
+                task_guid=after_guid,
+                event_type="task_completed",
+                occurred_at=datetime.now(UTC),
+            )
+        )
+        session.flush()
 
     api.execute_command(
         session,
@@ -169,5 +192,9 @@ def test_error_thrown_after_a_restore_reaches_its_event_subprocess(
     assert states["OnError"] == {"COMPLETED"}
     assert states["Work"] == {"CANCELLED"}
     # "After" was saved as a predicted step while the instance waited; the
-    # interrupt dropped it, so no stored row may be left behind.
-    assert "After" not in states
+    # interrupt dropped it, so no stored row may be left behind unless an
+    # event refers to it.
+    if after_has_history:
+        assert states["After"] == {"FUTURE"}
+    else:
+        assert "After" not in states

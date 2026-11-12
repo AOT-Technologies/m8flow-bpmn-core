@@ -80,13 +80,38 @@ def install_scoped_error_escalation_throw(workflow: BpmnWorkflow) -> None:
     Spiff's throw for these events has no target scope, so every matching
     waiting catcher in the whole process caught it (M8F-665). The override is an
     instance attribute, so it is not serialized and is installed on every build
-    and restore.
+    and restore, together with the handlers' wiring to their scope's end.
     """
     for spec in (workflow.spec, *workflow.subprocess_specs.values()):
+        _connect_handlers_to_scope_end(spec, workflow.subprocess_specs)
         for task_spec in spec.task_specs.values():
             definition = getattr(task_spec, "event_definition", None)
             if isinstance(definition, ErrorEventDefinition | EscalationEventDefinition):
                 definition.throw = MethodType(_throw_to_nearest_catcher, definition)
+
+
+def _connect_handlers_to_scope_end(spec: Any, subprocess_specs: Any) -> None:
+    """Give each error or escalation event subprocess of ``spec`` a path to its end.
+
+    A triggered handler needs that path so its scope completes after it. The
+    wiring is set the same way on every build and restore, never when an event
+    is thrown, so every instance sees the same spec. The scope's start is not
+    connected to the handler: Spiff would then start the handler every time the
+    scope starts again, for example in a loop (M8F-665).
+    """
+    for name in getattr(spec.start, "trigger_specs", []):
+        handler_spec = subprocess_specs.get(name)
+        if handler_spec is None or not any(
+            isinstance(
+                start.event_definition,
+                ErrorEventDefinition | EscalationEventDefinition,
+            )
+            for start in handler_spec.bpmn_start_events
+        ):
+            continue
+        task_spec = spec.task_specs[name]
+        if spec.end not in task_spec.outputs:
+            task_spec.connect(spec.end)
 
 
 def _throw_to_nearest_catcher(definition: Any, thrower: Any) -> None:
@@ -140,10 +165,10 @@ def _start_matching_event_subprocess(
 ) -> bool:
     """Start the first event subprocess of ``scope`` whose start event matches.
 
-    Mirrors Spiff's ``BpmnStartTask.trigger_wf``, but the handler starts from the
-    thrower's data rather than the scope root's data from when the scope began,
-    continues to the scope's end, and an interrupting handler cancels the rest of
-    the scope.
+    Mirrors Spiff's ``BpmnStartTask.trigger_wf``, but the spec is not rewired,
+    the handler starts from the thrower's data rather than the scope root's data
+    from when the scope began, continues to the scope's end, and an interrupting
+    handler cancels the rest of the scope.
     """
     top = scope.top_workflow
     start = scope.spec.start
@@ -156,9 +181,6 @@ def _start_matching_event_subprocess(
         if not matching:
             continue
         task_spec = scope.spec.task_specs[name]
-        if start not in task_spec.inputs:
-            start.connect(task_spec)
-            task_spec.connect(scope.spec.end)
         handler = scope.task_tree._add_child(task_spec, TaskState.FUTURE)
         handler.triggered = True
         task_spec._update(handler)
