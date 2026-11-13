@@ -35,6 +35,19 @@ wait for a human task or timer. The instance remains active until both normal
 flow and compensation finish. Your application uses its existing task APIs
 and scheduler loop; no background worker is created by a throw.
 
+## Cancel a Transaction
+
+Put a Cancel End Event directly inside the Transaction and attach one
+interrupting Cancel Boundary Event to it. Model undo work using the same
+compensation bindings. When the Cancel End is reached, the Transaction stops
+its remaining work and timers. Its completed activities are compensated in
+reverse completion order. The boundary path starts after compensation succeeds.
+The normal outgoing flow is used when the Transaction completes successfully.
+
+If a handler fails, commit the recovery point and retry as described below.
+The boundary waits across reload and retry. Keep one writer per process
+instance and deduplicate uncertain connector calls using the idempotency key.
+
 ## Complete human handlers
 
 Human handlers appear in `GetPendingTasksQuery`. Claim and complete them using
@@ -112,6 +125,6 @@ instances lack a reliable completion journal. Import the definition and start
 a new instance to run compensation.
 
 Compensation event subprocesses, loop/multi-instance characteristics, call
-activities, transaction cancellation, and automatic compensation from BPMN
+activities, nested Transactions inside a cancellable Transaction, and automatic compensation from BPMN
 errors are outside this release. Compensation models requiring these features
 are rejected at import.

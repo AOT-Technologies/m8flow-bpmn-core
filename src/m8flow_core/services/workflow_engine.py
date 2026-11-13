@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from SpiffWorkflow.bpmn.script_engine.python_engine import PythonScriptEngine
+from SpiffWorkflow.bpmn.serializer.default.task_spec import EventConverter
 from SpiffWorkflow.bpmn.serializer.workflow import BpmnWorkflowSerializer
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
 from SpiffWorkflow.dmn.specs.model import DecisionTable
@@ -27,6 +28,7 @@ from m8flow_core.services.compensation_parser import (
     CompensationEnd,
     CompensationEventConverter,
     CompensationThrow,
+    TransactionCancelEnd,
 )
 from m8flow_core.services.compensation_runtime import (
     CompensationCoordinator,
@@ -50,6 +52,7 @@ _WORKFLOW_SERIALIZER = BpmnWorkflowSerializer(
             **SPIFF_CONFIG,
             CompensationThrow: CompensationEventConverter,
             CompensationEnd: CompensationEventConverter,
+            TransactionCancelEnd: EventConverter,
         }
     ),
     version=_WORKFLOW_STATE_SERIALIZER_VERSION,

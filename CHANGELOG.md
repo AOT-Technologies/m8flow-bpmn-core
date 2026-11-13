@@ -9,6 +9,9 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 
 ### Added
 
+- BPMN Transaction cancellation stops active work and timers, runs recorded
+  compensation handlers, and follows the attached Cancel Boundary Event once.
+  `validate_compensation_bpmn` lets hosts check supported forms before saving.
 - Durable tenant-scoped BPMN signal publication, subscription indexing, and
   idempotent delivery receipts. Intermediate/end throws broadcast to waiting
   intermediate catches, boundary events, event subprocesses, and Signal Start

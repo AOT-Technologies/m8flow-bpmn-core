@@ -976,7 +976,7 @@ def _run_workflow_with_service_task_failure_handling(
             comp.run()
         else:
             workflow.run_all(halt_on_manual=True)
-    except (ServiceTaskExecutionError, CompensationExecutionError):
+    except (ServiceTaskExecutionError, CompensationExecutionError) as exc:
         if (
             autonomous_failure_state_persistence
             and not coordinator(workflow)
@@ -1004,6 +1004,11 @@ def _run_workflow_with_service_task_failure_handling(
             workflow=workflow,
             occurred_at=occurred_at,
         )
+        comp = coordinator(workflow)
+        if comp is not None and any(
+            run["status"] == "failed" for run in comp.state["runs"].values()
+        ):
+            exc.compensation_recovery_flushed = True
         raise
 
 
@@ -1461,9 +1466,7 @@ def _iter_serialized_task_rows(
                 if identifier_prefix is not None
                 else task_spec_name
             )
-            rows.append(
-                (str(task_guid), task_definition_identifier, task_payload)
-            )
+            rows.append((str(task_guid), task_definition_identifier, task_payload))
     subprocesses = serialized_workflow.get("subprocesses")
     if isinstance(subprocesses, Mapping):
         for subprocess in subprocesses.values():
