@@ -110,8 +110,18 @@ Replace the following:
   tenant. The admin needs the `process_definition.import` permission, and the
   requester needs `process.start`, `task.claim`, and `task.complete`.
 
-`bpmn_process_id` is required only when the BPMN file contains more than one
-executable process.
+## Start participants from one collaboration
+
+Pass the complete BPMN file to `ImportBpmnProcessDefinitionCommand`. The
+returned definition's `collaboration_metadata["executable_process_ids"]`
+lists the participants you can select with `bpmn_process_id`.
+
+For independently started instances that exchange a message, pass the same
+business key as `collaboration_correlation_key` in each start command. A
+message-started participant inherits its sender's key. Run
+`api.run_due_scheduler_jobs` in a worker transaction to deliver committed
+messages. The [Order and Fulfilment example](run-the-examples.md#run-the-sqlite-examples)
+shows both paths.
 
 ## Pass form values with the task
 

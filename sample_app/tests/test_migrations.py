@@ -26,6 +26,9 @@ SIGNAL_TABLES = {
     "signal_delivery",
 }
 COMPENSATION_TABLES = {"compensation_scope", "compensation_run", "compensation_record"}
+COLLABORATION_REVISION = "20261112_0005"
+COLLABORATION_INDEX = "ix_process_instance_collaboration_lookup"
+COLLABORATION_FK = "fk_process_instance_definition_tenant"
 PARENT_INDEXES = {
     "process_instance": "m8f_process_instance_tenant_id_key",
     "bpmn_process_definition": "m8f_definition_tenant_id_key",
@@ -94,6 +97,47 @@ def test_fresh_migration_creates_signal_schema_and_is_repeatable(migration_datab
     assert_signal_schema(engine)
 
 
+def test_upgrade_existing_sample_app_adds_collaboration_schema(migration_database):
+    engine, config = migration_database
+    command.upgrade(config, "head")
+    # Downgrading removes the objects that an older ORM baseline did not create.
+    command.downgrade(config, "20261110_0004")
+    inspector = inspect(engine)
+    assert "collaboration_correlation_key" not in {
+        column["name"] for column in inspector.get_columns("process_instance")
+    }
+    assert COLLABORATION_INDEX not in {
+        index["name"] for index in inspector.get_indexes("process_instance")
+    }
+    assert COLLABORATION_FK not in {
+        key["name"] for key in inspector.get_foreign_keys("process_instance")
+    }
+
+    command.upgrade(config, "head")
+    inspector = inspect(engine)
+    assert any(
+        column["name"] == "collaboration_correlation_key"
+        and column["nullable"]
+        and column["type"].length == 255
+        for column in inspector.get_columns("process_instance")
+    )
+    assert any(
+        index["name"] == COLLABORATION_INDEX
+        and index["column_names"] == [
+            "m8f_tenant_id", "bpmn_process_definition_id", "bpmn_version_id",
+            "collaboration_correlation_key",
+        ]
+        for index in inspector.get_indexes("process_instance")
+    )
+    assert any(
+        key["name"] == COLLABORATION_FK
+        and key["constrained_columns"] == ["m8f_tenant_id", "bpmn_process_definition_id"]
+        and key["referred_table"] == "bpmn_process_definition"
+        and key["referred_columns"] == ["m8f_tenant_id", "id"]
+        for key in inspector.get_foreign_keys("process_instance")
+    )
+
+
 def test_upgrade_from_previous_head_adds_indexes_and_preserves_data(migration_database):
     from datetime import UTC, datetime
 
@@ -140,7 +184,7 @@ def test_upgrade_from_previous_head_adds_indexes_and_preserves_data(migration_da
             connection.scalar(
                 text("SELECT version_num FROM m8flow_sample_app_alembic_version")
             )
-            == "20261110_0004"
+            == COLLABORATION_REVISION
         )
 
 
@@ -276,7 +320,7 @@ def test_migrations_reuse_existing_secret_table_and_foreign_alembic_state(
             connection.execute(
                 text("select version_num from m8flow_sample_app_alembic_version")
             ).scalar()
-            == "20261110_0004"
+            == COLLABORATION_REVISION
         )
         assert (
             connection.execute(text("select version_num from alembic_version")).scalar()

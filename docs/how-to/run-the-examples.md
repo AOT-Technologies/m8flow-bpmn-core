@@ -15,6 +15,7 @@ The repository has the following examples:
 | `signal_broadcast.py` | One signal reaches three waiting instances and one Signal Start exactly once | In-memory SQLite |
 | `parallel_review.py` | A purchase order through a parallel gateway, script tasks, and an exclusive gateway, across three lanes | In-memory SQLite |
 | `errors_demo.py` | Validation, lookup, tenant, and state errors through public calls | In-memory SQLite |
+| `order_fulfilment_collaboration.py` | Two executable pools from one BPMN file, with message starts and correlated catches | In-memory SQLite |
 | `conditional_approval.py` | An approval with an exclusive gateway, a DMN decision, lane assignment, and command permission checks | PostgreSQL or SQLite |
 | `conditional_approval_rejection.py` | The same approval, where the manager rejects and the Finance lane never starts | PostgreSQL or SQLite |
 | `scheduled_timer.py` | A timer start event fired by an inline scheduler loop | PostgreSQL or SQLite |
@@ -36,6 +37,7 @@ signal, and running deliveries. Add `--non-interactive` to skip those prompts.
 ```bash
 uv run python examples/parallel_review.py
 uv run python examples/errors_demo.py
+uv run python examples/order_fulfilment_collaboration.py
 uv run python examples/compensation.py
 uv run python examples/signal_broadcast.py
 ```

@@ -19,6 +19,10 @@ from m8flow_core.models.scheduler_job import SchedulerJobModel, SchedulerJobType
 from m8flow_core.models.tenant import M8flowTenantModel
 from m8flow_core.models.user import UserModel
 from m8flow_core.services.authorization import ROLE_ADMIN, ensure_v1_role
+from m8flow_core.services.collaboration_delivery import (
+    execute_collaboration_message_job,
+)
+from m8flow_core.services.collaborations import lock_collaboration_definition
 from m8flow_core.services.process_instance_reactivation import (
     retry_process_instance,
 )
@@ -50,12 +54,31 @@ def claim_due_scheduler_jobs(
     occurred_at = _resolve_timestamp(now)
     claimed_jobs: list[SchedulerJobModel] = []
 
-    for job in list_due_scheduler_jobs(
+    due_jobs = list_due_scheduler_jobs(
         session,
         now=occurred_at,
         limit=limit,
         tenant_id=tenant_id,
-    ):
+    )
+    job_ids = {job.id for job in due_jobs}
+    definitions = {
+        definition.id: definition
+        for job in due_jobs
+        if (definition := job.bpmn_process_definition) is not None
+        and definition.m8f_tenant_id == job.m8f_tenant_id
+        and definition.collaboration_metadata is not None
+    }
+    if definitions:
+        for definition_id in sorted(definitions):
+            lock_collaboration_definition(session, definitions[definition_id])
+        # Application transitions can reschedule or remove jobs while we wait.
+        due_jobs = [
+            job for job in list_due_scheduler_jobs(
+                session, now=occurred_at, limit=limit, tenant_id=tenant_id
+            )
+            if job.id in job_ids
+        ]
+    for job in due_jobs:
         job.locked_by = normalized_worker_id
         job.locked_at = occurred_at
         job.updated_at = occurred_at
@@ -86,7 +109,7 @@ def run_due_scheduler_jobs(
 
     for job in claimed_jobs:
         try:
-            _execute_claimed_scheduler_job(
+            processed = _execute_claimed_scheduler_job(
                 session,
                 job=job,
                 occurred_at=occurred_at,
@@ -110,7 +133,8 @@ def run_due_scheduler_jobs(
             wrapped_error.__cause__ = exc
             batch_errors.append((job.job_key, wrapped_error))
         else:
-            processed_count += 1
+            if processed is not False:
+                processed_count += 1
 
     if len(batch_errors) == 1:
         raise batch_errors[0][1]
@@ -125,28 +149,32 @@ def _execute_claimed_scheduler_job(
     *,
     job: SchedulerJobModel,
     occurred_at: datetime,
-) -> None:
+) -> bool:
     if job.job_type == SchedulerJobType.intermediate_timer.value:
         _execute_intermediate_timer_job(
             session,
             job=job,
             occurred_at=occurred_at,
         )
-        return
+        return True
     if job.job_type == SchedulerJobType.process_retry.value:
         _execute_process_retry_job(
             session,
             job=job,
             occurred_at=occurred_at,
         )
-        return
+        return True
     if job.job_type == SchedulerJobType.timer_start.value:
         _execute_timer_start_job(
             session,
             job=job,
             occurred_at=occurred_at,
         )
-        return
+        return True
+    if job.job_type == SchedulerJobType.collaboration_message.value:
+        return execute_collaboration_message_job(
+            session, job=job, occurred_at=occurred_at
+        )
 
     raise ValidationError(
         f"Scheduler job type {job.job_type!r} is not executable yet"
@@ -266,6 +294,7 @@ def _execute_timer_start_job(
         return
 
     timer_task_payload = _scheduler_job_timer_task(job.payload_json)
+    process_id = timer_task_payload.get("bpmn_process_id")
     system_user = _ensure_timer_start_system_user(
         session,
         tenant_id=job.m8f_tenant_id,
@@ -277,6 +306,7 @@ def _execute_timer_start_job(
         process_definition_id=job.bpmn_process_definition_id,
         process_initiator_id=system_user.id,
         timer_start_task_spec_name=_scheduler_job_task_spec_name(timer_task_payload),
+        bpmn_process_id=process_id if isinstance(process_id, str) else None,
         started_at=occurred_at,
     )
     _reschedule_or_delete_timer_start_job(

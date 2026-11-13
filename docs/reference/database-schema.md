@@ -3,9 +3,12 @@
 This page lists the tables that m8flow-core's ORM models define. The library
 ships the models in `m8flow_core.models` and, in `alembic/versions/`, an immutable
 Alembic baseline plus additive revisions. The baseline, `k2l3m4n5o6p7`, has
-no parent and builds the 1.0 schema on an empty database. Signal revision
-`l3m4n5o6p7q8` follows the baseline, and compensation revision
-`m8f_671_compensation` is the current head. See
+no parent and builds the 1.0 schema on an empty database. The signal revision
+`l3m4n5o6p7q8` and compensation revision `m8f_671_compensation` form one
+branch. The merge revision `m8f_merge_runtime` joins it with the collaboration
+revision `m8f_collaboration_01`. The current head,
+`m8f_instance_definition_tenant`, enforces tenant ownership of an instance's
+definition. See
 [Upgrade to 1.0](../how-to/upgrade-to-1.0.md) for existing databases.
 
 Table and column names are part of the compatibility contract, because host
@@ -39,7 +42,7 @@ The library defines the following tables:
 | `permission_assignment` | `PermissionAssignmentModel` | No | A grant of a target to a principal, with a permission and `permit` or `deny` |
 | `bpmn_process_definition` | `BpmnProcessDefinitionModel` | Yes | Imported BPMN and DMN source and properties, such as `lane_owners` and `initiator_lanes` |
 | `process_model_bpmn_version` | `ProcessModelBpmnVersionModel` | Yes | Versions of a process model's BPMN |
-| `process_instance` | `ProcessInstanceModel` | Yes | Process instances: status, initiator, timestamps, and `workflow_engine_version` |
+| `process_instance` | `ProcessInstanceModel` | Yes | Process instances: status, initiator, timestamps, `workflow_engine_version`, and nullable `collaboration_correlation_key` |
 | `bpmn_process` | `BpmnProcessModel` | Yes | The serialized workflow of a process instance |
 | `task_definition` | `TaskDefinitionModel` | Yes | BPMN task specifications |
 | `task` | `TaskModel` | Yes | Runtime task state, using SpiffWorkflow state names such as `READY` and `COMPLETED` |
@@ -48,8 +51,22 @@ The library defines the following tables:
 | `json_data` | `JsonDataModel` | Yes | Process and task data payloads, keyed by `(m8f_tenant_id, hash)` |
 | `process_instance_event` | `ProcessInstanceEventModel` | Yes | Event history: `event_type`, `category`, `occurred_at`, and the acting user. `event_type` has no database constraint, so historical values stay readable |
 | `process_instance_metadata` | `ProcessInstanceMetadataModel` | Yes | Key and value pairs, including task payload values |
-| `scheduler_job` | `SchedulerJobModel` | Yes | Due timers and retries. [About scheduling](../explanation/scheduling.md#the-scheduler-job-table) lists its columns. |
+| `scheduler_job` | `SchedulerJobModel` | Yes | Due timers, retries, and collaboration messages. [About scheduling](../explanation/scheduling.md#the-scheduler-job-table) lists its columns. |
 | `future_task` | `FutureTaskModel` | Yes | Runtime tasks waiting to run, with `run_at` and `queued_to_run_at` |
+
+## Collaboration correlation
+
+Collaboration definitions store their participant and Message Flow registry in
+`bpmn_process_definition.properties_json`, exposed as `collaboration_metadata`.
+The `m8f_collaboration_01` migration adds the nullable, 255-character
+`process_instance.collaboration_correlation_key` and an index over tenant,
+definition, BPMN version, and key. Existing instances have a null key.
+
+When an instance has a BPMN definition, its
+`(m8f_tenant_id, bpmn_process_definition_id)` must match
+`(m8f_tenant_id, id)` on the definition. The definition ID may still be null.
+The migration stops if an existing reference violates this rule. Correct the
+reported reference before retrying; the migration does not change the data.
 
 ## Signal registry
 

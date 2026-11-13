@@ -8,11 +8,16 @@ import math
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from defusedxml import ElementTree
+from SpiffWorkflow.bpmn.specs.control import StartEventSplit
+from SpiffWorkflow.bpmn.specs.event_definitions.simple import NoneEventDefinition
 from SpiffWorkflow.bpmn.specs.event_definitions.timer import TimerEventDefinition
+from SpiffWorkflow.bpmn.specs.mixins.events.start_event import StartEvent
+from SpiffWorkflow.bpmn.util import BpmnEvent
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
+from SpiffWorkflow.spiff.specs.event_definitions import MessageEventDefinition
 from SpiffWorkflow.util.task import TaskState
 from sqlalchemy import select
 from sqlalchemy.engine import Connection, Engine
@@ -56,6 +61,14 @@ from m8flow_core.services.authorization import (
 from m8flow_core.services.call_activities import (
     CallActivityContext,
     CallActivityResolver,
+)
+from m8flow_core.services.collaboration_events import (
+    CollaborationThrowDefinition,
+)
+from m8flow_core.services.collaborations import (
+    collaboration_parser_source,
+    lock_collaboration_definition,
+    lock_collaboration_instance,
 )
 from m8flow_core.services.compensation_journal import persist_compensation
 from m8flow_core.services.compensation_runtime import (
@@ -106,6 +119,11 @@ from m8flow_core.services.workflow_engine import (
 from m8flow_core.services.workflow_engine import (
     _restore_workflow as _restore_workflow,
 )
+
+# Older host releases import the script engine here during startup.
+from m8flow_core.services.workflow_engine import (
+    _RuntimeServiceTaskScriptEngine as _RuntimeServiceTaskScriptEngine,
+)
 from m8flow_core.services.workflow_engine import (
     _RuntimeSpiffBpmnParser as _RuntimeSpiffBpmnParser,
 )
@@ -146,6 +164,11 @@ def initialize_process_instance_workflow(
         tenant_id=tenant_id,
         process_instance_id=process_instance_id,
     )
+    definition = process_instance.bpmn_process_definition
+    if definition is not None and definition.collaboration_metadata is not None:
+        raise ValidationError(
+            "Start a collaboration participant from its stored definition"
+        )
     if process_instance.has_terminal_status():
         raise InvalidStateError("Cannot initialize a terminal process instance")
     if process_instance.workflow_state_json is not None:
@@ -214,6 +237,7 @@ def initialize_process_instance_from_definition(
     started_at: datetime | None = None,
     bpmn_process_id: str | None = None,
     call_activity_resolver: CallActivityResolver | None = None,
+    collaboration_correlation_key: str | None = None,
 ) -> ProcessInstanceModel:
     ensure_user_belongs_to_tenant(
         session,
@@ -240,6 +264,23 @@ def initialize_process_instance_from_definition(
             requested_bpmn_process_id=bpmn_process_id,
         ),
     )
+    if process_definition.collaboration_metadata is not None:
+        lock_collaboration_definition(session, process_definition)
+        with session.begin_nested():
+            return _start_collaboration_participant(
+                session,
+                process_definition=process_definition,
+                process_initiator_id=process_initiator_id,
+                bpmn_process_id=bpmn_process_id,
+                collaboration_correlation_key=collaboration_correlation_key,
+                submission_metadata=submission_metadata,
+                summary=summary,
+                process_version=process_version,
+                started_at=started_at,
+                call_activity_resolver=call_activity_resolver,
+            )
+    if collaboration_correlation_key is not None:
+        raise ValidationError("A correlation key requires a collaboration definition")
     process_instance, selected_process_id = _prepare_process_instance_from_definition(
         session,
         tenant_id=tenant_id,
@@ -272,6 +313,7 @@ def _initialize_process_instance_from_timer_start_definition(
     process_definition_id: int,
     process_initiator_id: int,
     timer_start_task_spec_name: str,
+    bpmn_process_id: str | None = None,
     started_at: datetime | None = None,
 ) -> ProcessInstanceModel:
     ensure_user_belongs_to_tenant(
@@ -284,6 +326,18 @@ def _initialize_process_instance_from_timer_start_definition(
         tenant_id=tenant_id,
         bpmn_process_definition_id=process_definition_id,
     )
+    if process_definition.collaboration_metadata is not None:
+        lock_collaboration_definition(session, process_definition)
+        with session.begin_nested():
+            return _start_collaboration_participant(
+                session,
+                process_definition=process_definition,
+                process_initiator_id=process_initiator_id,
+                bpmn_process_id=bpmn_process_id,
+                started_at=started_at,
+                start_event_id=timer_start_task_spec_name,
+                timer_start=True,
+            )
     process_model_identifier = process_definition.process_model_identifier or str(
         process_definition.id
     )
@@ -358,6 +412,146 @@ def _initialize_process_instance_from_timer_start_definition(
         workflow=workflow,
         occurred_at=occurred_at,
     )
+
+
+def _start_collaboration_participant(
+    session: Session,
+    *,
+    process_definition: BpmnProcessDefinitionModel,
+    process_initiator_id: int,
+    bpmn_process_id: str | None,
+    collaboration_correlation_key: str | None = None,
+    submission_metadata: Mapping[str, Any] | None = None,
+    summary: str | None = None,
+    process_version: int = 1,
+    started_at: datetime | None = None,
+    call_activity_resolver: CallActivityResolver | None = None,
+    start_event_id: str | None = None,
+    timer_start: bool = False,
+) -> ProcessInstanceModel:
+    tenant_id = process_definition.m8f_tenant_id
+    if collaboration_correlation_key is None:
+        collaboration_correlation_key = uuid4().hex
+    if (
+        not isinstance(collaboration_correlation_key, str)
+        or not collaboration_correlation_key.strip()
+        or len(collaboration_correlation_key) > 255
+        or "\x00" in collaboration_correlation_key
+    ):
+        raise ValidationError("A correlation key must contain 1 to 255 characters")
+
+    occurred_at = _resolve_timestamp(started_at)
+    (
+        process_instance,
+        selected_process_id,
+    ) = _prepare_process_instance_from_definition_in_session(
+        session,
+        tenant_id=tenant_id,
+        process_definition=process_definition,
+        process_model_identifier=process_definition.process_model_identifier,
+        process_initiator_id=process_initiator_id,
+        submission_metadata=submission_metadata,
+        summary=summary,
+        process_version=process_version,
+        started_at=occurred_at,
+        bpmn_process_id=bpmn_process_id,
+    )
+    process_instance.collaboration_correlation_key = collaboration_correlation_key
+    workflow = _build_workflow(
+        bpmn_xml=process_definition.source_bpmn_xml,
+        dmn_xml=process_definition.source_dmn_xml,
+        bpmn_process_id=selected_process_id,
+        service_task_context=_service_task_execution_context(
+            tenant_id=tenant_id,
+            process_instance_id=process_instance.id,
+            process_definition_id=process_definition.id,
+        ),
+        call_activity_resolver=call_activity_resolver,
+        call_activity_context=CallActivityContext(
+            tenant_id=tenant_id,
+            called_element="",
+            parent_process_instance_id=process_instance.id,
+            parent_process_definition_id=process_definition.id,
+        ),
+        collaboration=process_definition.collaboration_metadata,
+    )
+    _seed_runtime_definitions(
+        session,
+        tenant_id=tenant_id,
+        process_instance=process_instance,
+        workflow=workflow,
+        occurred_at=occurred_at,
+    )
+    _apply_metadata_to_workflow(
+        workflow,
+        _load_process_instance_metadata_payload(
+            session, tenant_id=tenant_id, process_instance_id=process_instance.id
+        ),
+    )
+    _activate_collaboration_start(
+        workflow, start_event_id=start_event_id, timer_start=timer_start
+    )
+    _run_workflow_with_service_task_failure_handling(
+        session,
+        tenant_id=tenant_id,
+        process_instance=process_instance,
+        workflow=workflow,
+        occurred_at=occurred_at,
+    )
+    return _finalize_initialized_process_instance_workflow(
+        session,
+        tenant_id=tenant_id,
+        process_instance=process_instance,
+        workflow=workflow,
+        occurred_at=occurred_at,
+    )
+
+
+def _prime_collaboration_start_events(workflow: BpmnWorkflow) -> None:
+    # Run the synthetic bootstrap nodes before allowing a BPMN start event to run.
+    workflow.task_tree.run()
+    for task in workflow.get_tasks(state=TaskState.READY):
+        if task.workflow is workflow and isinstance(task.task_spec, StartEventSplit):
+            task.run()
+
+
+def _activate_collaboration_start(
+    workflow: BpmnWorkflow, *, start_event_id: str | None, timer_start: bool
+) -> None:
+    _prime_collaboration_start_events(workflow)
+    event_type = (
+        NoneEventDefinition
+        if start_event_id is None
+        else TimerEventDefinition
+        if timer_start
+        else MessageEventDefinition
+    )
+    starts = [
+        task
+        for task in workflow.get_tasks(state=TaskState.READY | TaskState.WAITING)
+        if task.workflow is workflow
+        and isinstance(task.task_spec, StartEvent)
+        and isinstance(task.task_spec.event_definition, event_type)
+        and (start_event_id is None or task.task_spec.name == start_event_id)
+    ]
+    if len(starts) != 1:
+        raise InvalidStateError(
+            "The participant needs exactly one matching start event"
+        )
+    task = starts[0]
+    if timer_start and task.state == TaskState.WAITING:
+        task.internal_data["event_value"] = _forced_due_timer_event_value(
+            task.internal_data.get("event_value")
+        )
+        task.task_spec._update(task)
+    elif start_event_id is not None and not timer_start:
+        _catch_collaboration_message(task)
+    task.run()
+
+
+def _catch_collaboration_message(task: Any) -> None:
+    task.task_spec.catch(task, BpmnEvent(task.task_spec.event_definition, payload={}))
+    task.task_spec._update(task)
 
 
 def advance_process_instance_workflow(
@@ -577,10 +771,19 @@ def _prepare_process_instance_from_definition_in_session(
     if process_definition.source_bpmn_xml is None:
         raise ValidationError("Process definition does not include stored BPMN XML")
 
-    selected_process_id = _select_process_identifier(
-        process_definition.source_bpmn_xml,
-        bpmn_process_id=bpmn_process_id,
-    )
+    collaboration = process_definition.collaboration_metadata
+    if collaboration is None:
+        selected_process_id = _select_process_identifier(
+            process_definition.source_bpmn_xml, bpmn_process_id=bpmn_process_id
+        )
+    else:
+        if bpmn_process_id is None:
+            raise ValidationError("A BPMN process id is required for a collaboration")
+        if bpmn_process_id not in collaboration["executable_process_ids"]:
+            raise NotFoundError(
+                f"BPMN process id {bpmn_process_id!r} is not an executable participant"
+            )
+        selected_process_id = bpmn_process_id
     bpmn_process = _resolve_or_create_bpmn_process(
         session,
         tenant_id=tenant_id,
@@ -886,12 +1089,28 @@ def _refresh_waiting_process_instance_workflow(
                     )
     for tree in execution_workflows(workflow):
         tree.refresh_timers()
+    return _advance_waiting_workflow(
+        session,
+        process_instance=process_instance,
+        workflow=workflow,
+        occurred_at=timestamp,
+    )
+
+
+def _advance_waiting_workflow(
+    session: Session,
+    *,
+    process_instance: ProcessInstanceModel,
+    workflow: BpmnWorkflow,
+    occurred_at: datetime,
+) -> ProcessInstanceModel:
+    tenant_id = process_instance.m8f_tenant_id
     _run_workflow_with_service_task_failure_handling(
         session,
         tenant_id=tenant_id,
         process_instance=process_instance,
         workflow=workflow,
-        occurred_at=timestamp,
+        occurred_at=occurred_at,
         autonomous_failure_state_persistence=True,
     )
 
@@ -899,24 +1118,24 @@ def _refresh_waiting_process_instance_workflow(
         session,
         process_instance,
         workflow,
-        occurred_at=timestamp,
+        occurred_at=occurred_at,
     )
     _sync_inactive_work_items(
         session,
         process_instance=process_instance,
         workflow=workflow,
-        occurred_at=timestamp,
+        occurred_at=occurred_at,
     )
     _materialize_ready_manual_tasks(
         session,
         process_instance=process_instance,
         workflow=workflow,
-        occurred_at=timestamp,
+        occurred_at=occurred_at,
     )
     _update_process_instance_status_from_workflow(
         process_instance,
         workflow,
-        occurred_at=timestamp,
+        occurred_at=occurred_at,
     )
 
     session.flush()
@@ -979,6 +1198,7 @@ def _run_workflow_with_service_task_failure_handling(
     except (ServiceTaskExecutionError, CompensationExecutionError) as exc:
         if (
             autonomous_failure_state_persistence
+            and process_instance.collaboration_correlation_key is None
             and not coordinator(workflow)
             and not any(
                 isinstance(
@@ -1263,6 +1483,10 @@ def _persist_workflow_state(
     from m8flow_core.services.signal_registry import sync_instance_signals
 
     sync_instance_signals(session, process_instance, workflow, occurred_at)
+    if process_instance.collaboration_correlation_key is not None:
+        _enqueue_collaboration_messages(
+            session, process_instance, workflow, occurred_at
+        )
     serialized_state = _serialize_runtime_workflow(workflow)
     process_instance.workflow_engine_version = _WORKFLOW_STATE_SERIALIZER_VERSION
     serialized_workflow = _serialize_workflow_dict(workflow)
@@ -1292,6 +1516,53 @@ def _persist_workflow_state(
         workflow=workflow,
         occurred_at=occurred_at,
     )
+
+
+def _enqueue_collaboration_messages(
+    session: Session,
+    process_instance: ProcessInstanceModel,
+    workflow: BpmnWorkflow,
+    occurred_at: datetime,
+) -> None:
+    definition = process_instance.bpmn_process_definition
+    routes = definition.collaboration_metadata["message_flows"]
+    for event in workflow.get_events():
+        if not isinstance(event.event_definition, CollaborationThrowDefinition):
+            workflow.bpmn_events.append(event)
+            continue
+        for route in routes:
+            if (
+                route["source_process_id"] != workflow.spec.name
+                or route["source_ref"] != event.payload["source_ref"]
+                or route["target_kind"] is None
+            ):
+                continue
+            qualifier = _hash_payload(
+                {"task_id": event.payload["task_id"], "flow_id": route["id"]}
+            )
+            upsert_scheduler_job(
+                session,
+                tenant_id=process_instance.m8f_tenant_id,
+                job_key=build_scheduler_job_key(
+                    job_type=SchedulerJobType.collaboration_message,
+                    process_instance_id=process_instance.id,
+                    qualifier=qualifier,
+                ),
+                job_type=SchedulerJobType.collaboration_message,
+                process_instance_id=process_instance.id,
+                bpmn_process_definition_id=definition.id,
+                run_at=occurred_at,
+                payload_json={
+                    "flow_id": route["id"],
+                    "source_ref": event.payload["source_ref"],
+                    "source_task_id": event.payload["task_id"],
+                    "message_ref": route["routed_message_ref"],
+                    "bpmn_version_id": process_instance.bpmn_version_id,
+                    "correlation_key": process_instance.collaboration_correlation_key,
+                },
+                created_at=occurred_at,
+                updated_at=occurred_at,
+            )
 
 
 def _cancel_compensation(
@@ -1339,18 +1610,22 @@ def _sync_process_definition_from_workflow(
     spec_payload = dict(serialized_spec)
     spec_payload.pop("task_specs", None)
 
-    if process_definition.explicit_process_model_identifier is None:
-        process_definition.process_model_identifier = (
-            process_instance.process_model_identifier
-        )
-    process_definition.bpmn_identifier = serialized_process_identifier
-    existing_properties = dict(process_definition.properties_json or {})
-    merged_properties = dict(spec_payload)
-    for key, value in existing_properties.items():
-        if key.startswith("__m8f_") or key not in merged_properties:
-            merged_properties[key] = value
-    process_definition.properties_json = merged_properties
-    process_definition.updated_at = occurred_at
+    participant_prefix = None
+    if process_definition.collaboration_metadata is not None:
+        participant_prefix = serialized_process_identifier
+    else:
+        if process_definition.explicit_process_model_identifier is None:
+            process_definition.process_model_identifier = (
+                process_instance.process_model_identifier
+            )
+        process_definition.bpmn_identifier = serialized_process_identifier
+        existing_properties = dict(process_definition.properties_json or {})
+        merged_properties = dict(spec_payload)
+        for key, value in existing_properties.items():
+            if key.startswith("__m8f_") or key not in merged_properties:
+                merged_properties[key] = value
+        process_definition.properties_json = merged_properties
+        process_definition.updated_at = occurred_at
 
     _sync_serialized_task_specs(
         session,
@@ -1358,6 +1633,7 @@ def _sync_process_definition_from_workflow(
         tenant_id=process_instance.m8f_tenant_id,
         process_definition_id=process_definition.id,
         occurred_at=occurred_at,
+        task_identifier_prefix=participant_prefix,
     )
     subprocess_specs = serialized_workflow.get("subprocess_specs")
     if isinstance(subprocess_specs, Mapping):
@@ -1369,7 +1645,9 @@ def _sync_process_definition_from_workflow(
                     tenant_id=process_instance.m8f_tenant_id,
                     process_definition_id=process_definition.id,
                     occurred_at=occurred_at,
-                    task_identifier_prefix=str(subprocess_name),
+                    task_identifier_prefix=_qualified_task_identifier(
+                        participant_prefix, str(subprocess_name)
+                    ),
                 )
 
 
@@ -1388,10 +1666,8 @@ def _sync_serialized_task_specs(
     for task_name, task_spec_payload in task_specs.items():
         if isinstance(task_spec_payload, Mapping):
             task_identifier = str(task_name)
-            database_identifier = (
-                f"{task_identifier_prefix}::{task_identifier}"
-                if task_identifier_prefix is not None
-                else task_identifier
+            database_identifier = _qualified_task_identifier(
+                task_identifier_prefix, task_identifier
             )
             persisted_payload = dict(task_spec_payload)
             persisted_payload["__m8f_task_identifier"] = task_identifier
@@ -1426,7 +1702,16 @@ def _sync_task_models_from_workflow(
         ).all()
     }
 
-    serialized_task_rows = list(_iter_serialized_task_rows(serialized_workflow))
+    participant_prefix = (
+        serialized_workflow["spec"]["name"]
+        if process_instance.collaboration_correlation_key is not None
+        else None
+    )
+    serialized_task_rows = _iter_serialized_task_rows(
+        serialized_workflow,
+        identifier_prefix=participant_prefix,
+        participant_prefix=participant_prefix,
+    )
     if not serialized_task_rows:
         raise ValidationError("Serialized workflow is missing task rows")
     for _task_guid, task_spec_identifier, task_payload in serialized_task_rows:
@@ -1449,6 +1734,7 @@ def _iter_serialized_task_rows(
     serialized_workflow: Mapping[str, Any],
     *,
     identifier_prefix: str | None = None,
+    participant_prefix: str | None = None,
 ) -> Sequence[tuple[str, str, Mapping[str, Any]]]:
     rows: list[tuple[str, str, Mapping[str, Any]]] = []
     serialized_tasks = serialized_workflow.get("tasks")
@@ -1461,10 +1747,8 @@ def _iter_serialized_task_rows(
                 raise ValidationError(
                     f"Serialized task {task_guid!r} is missing its task spec identifier"
                 )
-            task_definition_identifier = (
-                f"{identifier_prefix}::{task_spec_name}"
-                if identifier_prefix is not None
-                else task_spec_name
+            task_definition_identifier = _qualified_task_identifier(
+                identifier_prefix, task_spec_name
             )
             rows.append((str(task_guid), task_definition_identifier, task_payload))
     subprocesses = serialized_workflow.get("subprocesses")
@@ -1479,7 +1763,10 @@ def _iter_serialized_task_rows(
                 rows.extend(
                     _iter_serialized_task_rows(
                         subprocess,
-                        identifier_prefix=subprocess_name,
+                        identifier_prefix=_qualified_task_identifier(
+                            participant_prefix, subprocess_name
+                        ),
+                        participant_prefix=participant_prefix,
                     )
                 )
     return rows
@@ -1500,10 +1787,8 @@ def _upsert_task_definition(
     source_task_identifier = getattr(task_spec, "name", None)
     if not isinstance(source_task_identifier, str) or not source_task_identifier:
         raise ValidationError("Task spec is missing its serialized identifier")
-    task_identifier = (
-        f"{task_identifier_prefix}::{source_task_identifier}"
-        if task_identifier_prefix is not None
-        else source_task_identifier
+    task_identifier = _qualified_task_identifier(
+        task_identifier_prefix, source_task_identifier
     )
     serialized_payload = dict(task_spec_payload)
     serialized_payload["__m8f_task_identifier"] = source_task_identifier
@@ -1517,15 +1802,27 @@ def _upsert_task_definition(
     )
 
 
-def _task_definition_identifier_prefix(workflow: object | None) -> str | None:
+def _qualified_task_identifier(prefix: str | None, identifier: str) -> str:
+    if prefix is None:
+        return identifier
+    qualified = f"{prefix}::{identifier}"
+    if len(qualified) > 255:
+        return f"sha256::{hashlib.sha256(qualified.encode('utf-8')).hexdigest()}"
+    return qualified
+
+
+def _task_definition_identifier_prefix(
+    workflow: Any, *, collaboration: bool
+) -> str | None:
+    if workflow is None:
+        return None
+    participant = workflow.top_workflow.spec.name if collaboration else None
     if (
-        getattr(workflow, "parent_workflow", None) is None
+        workflow.parent_workflow is None
         and getattr(workflow, "_m8f_compensation_context", None) is None
     ):
-        return None
-    spec = getattr(workflow, "spec", None)
-    spec_name = getattr(spec, "name", None)
-    return spec_name if isinstance(spec_name, str) and spec_name else None
+        return participant
+    return _qualified_task_identifier(participant, workflow.spec.name)
 
 
 def _upsert_task_definition_from_payload(
@@ -1764,7 +2061,8 @@ def _materialize_single_manual_task(
         process_definition_id=process_instance.bpmn_process_definition_id,
         task_spec=task.task_spec,
         task_identifier_prefix=_task_definition_identifier_prefix(
-            getattr(task, "workflow", None)
+            getattr(task, "workflow", None),
+            collaboration=process_instance.collaboration_correlation_key is not None,
         ),
         occurred_at=occurred_at,
     )
@@ -1966,10 +2264,12 @@ def _upsert_work_item(
         session.add(work_item)
     else:
         work_item.task_guid = task_model.guid
-        prepare_work_item_for_ready_state(
-            work_item,
-            occurred_at=occurred_at,
-        )
+        if (
+            process_instance.collaboration_correlation_key is None
+            or work_item.task_status != WorkItemState.CLAIMED.value
+            or work_item.completed
+        ):
+            prepare_work_item_for_ready_state(work_item, occurred_at=occurred_at)
 
     process_instance.task_updated_at = occurred_at
     session.flush()
@@ -2028,19 +2328,25 @@ def _sync_timer_start_scheduler_jobs_for_definition(
     *,
     process_definition: BpmnProcessDefinitionModel,
     occurred_at: datetime,
+    timer_start_payloads: list[dict[str, Any]] | None = None,
 ) -> None:
     if process_definition.id is None:
         raise ValidationError("Process definition must be persisted before scheduling")
 
-    timer_start_payloads = _collect_timer_start_payloads_for_definition(
-        process_definition
-    )
+    if timer_start_payloads is None:
+        timer_start_payloads = _collect_timer_start_payloads_for_definition(
+            process_definition
+        )
     expected_job_keys: set[str] = set()
 
     for payload in timer_start_payloads:
         qualifier = str(payload.get("task_spec_name") or "").strip()
         if not qualifier:
             raise ValidationError("Timer start payload is missing its task spec name")
+        if "bpmn_process_id" in payload:
+            qualifier = _hash_payload(
+                {"process_id": payload["bpmn_process_id"], "timer_id": qualifier}
+            )
         job_key = build_scheduler_job_key(
             job_type=SchedulerJobType.timer_start,
             bpmn_process_definition_id=process_definition.id,
@@ -2128,6 +2434,35 @@ def _collect_timer_start_payloads_for_definition(
     if not _definition_contains_timer_start_event(source_bpmn_xml):
         return []
 
+    collaboration = process_definition.collaboration_metadata
+    if collaboration is not None:
+        parser = _RuntimeSpiffBpmnParser(validator=None)
+        parser.add_bpmn_str(
+            collaboration_parser_source(_coerce_xml_bytes(source_bpmn_xml))
+        )
+        if process_definition.source_dmn_xml is not None:
+            parser.add_dmn_str(_coerce_xml_bytes(process_definition.source_dmn_xml))
+        payloads = []
+        for process_id in collaboration["executable_process_ids"]:
+            spec = parser.get_spec(process_id)
+            if not any(
+                isinstance(start.event_definition, TimerEventDefinition)
+                for start in spec.bpmn_start_events
+            ):
+                continue
+            workflow = BpmnWorkflow(
+                spec,
+                parser.get_subprocess_specs(
+                    process_id, require_call_activity_specs=False
+                ),
+            )
+            _prime_collaboration_start_events(workflow)
+            timers = _collect_timer_start_payloads(workflow, include_ready=True)
+            payloads.extend(
+                {**payload, "bpmn_process_id": process_id} for payload in timers
+            )
+        return payloads
+
     workflow = _build_workflow(
         bpmn_xml=source_bpmn_xml,
         dmn_xml=process_definition.source_dmn_xml,
@@ -2159,10 +2494,13 @@ def _collect_intermediate_timer_payloads(
 
 def _collect_timer_start_payloads(
     workflow: BpmnWorkflow,
+    *,
+    include_ready: bool = False,
 ) -> list[dict[str, Any]]:
     return _collect_waiting_timer_payloads(
         workflow,
         start_event_type_name="only",
+        include_ready=include_ready,
     )
 
 
@@ -2170,9 +2508,11 @@ def _collect_waiting_timer_payloads(
     workflow: BpmnWorkflow,
     *,
     start_event_type_name: str,
+    include_ready: bool = False,
 ) -> list[dict[str, Any]]:
     timer_payloads: list[dict[str, Any]] = []
-    for task in runtime_tasks(workflow, state=TaskState.WAITING):
+    states = TaskState.WAITING | TaskState.READY if include_ready else TaskState.WAITING
+    for task in runtime_tasks(workflow, state=states):
         event_definition = getattr(task.task_spec, "event_definition", None)
         if not isinstance(event_definition, TimerEventDefinition):
             continue
@@ -2379,6 +2719,8 @@ def _load_process_instance(
         )
     from m8flow_core.services.signal_registry import lock_signal_instance
 
+    lock_collaboration_instance(session, process_instance)
+    lock_signal_instance(session, process_instance)
     if process_instance.workflow_state_json is not None:
         payload = json.loads(process_instance.workflow_state_json)
         if "m8f_compensation" not in payload and process_instance.bpmn_version_id:
@@ -2396,7 +2738,7 @@ def _load_process_instance(
                     "Legacy compensation state has no completion journal; start a "
                     "new instance"
                 )
-    return lock_signal_instance(session, process_instance)
+    return process_instance
 
 
 def _resolve_timestamp(timestamp: datetime | None) -> datetime:

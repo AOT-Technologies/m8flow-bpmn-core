@@ -1,8 +1,7 @@
 # About scheduling
 
-Timers and scheduled retries in m8flow-core are rows in a database table,
-not in-memory timers. This page explains that table, how each kind of job is
-created and run, and how the execution modes share it.
+Timers, scheduled retries, and collaboration messages are stored in the
+database. Each scheduler runner uses the same job table.
 
 The internals described here aren't part of the public API. The only public
 entry point is `api.run_due_scheduler_jobs`, documented in the
@@ -30,7 +29,7 @@ the following columns:
 | `id` | integer | No | Primary key |
 | `m8f_tenant_id` | string | No | Foreign key to `m8flow_tenant.id`. Every scheduler read and write is tenant-scoped. |
 | `job_key` | string(255) | No | Deduplication key for the logical job, unique within the tenant |
-| `job_type` | string(50) | No | Indexed. One of `intermediate_timer`, `process_retry`, or `timer_start`. |
+| `job_type` | string(50) | No | Indexed. One of `intermediate_timer`, `process_retry`, `timer_start`, or `collaboration_message`. |
 | `process_instance_id` | integer | Yes | Foreign key to `process_instance.id`, for jobs that belong to a running instance |
 | `bpmn_process_definition_id` | integer | Yes | Foreign key to `bpmn_process_definition.id`, for jobs that belong to a definition, such as timer starts |
 | `locked_by` | string(255) | Yes | The worker that claimed the job. `NULL` means unclaimed. |

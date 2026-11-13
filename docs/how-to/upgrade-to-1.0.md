@@ -102,7 +102,7 @@ Pick the path that matches your database:
 | Database | What to do |
 |---|---|
 | Empty | Run `alembic upgrade head`. See [Create a new database](#create-a-new-database). |
-| Version row already reads `k2l3m4n5o6p7` | Run `alembic upgrade head` to apply additive migrations. No stamp is needed. |
+| Already at the 1.0 baseline or a later revision | Run `alembic upgrade head` to apply any missing migrations. No stamp is needed. |
 | 0.x schema | Convert it with the 0.x migrations and your own migrations, then stamp. See [Convert a 0.x database](#convert-a-0x-database). |
 
 ### Create a new database
@@ -114,14 +114,14 @@ uv run alembic upgrade head
 uv run alembic current
 ```
 
-The second command must report `m8f_671_compensation` as the head.
+The second command should report `m8f_instance_definition_tenant` as the head.
 
-### Check a database that is already at `k2l3m4n5o6p7`
+### Upgrade a database that already uses 1.0 migrations
 
-The baseline keeps the revision ID `k2l3m4n5o6p7`. If a database's
-`alembic_version` row already holds that value, `alembic upgrade head` applies
-the signal and compensation migrations without rerunning the baseline. A database
-already at signal revision `l3m4n5o6p7q8` applies just the compensation migration.
+Run `alembic upgrade head` from the baseline or from an existing
+collaboration, signal, or compensation revision. Alembic applies any missing
+revisions, joins the two migration branches at `m8f_merge_runtime`, and
+enforces same-tenant instance-to-definition references.
 No stamp is needed.
 
 The revision ID alone doesn't prove the tables match the 1.0 models. A
@@ -166,27 +166,19 @@ To convert, follow these steps:
 
 4. Apply your application's migrations that convert the 0.x schema and data
    to the 1.0 schema.
-5. Check out the 1.0 release and install it, then compare the converted schema with the 1.0 models. The
-   check reads the models, not the revision history, so it works before the
-   stamp. The command must report no differences:
-
-   ```bash
-   uv run alembic check
-   ```
-
-6. Record the 1.0 baseline as applied, without running it:
+5. Install m8flow-core, record the converted baseline as applied, and run
+   later revisions:
 
    ```bash
    uv run alembic stamp k2l3m4n5o6p7
-   uv run alembic current
+   uv run alembic upgrade head
+   uv run alembic check
    ```
 
-   The second command must print `k2l3m4n5o6p7 (head)`.
-7. To use a checkout with the compensation revision, install that version
-   and run `uv run alembic upgrade head` and `uv run alembic check` from it.
-8. For every tenant, check a representative workflow, a task claim, the event
+   The check must report no differences.
+6. For every tenant, check a representative workflow, a task claim, the event
    history, and the scheduler rows through your application.
-9. Start the new version of every process. Don't start an older one.
+7. Start the new version of every process.
 
 These commands assume a checkout of this repository. If your application owns
 its migrations, as the [sample app](../../sample_app/README.md) does, run the
@@ -194,11 +186,10 @@ equivalent commands against your own Alembic environment.
 
 ### Upgrading m8flow
 
-m8flow runs its own migration chain alongside the library's. Deploy matching
-versions of m8flow and the library. When the host owns the schema migrations,
-ensure its database includes the compensation journal tables before enabling
-compensation. The library's version row must reflect the migrations that have
-actually been applied.
+m8flow runs its own migration chain alongside the library's. Deploy the
+matching m8flow release and library together. Convert the library tables to
+the 1.0 baseline before stamping `k2l3m4n5o6p7`, then apply the later revisions
+required by the version you are deploying.
 
 ## If the upgrade fails
 

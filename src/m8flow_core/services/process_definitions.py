@@ -6,27 +6,34 @@ from datetime import UTC, datetime
 from typing import Any
 
 from defusedxml import ElementTree
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from m8flow_core.errors import ValidationError
 from m8flow_core.models.bpmn_process_definition import (
+    COLLABORATION_PROPERTY_KEY,
     BpmnProcessDefinitionModel,
 )
 from m8flow_core.models.process_model_bpmn_version import (
     ProcessModelBpmnVersionModel,
 )
+from m8flow_core.models.tenant import M8flowTenantModel
 from m8flow_core.services.authorization import (
     PROCESS_DEFINITION_IMPORT_COMMAND,
     require_command_authorization,
 )
-from m8flow_core.services.compensation_parser import CompensationBpmnParser
+from m8flow_core.services.collaborations import (
+    collaboration_parser_source,
+    lock_collaboration_definition,
+    read_collaboration,
+)
 from m8flow_core.services.lane_assignment import (
     enroll_definition_lane_owners,
     validate_initiator_lanes,
 )
 from m8flow_core.services.tenant_users import ensure_user_belongs_to_tenant
 from m8flow_core.services.workflow_runtime import (
+    _collect_timer_start_payloads_for_definition,
     _RuntimeSpiffBpmnParser,
     _sync_timer_start_scheduler_jobs_for_definition,
 )
@@ -65,30 +72,76 @@ def import_bpmn_process_definition(
     source_dmn_xml_text = (
         _coerce_xml_text(source_dmn_xml) if source_dmn_xml is not None else None
     )
-    _validate_bpmn_source(
-        bpmn_xml_text=source_bpmn_xml_text,
-        dmn_xml_text=source_dmn_xml_text,
+    source_bytes = source_bpmn_xml_text.encode("utf-8")
+    collaboration = read_collaboration(source_bytes)
+    parser_source = (
+        collaboration_parser_source(source_bytes) if collaboration else source_bytes
     )
+    participant_ids = collaboration["executable_process_ids"] if collaboration else None
+    process_ids = _validate_bpmn_source(
+        bpmn_xml=parser_source,
+        dmn_xml_text=source_dmn_xml_text,
+        participant_ids=participant_ids,
+    )
+    if collaboration is None and len(process_ids) != 1:
+        raise ValidationError(
+            "A BPMN file must contain one executable process or a collaboration"
+        )
+    actual_digest = _hash_text(source_bpmn_xml_text)
+    if collaboration is not None and process_xml_digest not in (None, actual_digest):
+        raise ValidationError("Collaboration digest must match the BPMN source")
+
     from m8flow_core.services.signal_registry import validate_signal_source
 
-    validate_signal_source(source_bpmn_xml_text, source_dmn_xml_text)
+    for process_id in participant_ids or process_ids:
+        validate_signal_source(
+            source_bpmn_xml_text,
+            source_dmn_xml_text,
+            process_id,
+            collaboration=collaboration,
+        )
     resolved_process_xml_digest = (
-        process_xml_digest
-        if process_xml_digest is not None
-        else _hash_text(source_bpmn_xml_text)
+        process_xml_digest if process_xml_digest is not None else actual_digest
     )
-    resolved_process_definition_identifier = _extract_process_identifier(
-        source_bpmn_xml_text
+    resolved_process_definition_identifier = (
+        collaboration["id"] if collaboration else process_ids[0]
     )
 
+    if collaboration is not None:
+        # Serialize the first import, before a deployment row exists.
+        session.execute(
+            update(M8flowTenantModel)
+            .where(M8flowTenantModel.id == tenant_id)
+            .values(id=M8flowTenantModel.id)
+            .execution_options(synchronize_session=False)
+        )
+
     definition = session.scalar(
-        select(BpmnProcessDefinitionModel).where(
+        select(BpmnProcessDefinitionModel)
+        .where(
             BpmnProcessDefinitionModel.m8f_tenant_id == tenant_id,
             BpmnProcessDefinitionModel.process_xml_digest
             == resolved_process_xml_digest,
         )
+        .execution_options(populate_existing=True)
     )
+    if definition is not None and (collaboration or definition.collaboration_metadata):
+        lock_collaboration_definition(session, definition)
+        if (
+            collaboration is None
+            or definition.collaboration_metadata is None
+            or definition.source_bpmn_xml != source_bpmn_xml_text
+            or definition.process_model_identifier != bpmn_identifier
+            or (
+                source_dmn_xml is not None
+                and definition.source_dmn_xml != source_dmn_xml_text
+            )
+        ):
+            raise ValidationError(
+                "Import conflicts with an existing collaboration version"
+            )
     resolved_properties_json = dict(properties_json or {})
+    resolved_properties_json.pop(COLLABORATION_PROPERTY_KEY, None)
     effective_properties_json = (
         resolved_properties_json
         if properties_json is not None or definition is None
@@ -99,6 +152,7 @@ def import_bpmn_process_definition(
         bpmn_lane_names=_bpmn_lane_names(source_bpmn_xml_text),
     )
 
+    is_new_definition = definition is None
     if definition is None:
         definition = BpmnProcessDefinitionModel(
             m8f_tenant_id=tenant_id,
@@ -111,7 +165,6 @@ def import_bpmn_process_definition(
             created_at=created_at,
             updated_at=(updated_at if updated_at is not None else created_at),
         )
-        session.add(definition)
     else:
         definition.process_xml_digest = resolved_process_xml_digest
         definition.bpmn_identifier = resolved_process_definition_identifier
@@ -136,7 +189,24 @@ def import_bpmn_process_definition(
     definition.source_bpmn_xml = source_bpmn_xml_text
     if source_dmn_xml is not None:
         definition.source_dmn_xml = source_dmn_xml_text
+    if collaboration is not None:
+        definition.properties_json = {
+            **definition.properties_json,
+            COLLABORATION_PROPERTY_KEY: collaboration,
+        }
 
+    timer_start_payloads = None
+    if is_new_definition:
+        if collaboration is not None:
+            try:
+                timer_start_payloads = _collect_timer_start_payloads_for_definition(
+                    definition
+                )
+            except Exception as exc:
+                raise ValidationError(
+                    f"Invalid collaboration timer start: {exc}"
+                ) from exc
+        session.add(definition)
     session.flush()
     snapshot_timestamp = (
         updated_at
@@ -152,11 +222,14 @@ def import_bpmn_process_definition(
         bpmn_xml_text=source_bpmn_xml_text,
         occurred_at=snapshot_timestamp,
     )
-    _sync_timer_start_scheduler_jobs_for_definition(
-        session,
-        process_definition=definition,
-        occurred_at=snapshot_timestamp,
-    )
+    if collaboration is None or is_new_definition:
+        _sync_timer_start_scheduler_jobs_for_definition(
+            session,
+            process_definition=definition,
+            occurred_at=snapshot_timestamp,
+            timer_start_payloads=timer_start_payloads,
+        )
+
     from m8flow_core.services.signal_registry import (
         _ensure_registry,
         sync_definition_signals,
@@ -178,7 +251,10 @@ def _hash_text(value: str) -> str:
 
 def _coerce_xml_text(xml: str | bytes) -> str:
     if isinstance(xml, bytes):
-        return xml.decode("utf-8")
+        try:
+            return xml.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValidationError("BPMN and DMN source must use UTF-8") from exc
     return xml
 
 
@@ -222,28 +298,12 @@ def _ensure_bpmn_version_snapshot(
         session.flush()
 
 
-def _extract_process_identifier(bpmn_xml_text: str) -> str:
-    parser = CompensationBpmnParser(validator=None)
-    parser.add_bpmn_str(
-        bpmn_xml_text.encode("utf-8"),
-        filename="definition-process-selector.bpmn",
-    )
-    process_ids = parser.get_process_ids()
-    if not process_ids:
-        raise ValidationError("BPMN source does not contain any executable processes")
-    if len(process_ids) != 1:
-        raise ValidationError(
-            "A BPMN file must contain exactly one executable process when it is "
-            "imported as a single definition"
-        )
-    return process_ids[0]
-
-
 def _validate_bpmn_source(
     *,
-    bpmn_xml_text: str,
+    bpmn_xml: bytes,
     dmn_xml_text: str | None,
-) -> None:
+    participant_ids: list[str] | None,
+) -> list[str]:
     """Parse the BPMN (and optional DMN) source to verify it is well-formed.
 
     Catches malformed XML, missing executable processes, and DMN parse errors at
@@ -254,7 +314,7 @@ def _validate_bpmn_source(
     )
     try:
         parser.add_bpmn_str(
-            bpmn_xml_text.encode("utf-8"),
+            bpmn_xml,
             filename="import-validation.bpmn",
         )
         if dmn_xml_text is not None:
@@ -262,6 +322,8 @@ def _validate_bpmn_source(
                 dmn_xml_text.encode("utf-8"),
                 filename="import-validation.dmn",
             )
+        for process_id in participant_ids or ():
+            parser.get_spec(process_id)
     except ValidationError:
         raise
     except Exception as exc:
@@ -285,3 +347,4 @@ def _validate_bpmn_source(
             raise ValidationError(
                 f"Compensation BPMN specs are not parseable: {exc}"
             ) from exc
+    return list(process_ids)

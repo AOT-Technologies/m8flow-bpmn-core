@@ -128,6 +128,18 @@ def test_public_api_surface_is_frozen() -> None:
         assert hasattr(api, name), f"Missing public name: {name}"
 
 
+def test_collaboration_starts_use_the_public_definition_command() -> None:
+    command = api.InitializeProcessInstanceFromDefinitionCommand(
+        tenant_id="orders",
+        bpmn_process_definition_id=1,
+        process_initiator_id=2,
+        bpmn_process_id="Fulfilment",
+        collaboration_correlation_key="order-123",
+    )
+    assert command.bpmn_process_id == "Fulfilment"
+    assert command.collaboration_correlation_key == "order-123"
+
+
 def test_public_api_re_exports_task_services() -> None:
     assert callable(api.get_pending_tasks)
     assert callable(api.assign_pending_tasks_for_user)

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from m8flow_core.models import (
     Base,
+    BpmnProcessDefinitionModel,
     CompensationRecordModel,
     CompensationRunModel,
     CompensationScopeModel,
@@ -27,8 +28,11 @@ from m8flow_core.models.user import UserModel
 from m8flow_core.settings import get_settings
 
 BASELINE_REVISION = "k2l3m4n5o6p7"
+COLLABORATION_REVISION = "m8f_collaboration_01"
 SIGNAL_REVISION = "l3m4n5o6p7q8"
-HEAD_REVISION = "m8f_671_compensation"
+COMPENSATION_REVISION = "m8f_671_compensation"
+MERGE_REVISION = "m8f_merge_runtime"
+HEAD_REVISION = "m8f_instance_definition_tenant"
 
 POSTGRES_URL = os.getenv("M8FLOW_POSTGRES_UPGRADE_DATABASE_URL", "")
 
@@ -105,20 +109,20 @@ def _table_names(database_url: str) -> set[str]:
         engine.dispose()
 
 
-def test_migration_history_has_one_head_after_signal_revision() -> None:
+def test_runtime_migrations_have_one_head_after_the_immutable_baseline() -> None:
     script = ScriptDirectory.from_config(_alembic_config())
 
     revisions = list(script.walk_revisions())
 
-    assert [revision.revision for revision in revisions] == [
-        HEAD_REVISION,
-        SIGNAL_REVISION,
-        BASELINE_REVISION,
-    ]
+    assert {revision.revision: revision.down_revision for revision in revisions} == {
+        HEAD_REVISION: MERGE_REVISION,
+        MERGE_REVISION: (COLLABORATION_REVISION, COMPENSATION_REVISION),
+        COLLABORATION_REVISION: BASELINE_REVISION,
+        COMPENSATION_REVISION: SIGNAL_REVISION,
+        SIGNAL_REVISION: BASELINE_REVISION,
+        BASELINE_REVISION: None,
+    }
     assert script.get_heads() == [HEAD_REVISION]
-    assert revisions[0].down_revision == SIGNAL_REVISION
-    assert revisions[1].down_revision == BASELINE_REVISION
-    assert revisions[2].down_revision is None
 
 
 _DATABASES = [
@@ -138,11 +142,17 @@ _DATABASES = [
 
 
 @pytest.mark.parametrize("migration_database", _DATABASES, indirect=True)
-def test_baseline_upgrade_matches_models_and_downgrade_removes_tables(
+@pytest.mark.parametrize(
+    "existing_revision",
+    (BASELINE_REVISION, COLLABORATION_REVISION, COMPENSATION_REVISION, MERGE_REVISION),
+)
+def test_upgrade_from_existing_revision_matches_models_and_downgrade_removes_tables(
     migration_database: str,
+    existing_revision: str,
 ) -> None:
     config = _alembic_config()
 
+    command.upgrade(config, existing_revision)
     command.upgrade(config, "head")
 
     engine = sa.create_engine(migration_database)
@@ -332,6 +342,137 @@ def test_upgrade_from_signal_preserves_data_and_enforces_journal_tenant(
                 "preserved": True
             }
             assert connection.scalar(sa.select(instance.c.id)) == instance_id
+    finally:
+        engine.dispose()
+        command.downgrade(config, "base")
+
+
+@pytest.mark.parametrize("migration_database", _DATABASES, indirect=True)
+def test_instance_definition_constraint_rejects_cross_tenant_references(
+    migration_database: str,
+) -> None:
+    config = _alembic_config()
+    command.upgrade(config, MERGE_REVISION)
+    engine = sa.create_engine(migration_database)
+    if engine.dialect.name == "sqlite":
+
+        @sa.event.listens_for(engine, "connect")
+        def enable_foreign_keys(dbapi_connection, _record) -> None:
+            dbapi_connection.execute("PRAGMA foreign_keys=ON")
+
+    tenant = M8flowTenantModel.__table__
+    definition = BpmnProcessDefinitionModel.__table__
+    instance = ProcessInstanceModel.__table__
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                tenant.insert(),
+                [{"id": name, "name": name, "slug": name} for name in ("one", "two")],
+            )
+            user = UserModel.__table__
+            user_id = connection.scalar(
+                user.insert()
+                .values(username="operator", service="test", service_id="operator")
+                .returning(user.c.id)
+            )
+            definition_id = connection.scalar(
+                definition.insert()
+                .values(
+                    m8f_tenant_id="one",
+                    bpmn_identifier="order",
+                    process_xml_digest="order-digest",
+                    properties_json={},
+                )
+                .returning(definition.c.id)
+            )
+            insert = instance.insert().values(
+                process_model_identifier="order",
+                process_model_display_name="Order",
+                process_initiator_id=user_id,
+            )
+            valid_id = connection.scalar(
+                insert.values(
+                    m8f_tenant_id="one", bpmn_process_definition_id=definition_id
+                ).returning(instance.c.id)
+            )
+            invalid_id = connection.scalar(
+                insert.values(
+                    m8f_tenant_id="two", bpmn_process_definition_id=definition_id
+                ).returning(instance.c.id)
+            )
+
+        with pytest.raises(
+            RuntimeError, match=rf"Process instance {invalid_id} .*tenant"
+        ):
+            command.upgrade(config, "head")
+
+        with engine.begin() as connection:
+            assert connection.scalar(
+                sa.select(instance.c.bpmn_process_definition_id).where(
+                    instance.c.id == invalid_id
+                )
+            ) == definition_id
+            connection.execute(
+                instance.update().where(instance.c.id == invalid_id).values(
+                    bpmn_process_definition_id=None
+                )
+            )
+
+        command.upgrade(config, "head")
+        with engine.begin() as connection:
+            assert dict(connection.execute(
+                sa.select(instance.c.id, instance.c.bpmn_process_definition_id)
+            ).all()) == {valid_id: definition_id, invalid_id: None}
+            connection.execute(
+                insert.values(
+                    m8f_tenant_id="one", bpmn_process_definition_id=definition_id
+                )
+            )
+            connection.execute(insert.values(m8f_tenant_id="two"))
+            with (
+                pytest.raises(sa.exc.IntegrityError, match=r"(?i)foreign key"),
+                connection.begin_nested(),
+            ):
+                connection.execute(
+                    insert.values(
+                        m8f_tenant_id="two", bpmn_process_definition_id=definition_id
+                    )
+                )
+            with (
+                pytest.raises(sa.exc.IntegrityError, match=r"(?i)foreign key"),
+                connection.begin_nested(),
+            ):
+                connection.execute(
+                    instance.update().where(instance.c.id == valid_id).values(
+                        m8f_tenant_id="two"
+                    )
+                )
+
+        with Session(engine) as session:
+            unlinked = session.get(ProcessInstanceModel, invalid_id)
+            unlinked.bpmn_process_definition = session.get(
+                BpmnProcessDefinitionModel, definition_id
+            )
+            with pytest.raises(sa.exc.IntegrityError, match=r"(?i)foreign key"):
+                session.flush()
+            session.rollback()
+            assert unlinked.m8f_tenant_id == "two"
+
+        command.downgrade(config, MERGE_REVISION)
+        with engine.begin() as connection:
+            assert connection.scalar(
+                sa.select(instance.c.bpmn_process_definition_id).where(
+                    instance.c.id == valid_id
+                )
+            ) == definition_id
+            assert connection.scalar(
+                sa.select(sa.func.count()).select_from(instance)
+            ) == 4
+            connection.execute(
+                insert.values(
+                    m8f_tenant_id="two", bpmn_process_definition_id=definition_id
+                )
+            )
     finally:
         engine.dispose()
         command.downgrade(config, "base")

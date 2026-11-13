@@ -29,6 +29,7 @@ from m8flow_core.services.authorization import (
     TASK_COMPLETE_COMMAND,
     require_command_authorization,
 )
+from m8flow_core.services.collaborations import lock_collaboration_instance
 from m8flow_core.services.process_instances import (
     record_process_instance_event,
     upsert_process_instance_metadata,
@@ -118,6 +119,7 @@ def claim_task(
 ) -> WorkItemModel:
     ensure_user_belongs_to_tenant(session, tenant_id=tenant_id, user_id=user_id)
     item = _load_work_item(session, tenant_id=tenant_id, work_item_id=work_item_id)
+    lock_collaboration_instance(session, item.process_instance)
     require_command_authorization(
         session,
         tenant_id=tenant_id,
@@ -173,6 +175,7 @@ def complete_task(
 ) -> WorkItemModel:
     ensure_user_belongs_to_tenant(session, tenant_id=tenant_id, user_id=user_id)
     item = _load_work_item(session, tenant_id=tenant_id, work_item_id=work_item_id)
+    lock_collaboration_instance(session, item.process_instance)
     from m8flow_core.services.signal_registry import lock_signal_instance
 
     instance = session.get(ProcessInstanceModel, item.process_instance_id)

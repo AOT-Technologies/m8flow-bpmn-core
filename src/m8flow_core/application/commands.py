@@ -97,6 +97,7 @@ class InitializeProcessInstanceFromDefinitionCommand:
     started_at: datetime | None = None
     bpmn_process_id: str | None = None
     call_activity_resolver: CallActivityResolver | None = None
+    collaboration_correlation_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
