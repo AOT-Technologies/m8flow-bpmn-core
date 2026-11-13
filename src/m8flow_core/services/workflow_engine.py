@@ -34,6 +34,10 @@ from m8flow_core.services.compensation_runtime import (
     CompensationCoordinator,
     connector_compensation_metadata,
 )
+from m8flow_core.services.multi_instance_runtime import (
+    adapt_multi_instance_specs,
+    configure_multi_instance_serializer,
+)
 from m8flow_core.services.service_tasks import (
     ServiceTaskContext,
     ServiceTaskRequest,
@@ -58,6 +62,7 @@ _WORKFLOW_SERIALIZER = BpmnWorkflowSerializer(
     version=_WORKFLOW_STATE_SERIALIZER_VERSION,
 )
 configure_signal_serializer(_WORKFLOW_SERIALIZER.registry)
+configure_multi_instance_serializer(_WORKFLOW_SERIALIZER.registry)
 
 
 class _NoopDMNEngine:
@@ -218,6 +223,7 @@ def _build_workflow(
         script_engine=_service_task_script_engine(service_task_context),
     )
     adapt_signal_definitions(spec, subprocess_specs)
+    adapt_multi_instance_specs(spec, subprocess_specs)
     if parser.has_compensation:
         comp = CompensationCoordinator(workflow, _WORKFLOW_SERIALIZER)
         comp.state["bindings"] = parser.compensation_bindings
