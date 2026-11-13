@@ -78,9 +78,14 @@ def _boundary(
 
 
 def _handler(
-    handler_id: str, definition: str, marker: str, *, interrupting: bool = True
+    handler_id: str,
+    definition: str,
+    marker: str,
+    *,
+    interrupting: bool = True,
+    false_value: str = "false",
 ) -> str:
-    flag = "" if interrupting else ' isInterrupting="false"'
+    flag = "" if interrupting else f' isInterrupting="{false_value}"'
     return (
         f'<bpmn:subProcess id="{handler_id}" triggeredByEvent="true">'
         f'<bpmn:startEvent id="{handler_id}S"{flag}>{definition}</bpmn:startEvent>'
@@ -294,10 +299,20 @@ def test_event_subprocess_does_not_catch_the_other_event_type(thrower, catcher):
     assert {"outer_handled", "handler_saw"}.isdisjoint(_markers(workflow))
 
 
-def test_non_interrupting_escalation_event_subprocess_runs_beside_main_path():
+@pytest.mark.parametrize("false_value", ["false", "0"])
+def test_non_interrupting_escalation_event_subprocess_runs_beside_main_path(
+    false_value,
+):
+    """``isInterrupting`` is an ``xsd:boolean``, so ``0`` means false too."""
     xml = _process(
         _work(_escalation_then_continue()),
-        _handler("Outer", ESCALATION, "outer_handled", interrupting=False),
+        _handler(
+            "Outer",
+            ESCALATION,
+            "outer_handled",
+            interrupting=False,
+            false_value=false_value,
+        ),
     )
     workflow = _run(xml)
     assert workflow.completed

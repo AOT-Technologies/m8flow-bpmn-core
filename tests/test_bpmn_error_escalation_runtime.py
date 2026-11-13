@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from m8flow_core import api
+from m8flow_core.models.future_task import FutureTaskModel
 from m8flow_core.models.process_instance_event import ProcessInstanceEventModel
 from m8flow_core.models.task import TaskModel
 from m8flow_core.models.task_definition import TaskDefinitionModel
@@ -35,12 +36,14 @@ from test_bpmn_error_escalation_standards import (
 REVIEW = '<bpmn:userTask id="Review" name="Review" />'
 
 
-def _seed(session: Session) -> tuple[M8flowTenantModel, UserModel]:
-    tenant = M8flowTenantModel(id="events-tenant", name="Events", slug="events-tenant")
+def _seed(
+    session: Session, tenant_id: str
+) -> tuple[M8flowTenantModel, UserModel]:
+    tenant = M8flowTenantModel(id=tenant_id, name=tenant_id, slug=tenant_id)
     user = UserModel(
         username="reviewer",
         email="reviewer@example.com",
-        service="http://localhost/realms/events-tenant",
+        service=f"http://localhost/realms/{tenant_id}",
         service_id="reviewer",
         display_name="Reviewer",
         created_at=datetime.now(UTC),
@@ -54,8 +57,8 @@ def _seed(session: Session) -> tuple[M8flowTenantModel, UserModel]:
     return tenant, user
 
 
-def _start(session: Session, xml: str):
-    tenant, user = _seed(session)
+def _start(session: Session, xml: str, tenant_id: str = "events-tenant"):
+    tenant, user = _seed(session, tenant_id)
     definition = api.execute_command(
         session,
         api.ImportBpmnProcessDefinitionCommand(
@@ -138,41 +141,30 @@ def test_escalation_event_subprocess_and_a_waiting_user_task(
     assert len(_pending(session, tenant, user)) == pending
 
 
-@pytest.mark.parametrize("after_has_history", [False, True])
-def test_error_thrown_after_a_restore_reaches_its_event_subprocess(
-    session: Session, after_has_history: bool
-) -> None:
-    xml = _bpmn(
-        f"{MAIN_START}{REVIEW}{_work(_error_end(ERROR('ErrB')))}"
-        f'{_script("After", "main_done = True")}<bpmn:endEvent id="EndEvent" />'
-        f'{_flow("f1", "Mark", "Review")}{_flow("f2", "Review", "Work")}'
-        f'{_flow("f3", "Work", "After")}{_flow("f4", "After", "EndEvent")}'
-        + _handler("OnError", ERROR("ErrB"), "outer_handled")
-    )
-    tenant, user, instance = _start(session, xml)
-    [task] = _pending(session, tenant, user)
-    if after_has_history:
-        # A reset can put a step that already ran back into FUTURE; its events
-        # are history, so the row they refer to must stay.
-        after_guid = session.scalars(
-            select(TaskModel.guid)
-            .join(TaskDefinitionModel)
-            .where(
-                TaskModel.process_instance_id == instance.id,
-                TaskDefinitionModel.bpmn_identifier == "After",
-            )
-        ).one()
-        session.add(
-            ProcessInstanceEventModel(
-                m8f_tenant_id=tenant.id,
-                process_instance_id=instance.id,
-                task_guid=after_guid,
-                event_type="task_completed",
-                occurred_at=datetime.now(UTC),
-            )
-        )
-        session.flush()
+# Review -> Work (error end) -> After, with an error event subprocess. "After" is
+# saved as a predicted FUTURE row while Review waits; the interrupt drops it.
+ERROR_AFTER_REVIEW = _bpmn(
+    f"{MAIN_START}{REVIEW}{_work(_error_end(ERROR('ErrB')))}"
+    f'{_script("After", "main_done = True")}<bpmn:endEvent id="EndEvent" />'
+    f'{_flow("f1", "Mark", "Review")}{_flow("f2", "Review", "Work")}'
+    f'{_flow("f3", "Work", "After")}{_flow("f4", "After", "EndEvent")}'
+    + _handler("OnError", ERROR("ErrB"), "outer_handled")
+)
 
+
+def _after_guid(session: Session, instance) -> str:
+    return session.scalars(
+        select(TaskModel.guid)
+        .join(TaskDefinitionModel)
+        .where(
+            TaskModel.process_instance_id == instance.id,
+            TaskDefinitionModel.bpmn_identifier == "After",
+        )
+    ).one()
+
+
+def _complete_review(session: Session, tenant, user) -> None:
+    [task] = _pending(session, tenant, user)
     api.execute_command(
         session,
         api.ClaimTaskCommand(
@@ -186,6 +178,28 @@ def test_error_thrown_after_a_restore_reaches_its_event_subprocess(
         ),
     )
 
+
+@pytest.mark.parametrize("after_has_history", [False, True])
+def test_error_thrown_after_a_restore_reaches_its_event_subprocess(
+    session: Session, after_has_history: bool
+) -> None:
+    tenant, user, instance = _start(session, ERROR_AFTER_REVIEW)
+    if after_has_history:
+        # A reset can put a step that already ran back into FUTURE; its events
+        # are history, so the row they refer to must stay.
+        session.add(
+            ProcessInstanceEventModel(
+                m8f_tenant_id=tenant.id,
+                process_instance_id=instance.id,
+                task_guid=_after_guid(session, instance),
+                event_type="task_completed",
+                occurred_at=datetime.now(UTC),
+            )
+        )
+        session.flush()
+
+    _complete_review(session, tenant, user)
+
     assert _status(session, tenant, instance) == api.ProcessInstanceStatus.complete
     assert _pending(session, tenant, user) == []
     states = _task_states(session, instance)
@@ -198,3 +212,29 @@ def test_error_thrown_after_a_restore_reaches_its_event_subprocess(
         assert states["After"] == {"FUTURE"}
     else:
         assert "After" not in states
+
+
+def test_dropped_row_cleanup_stays_inside_its_tenant(session: Session) -> None:
+    """Another tenant's matching predicted row and its future_task row stay."""
+    tenant_a, user_a, instance_a = _start(session, ERROR_AFTER_REVIEW, "events-a")
+    tenant_b, user_b, instance_b = _start(session, ERROR_AFTER_REVIEW, "events-b")
+    other_after = _after_guid(session, instance_b)
+    now = datetime.now(UTC)
+    session.add(
+        FutureTaskModel(
+            m8f_tenant_id=tenant_b.id, guid=other_after, run_at=now, updated_at=now
+        )
+    )
+    session.flush()
+
+    _complete_review(session, tenant_a, user_a)
+
+    assert "After" not in _task_states(session, instance_a)
+    other_states = _task_states(session, instance_b)
+    assert other_states["After"] == {"FUTURE"}
+    assert other_states["Review"] == {"READY"}
+    assert session.get(FutureTaskModel, other_after) is not None
+    assert len(_pending(session, tenant_b, user_b)) == 1
+    assert _status(session, tenant_b, instance_b) == (
+        api.ProcessInstanceStatus.user_input_required
+    )

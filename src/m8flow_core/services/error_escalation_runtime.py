@@ -32,8 +32,14 @@ from m8flow_core.services.signal_runtime import SignalStartParser
 _INTERRUPTING_EXTENSION = "m8f_interrupting"
 
 
-def _xml_true(value: str | None) -> bool:
-    return value is not None and value.strip().lower() in {"true", "1"}
+_XML_BOOLEANS = {"true": True, "1": True, "false": False, "0": False}
+
+
+def _xml_bool(value: str | None, *, default: bool) -> bool:
+    """Read an ``xsd:boolean`` attribute: ``true``/``1`` or ``false``/``0``."""
+    if value is None:
+        return default
+    return _XML_BOOLEANS.get(value.strip().lower(), default)
 
 
 class EventSubprocessStartEventParser(SignalStartParser):
@@ -49,7 +55,9 @@ class EventSubprocessStartEventParser(SignalStartParser):
 
     def _in_event_subprocess(self) -> bool:
         parent = self.node.getparent()
-        return parent is not None and _xml_true(parent.get("triggeredByEvent"))
+        return parent is not None and _xml_bool(
+            parent.get("triggeredByEvent"), default=False
+        )
 
     def create_task(self) -> Any:
         xpaths = [
@@ -67,9 +75,8 @@ class EventSubprocessStartEventParser(SignalStartParser):
     def parse_extensions(self, node: Any = None) -> dict[str, Any]:
         extensions: dict[str, Any] = super().parse_extensions(node)
         if node is None and self._in_event_subprocess():
-            interrupting = self.node.get("isInterrupting", "true")
-            extensions[_INTERRUPTING_EXTENSION] = (
-                interrupting.strip().lower() != "false"
+            extensions[_INTERRUPTING_EXTENSION] = _xml_bool(
+                self.node.get("isInterrupting"), default=True
             )
         return extensions
 
