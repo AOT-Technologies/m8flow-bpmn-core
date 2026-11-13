@@ -92,9 +92,8 @@ After a merge to `main`, CI uploads the coverage report to
 [Codecov](https://codecov.io/gh/AOT-Technologies/m8flow-core), which feeds
 the coverage badge in the README. A failed upload doesn't fail the build.
 
-Pull requests run the suite on Linux with Python 3.12. After a merge to
-`main`, CI also runs it on Python 3.12, 3.13, and 3.14 on Linux, macOS, and
-Windows.
+Every pull request and every push to `main` runs the suite on Python 3.12,
+3.13, and 3.14 on Linux, macOS, and Windows.
 
 To run one file or one test, pass it to pytest:
 

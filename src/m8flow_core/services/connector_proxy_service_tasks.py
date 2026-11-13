@@ -8,8 +8,8 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin, urlsplit
-from urllib.request import Request, urlopen
+from urllib.parse import urljoin
+from urllib.request import Request
 
 from m8flow_core.errors import (
     NotFoundError,
@@ -29,8 +29,7 @@ from m8flow_core.services.service_tasks import (
     build_connector_proxy_execute_path,
     split_service_task_operation_id,
 )
-
-_ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
+from m8flow_core.utils.http_client import is_http_url, open_http_url
 
 DEFAULT_CONNECTOR_PROXY_TIMEOUT_SECONDS = 10.0
 
@@ -267,11 +266,7 @@ def _connector_proxy_json_request(
     )
 
     try:
-        # The URL scheme is restricted to http and https above.
-        with urlopen(  # nosec B310
-            request,
-            timeout=normalized_timeout_seconds,
-        ) as response:
+        with open_http_url(request, timeout=normalized_timeout_seconds) as response:
             raw_body = response.read()
             parsed_body = _parse_connector_proxy_response_body(raw_body)
             _raise_for_connector_proxy_error_payload(
@@ -368,8 +363,7 @@ def _normalize_base_url(base_url: str) -> str:
 
 
 def _require_http_url(url: str) -> str:
-    parts = urlsplit(url)
-    if parts.scheme.lower() not in _ALLOWED_URL_SCHEMES or not parts.netloc:
+    if not is_http_url(url):
         raise ValidationError(
             f"Connector proxy URL must be an absolute http or https URL: {url!r}"
         )

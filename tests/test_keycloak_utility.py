@@ -223,10 +223,10 @@ def test_ensure_shared_realm_organizations_and_users_reuses_existing_rows(
     ["file:///etc/passwd", "ftp://keycloak.example.com/realms", "localhost:6842"],
 )
 def test_keycloak_request_rejects_non_http_urls(url: str, monkeypatch) -> None:
-    def fail_urlopen(*args: object, **kwargs: object) -> None:
-        raise AssertionError("urlopen must not be called for a rejected URL")
+    def fail_open(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the URL must not be opened for a rejected URL")
 
-    monkeypatch.setattr(keycloak_service, "urlopen", fail_urlopen)
+    monkeypatch.setattr(keycloak_service, "open_http_url", fail_open)
 
     with pytest.raises(
         keycloak_service.KeycloakProvisioningError, match="http or https"

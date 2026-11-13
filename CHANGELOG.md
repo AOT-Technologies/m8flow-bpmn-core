@@ -24,6 +24,19 @@ and what each version part means.
 - CI uploads test coverage from `main` to Codecov, and the README shows a
   coverage badge. The PyPI badge now reads the latest version from PyPI.
 
+### Changed
+
+- CI runs the Python 3.13 and 3.14, macOS, and Windows test matrix on pull
+  requests as well as on `main`.
+- The Codecov upload runs in its own `main`-only job, so the job that runs
+  pull request code no longer holds the `id-token: write` permission.
+
+### Security
+
+- Connector proxy calls and the Keycloak provisioning helper no longer follow
+  an HTTP redirect to a non-http(s) URL such as `ftp://`. They also no longer
+  carry handlers for `ftp:`, `file:`, or `data:` URLs.
+
 ## [1.0.0] - 2026-11-12
 
 The first stable release, and the first under the name m8flow-core. Versions
