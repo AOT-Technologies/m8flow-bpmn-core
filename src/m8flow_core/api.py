@@ -94,6 +94,7 @@ from m8flow_core.services.call_activities import (
     CallActivityResolver,
 )
 from m8flow_core.services.compensation_journal import get_process_instance_compensations
+from m8flow_core.services.compensation_parser import validate_compensation_bpmn
 from m8flow_core.services.connector_proxy_service_tasks import (
     ConnectorProxyServiceTaskConnector,
     build_connector_proxy_service_task_connectors,
@@ -268,6 +269,7 @@ __all__ = [
     "CompensationExecutionError",
     "CompensationStatus",
     "get_process_instance_compensations",
+    "validate_compensation_bpmn",
     "ClaimTaskCommand",
     "CompleteTaskCommand",
     "ConnectorProxyServiceTaskConnector",

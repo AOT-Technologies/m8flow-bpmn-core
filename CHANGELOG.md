@@ -18,6 +18,10 @@ and what each version part means.
 
 ### Added
 
+- BPMN Transaction cancellation stops active work and timers, runs recorded
+  compensation handlers, and follows the attached cancel boundary event once.
+  `validate_compensation_bpmn` lets hosts check supported forms before saving.
+  See [Cancel a Transaction](docs/how-to/run-compensation.md#cancel-a-transaction).
 - [Publish a release](docs/how-to/publish-a-release.md#withdraw-or-replace-a-release)
   now covers yanking a broken version from PyPI, marking it on GitHub and in
   the changelog, and replacing it with a patch release.

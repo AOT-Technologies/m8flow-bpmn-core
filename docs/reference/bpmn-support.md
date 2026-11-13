@@ -42,6 +42,7 @@ The following elements are supported:
 | User task | Becomes a human task that users claim and complete |
 | Manual task | Becomes a human task, like a user task |
 | Compensation boundary/throw/end events | Associations to task/subprocess handlers, `activityRef`, both `waitForCompletion` values, durable reverse completion order and nested default compensation. See [Run compensation handlers](../how-to/run-compensation.md). |
+| Transaction and Cancel Events | A Cancel End directly inside a Transaction stops its active work and runs compensation before its attached Cancel Boundary Event. |
 | Task (untyped) | Becomes a human task, like a user task |
 | Script task | Python script run by the SpiffWorkflow script engine |
 | Business rule task | Evaluates a DMN decision table from the definition's DMN file |
@@ -128,6 +129,6 @@ Human handlers, including those nested in handler subprocesses, become normal
 work items. Completed subprocesses retain their scope data; explicit handlers
 replace default recursive compensation. Parent throws exclude active
 subprocesses. Compensation models requiring event subprocesses, loop or
-multi-instance characteristics, call activities, transactions, or BPMN error
+multi-instance characteristics, call activities, or BPMN error
 handling are rejected. Standard timer date/duration literals and existing
 Spiff timer expressions are accepted in compensation models.

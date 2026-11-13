@@ -69,6 +69,11 @@ class CompensationEnd(CompensationThrow, EndEvent):
     pass
 
 
+class TransactionCancelEnd(EndEvent):
+    def _run_hook(self, task: Any) -> None:
+        task.workflow.top_workflow._m8f_compensation.cancel_transaction(task)
+
+
 class CompensationEventConverter(EventConverter):
     def to_dict(self, spec: Any) -> dict[str, Any]:
         return {
@@ -97,7 +102,16 @@ class _EndParser(SignalEndParser):
     def create_task(self) -> Any:
         event = self.node.find(full_tag("compensateEventDefinition"))
         if event is None:
-            return super().create_task()
+            if self.node.find(full_tag("cancelEventDefinition")) is None:
+                return super().create_task()
+            task = TransactionCancelEnd(
+                self.spec,
+                self.bpmn_id,
+                event_definition=NoneEventDefinition(),
+                **self.bpmn_attributes,
+            )
+            task.connect(self.spec.end)
+            return task
         task = CompensationEnd(
             self.spec,
             self.bpmn_id,
@@ -136,7 +150,8 @@ class CompensationBpmnParser(SpiffBpmnParser):
         ):
             raise ValidationError("isForCompensation must be a BPMN boolean")
         if any(
-            node.tag == BPMN + "compensateEventDefinition"
+            node.tag
+            in {BPMN + "compensateEventDefinition", BPMN + "cancelEventDefinition"}
             or node.get("isForCompensation") in {"true", "1"}
             for node in root.iter()
         ):
@@ -168,10 +183,10 @@ class CompensationBpmnParser(SpiffBpmnParser):
         for node in list(root.iter("*")):
             for ref in list(node.findall(BPMN + "eventDefinitionRef")):
                 definition = nodes.get((ref.text or "").strip().split(":")[-1])
-                if (
-                    definition is not None
-                    and definition.tag == BPMN + "compensateEventDefinition"
-                ):
+                if definition is not None and definition.tag in {
+                    BPMN + "compensateEventDefinition",
+                    BPMN + "cancelEventDefinition",
+                }:
                     copied = deepcopy(definition)
                     copied.attrib.pop("id", None)
                     node.append(copied)
@@ -191,10 +206,11 @@ class CompensationBpmnParser(SpiffBpmnParser):
                     compensation[0].set(
                         "activityRef", compensation[0].get("activityRef").split(":")[-1]
                     )
+        self._validate_cancel_events(root, nodes, parents)
         scopes = {
             node
             for node in root.iter("*")
-            if node.tag in {BPMN + "process", BPMN + "subProcess"}
+            if node.tag in {BPMN + "process", BPMN + "subProcess", BPMN + "transaction"}
         }
         for node in root.iter("*"):
             # Spiff evaluates timer content as Python; accept standard BPMN
@@ -207,11 +223,9 @@ class CompensationBpmnParser(SpiffBpmnParser):
                 BPMN + name
                 for name in (
                     "callActivity",
-                    "transaction",
                     "standardLoopCharacteristics",
                     "multiInstanceLoopCharacteristics",
                     "errorEventDefinition",
-                    "cancelEventDefinition",
                 )
             }:
                 raise ValidationError(
@@ -401,3 +415,76 @@ class CompensationBpmnParser(SpiffBpmnParser):
                     break
             parents[handler].remove(handler)
             self.compensation_handlers[handler_id] = helper_id
+
+    @staticmethod
+    def _validate_cancel_events(
+        root: Any, nodes: dict[str, Any], parents: dict[Any, Any]
+    ) -> None:
+        boundaries: set[str] = set()
+        ends: set[str] = set()
+        for node in root.iter():
+            if node.find(BPMN + "cancelEventDefinition") is None:
+                continue
+            definitions = [
+                child
+                for child in node
+                if child.tag.endswith(("EventDefinition", "eventDefinitionRef"))
+            ]
+            if len(definitions) != 1:
+                raise ValidationError(
+                    "Cancel Events require exactly one event definition"
+                )
+            scope = parents.get(node)
+            if (
+                node.tag == BPMN + "endEvent"
+                and scope is not None
+                and scope.tag == BPMN + "transaction"
+            ):
+                ends.add(scope.get("id"))
+                continue
+            if node.tag == BPMN + "boundaryEvent":
+                attached_id = node.get("attachedToRef", "").split(":")[-1]
+                transaction = nodes.get(attached_id)
+                if (
+                    transaction is not None
+                    and transaction.tag == BPMN + "transaction"
+                    and parents[transaction] is scope
+                    and node.get("cancelActivity", "true") in {"true", "1"}
+                    and attached_id not in boundaries
+                ):
+                    node.set("attachedToRef", attached_id)
+                    node.set("cancelActivity", "true")
+                    boundaries.add(attached_id)
+                    continue
+            raise ValidationError(
+                "A Cancel End must be inside a Transaction and each Transaction "
+                "can have one interrupting Cancel Boundary Event"
+            )
+        if ends.difference(boundaries):
+            raise ValidationError(
+                "A Transaction with a Cancel End requires a Cancel Boundary Event"
+            )
+        for transaction_id in ends:
+            transaction = nodes.get(transaction_id)
+            if transaction is not None and any(
+                nested is not transaction
+                for nested in transaction.iter(BPMN + "transaction")
+            ):
+                raise ValidationError(
+                    "A cancellable Transaction cannot contain another Transaction"
+                )
+
+
+def validate_compensation_bpmn(source_bpmn_xml: str | bytes) -> None:
+    """Validate the supported compensation and Transaction Cancel BPMN forms."""
+    source = (
+        source_bpmn_xml.encode("utf-8")
+        if isinstance(source_bpmn_xml, str)
+        else source_bpmn_xml
+    )
+    try:
+        CompensationBpmnParser(validator=None).add_bpmn_str(source)
+    except ValidationError:
+        raise
+    except Exception as exc:
+        raise ValidationError(f"BPMN source is not parseable: {exc}") from exc

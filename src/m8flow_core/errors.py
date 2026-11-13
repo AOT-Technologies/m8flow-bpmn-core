@@ -18,6 +18,8 @@ from __future__ import annotations
 class BpmnCoreError(Exception):
     """Base class for every public error raised by m8flow-core."""
 
+    compensation_recovery_flushed: bool = False
+
 
 class ValidationError(BpmnCoreError, ValueError):
     """Inputs to a command or query are malformed or contradictory."""

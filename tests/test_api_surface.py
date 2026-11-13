@@ -35,6 +35,7 @@ EXPECTED_PUBLIC_API = frozenset(
         "CompensationStatus",
         "GetProcessInstanceCompensationsQuery",
         "get_process_instance_compensations",
+        "validate_compensation_bpmn",
         "InvalidStateError",
         "NotFoundError",
         "ServiceTaskExecutionError",
