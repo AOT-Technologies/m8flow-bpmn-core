@@ -132,8 +132,8 @@ Missing:
 
 Call activities are supported through the host-supplied resolver described in
 the [API reference](api.md#initializeprocessinstancefromdefinitioncommand).
-Sequential and parallel multi-instance script tasks are covered too; see
-[BPMN support](bpmn-support.md#supported-elements).
+Sequential and parallel multi-instance activities, including user tasks, are
+covered too; see [BPMN support](bpmn-support.md#supported-elements).
 The following BPMN features aren't tested in the library:
 
 - **Event subprocesses**, triggered by events inside a running parent process,

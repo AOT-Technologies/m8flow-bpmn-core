@@ -68,6 +68,7 @@ from m8flow_core.services.compensation_runtime import (
 from m8flow_core.services.lane_assignment import (
     assign_work_item_potential_owners,
 )
+from m8flow_core.services.multi_instance_runtime import in_iteration
 from m8flow_core.services.process_instances import (
     create_process_instance,
     error_process_instance,
@@ -367,6 +368,7 @@ def advance_process_instance_workflow(
     process_instance_id: int,
     completed_task_guid: str,
     completed_at: datetime | None = None,
+    task_payload: Mapping[str, object] | None = None,
 ) -> ProcessInstanceModel:
     process_instance = _load_process_instance(
         session,
@@ -393,15 +395,32 @@ def advance_process_instance_workflow(
         ),
     )
     completed_task = runtime_task(workflow, UUID(completed_task_guid))
-    _apply_metadata_to_task(
-        workflow,
-        completed_task,
-        _load_process_instance_metadata_payload(
+    if in_iteration(completed_task):
+        # A loop iteration's submission stays on that iteration. It leaves only
+        # through the loop's output mapping, never as process metadata (M8F-640).
+        completed_task.set_data(
+            **{
+                str(key): _coerce_metadata_value(str(value))
+                for key, value in (task_payload or {}).items()
+            }
+        )
+    else:
+        _persist_task_payload(
             session,
             tenant_id=tenant_id,
             process_instance_id=process_instance_id,
-        ),
-    )
+            task_payload=task_payload,
+            completed_at=occurred_at,
+        )
+        _apply_metadata_to_task(
+            workflow,
+            completed_task,
+            _load_process_instance_metadata_payload(
+                session,
+                tenant_id=tenant_id,
+                process_instance_id=process_instance_id,
+            ),
+        )
     completed_task.complete()
     _run_workflow_with_service_task_failure_handling(
         session,
@@ -2301,6 +2320,28 @@ def _get_ready_work_items(
             and work_item.task_status == WorkItemState.READY.value
         )
     ]
+
+
+def _persist_task_payload(
+    session: Session,
+    *,
+    tenant_id: str,
+    process_instance_id: int,
+    task_payload: Mapping[str, object] | None,
+    completed_at: datetime,
+) -> None:
+    if not task_payload:
+        return
+    for key, value in task_payload.items():
+        upsert_process_instance_metadata(
+            session,
+            tenant_id=tenant_id,
+            process_instance_id=process_instance_id,
+            key=str(key),
+            value=str(value),
+            updated_at=completed_at,
+            created_at=completed_at,
+        )
 
 
 def _apply_metadata_to_workflow(

@@ -31,11 +31,13 @@ from m8flow_core.services.authorization import (
 )
 from m8flow_core.services.process_instances import (
     record_process_instance_event,
-    upsert_process_instance_metadata,
 )
 from m8flow_core.services.tenant_users import ensure_user_belongs_to_tenant
 from m8flow_core.services.work_items import complete_work_item
-from m8flow_core.services.workflow_runtime import advance_process_instance_workflow
+from m8flow_core.services.workflow_runtime import (
+    _persist_task_payload,
+    advance_process_instance_workflow,
+)
 
 
 def get_pending_tasks(
@@ -206,13 +208,15 @@ def complete_task(
             "Cannot complete a task while compensation is suspended"
         )
     completed_at = completed_at or datetime.now(UTC)
-    _persist_task_payload(
-        session,
-        tenant_id=tenant_id,
-        process_instance_id=item.process_instance_id,
-        task_payload=task_payload,
-        completed_at=completed_at,
-    )
+    if process_instance is None or process_instance.workflow_state_json is None:
+        # Without workflow state there is nothing to advance; keep the payload.
+        _persist_task_payload(
+            session,
+            tenant_id=tenant_id,
+            process_instance_id=item.process_instance_id,
+            task_payload=task_payload,
+            completed_at=completed_at,
+        )
     complete_work_item(item, user_id=user_id, occurred_at=completed_at)
     task_model = item.task_model
     if task_model is not None:
@@ -234,6 +238,7 @@ def complete_task(
                 process_instance_id=item.process_instance_id,
                 completed_task_guid=completed_guid or "",
                 completed_at=completed_at,
+                task_payload=task_payload,
             )
             record_process_instance_event(
                 session,
@@ -287,28 +292,6 @@ def _user_is_assigned(
         )
         is not None
     )
-
-
-def _persist_task_payload(
-    session: Session,
-    *,
-    tenant_id: str,
-    process_instance_id: int,
-    task_payload: Mapping[str, object] | None,
-    completed_at: datetime,
-) -> None:
-    if not task_payload:
-        return
-    for key, value in task_payload.items():
-        upsert_process_instance_metadata(
-            session,
-            tenant_id=tenant_id,
-            process_instance_id=process_instance_id,
-            key=str(key),
-            value=str(value),
-            updated_at=completed_at,
-            created_at=completed_at,
-        )
 
 
 def _task_authorization_metadata(item: WorkItemModel) -> dict[str, object]:

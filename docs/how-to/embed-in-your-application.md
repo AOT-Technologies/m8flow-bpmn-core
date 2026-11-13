@@ -117,7 +117,9 @@ executable process.
 
 Send the values a user enters in a form as `CompleteTaskCommand.task_payload`.
 The library stores each key as a process metadata row. Values are stored as
-strings, so convert numbers and booleans when you read them back.
+strings, so convert numbers and booleans when you read them back. A task inside
+a multi-instance iteration is the exception: its payload is applied to that
+iteration only and leaves it through the loop's output mapping.
 
 To seed metadata when the process starts, use
 `InitializeProcessInstanceFromDefinitionCommand.submission_metadata`.

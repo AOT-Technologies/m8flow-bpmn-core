@@ -46,6 +46,9 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
 - A runtime test for sequential and parallel multi-instance script tasks. They already ran through SpiffWorkflow; the BPMN support
   reference, limitations page, and README no longer list them, or call
   activities, as unsupported.
+- Multi-instance runtime values. Each iteration sees `loopCounter` (zero-based,
+  as in Camunda 7), `nrOfInstances`, `nrOfActiveInstances` and
+  `nrOfCompletedInstances`, and a `completionCondition` can use them.
 
 ### Changed
 
@@ -59,9 +62,20 @@ lists its changes under **Added**, **Changed**, **Deprecated**, **Removed**,
   imported under `TYPE_CHECKING`, so static analysis can see them.
 - SpiffWorkflow 3.2.0 is now the minimum supported version, up from 3.1.2.
   Earlier versions never set up event subprocesses.
+- Multi-instance iterations keep their input item, output item and runtime
+  values to themselves; without an output mapping, their other variables still
+  flow back. Parallel output collections now list results in input order, and
+  an activity that runs again starts a new output collection instead of failing.
+- `advance_process_instance_workflow` takes an optional `task_payload`, and
+  `CompleteTaskCommand` passes it. A human task inside a multi-instance
+  iteration applies its payload to that iteration only instead of recording it
+  as process instance metadata, so one iteration's form values can't reach
+  another. Other tasks record their payload as before.
 
 ### Fixed
 
+- A `loopCardinality` multi-instance loop no longer fails with `NameError` when
+  its output collection already exists (a SpiffWorkflow 3.2.0 bug).
 - Added the compensation journal tables to the sample app's migration chain,
   so tenant realignment can run against databases migrated by the app.
 - Removed import cycles in compensation persistence and process termination.
