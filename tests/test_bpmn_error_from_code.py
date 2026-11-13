@@ -193,6 +193,23 @@ def test_bpmn_error_leaves_subprocess_to_its_boundary(session: Session) -> None:
     _assert_caught(_start(session, _bpmn(_subprocess('raise BpmnError("E1")'), "E1")))
 
 
+def test_bpmn_error_from_a_loop_instance_reaches_the_activity_boundary(
+    session: Session,
+) -> None:
+    work = _script('raise BpmnError("E1")').replace(
+        "<bpmn:script>",
+        "<bpmn:multiInstanceLoopCharacteristics>"
+        "<bpmn:loopCardinality>2</bpmn:loopCardinality>"
+        "</bpmn:multiInstanceLoopCharacteristics><bpmn:script>",
+    )
+    process_instance = _start(session, _bpmn(work, "E1"))
+    assert process_instance.status == api.ProcessInstanceStatus.complete
+    workflow = _restore_workflow(process_instance.workflow_state_json)
+    assert workflow.data.get("error_caught") is True
+    assert "normal_path" not in workflow.data
+    assert not workflow.get_tasks(state=TaskState.ERROR)
+
+
 def test_boundary_variable_receives_error_code_and_message(session: Session) -> None:
     data = _assert_caught(
         _start(
@@ -259,3 +276,96 @@ def test_script_failure_at_start_saves_a_snapshot_of_the_failed_task(
     workflow = _restore_workflow(instance.workflow_state_json)
     work = [t for t in workflow.get_tasks() if t.task_spec.name == "Work"]
     assert [t.state for t in work] == [TaskState.ERROR]
+
+
+_PARALLEL_SIBLING_BOUNDARY = f"""<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions {_NS} id="Defs" targetNamespace="urn:m8flow:m8f675">
+  <bpmn:error id="Err_1" errorCode="E1" />
+  <bpmn:process id="m8f675_parallel" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>f0</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:parallelGateway id="Split">
+      <bpmn:incoming>f0</bpmn:incoming>
+      <bpmn:outgoing>fb</bpmn:outgoing><bpmn:outgoing>fa</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="Review"><bpmn:incoming>fb</bpmn:incoming>
+      <bpmn:outgoing>fb2</bpmn:outgoing></bpmn:userTask>
+    <bpmn:endEvent id="EndB"><bpmn:incoming>fb2</bpmn:incoming></bpmn:endEvent>
+    <bpmn:boundaryEvent id="CatchOnReview" attachedToRef="Review">
+      <bpmn:outgoing>fh</bpmn:outgoing><bpmn:errorEventDefinition errorRef="Err_1" />
+    </bpmn:boundaryEvent>
+    <bpmn:scriptTask id="HandleError"><bpmn:incoming>fh</bpmn:incoming>
+      <bpmn:outgoing>fh2</bpmn:outgoing><bpmn:script>error_caught = True</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:endEvent id="EndHandled"><bpmn:incoming>fh2</bpmn:incoming></bpmn:endEvent>
+    <bpmn:scriptTask id="Prepare"><bpmn:incoming>fa</bpmn:incoming>
+      <bpmn:outgoing>fa1</bpmn:outgoing><bpmn:script>prepared = True</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:scriptTask id="Raise"><bpmn:incoming>fa1</bpmn:incoming>
+      <bpmn:outgoing>fa2</bpmn:outgoing><bpmn:script>raise BpmnError("E1")</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:endEvent id="EndA"><bpmn:incoming>fa2</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="f0" sourceRef="StartEvent_1" targetRef="Split" />
+    <bpmn:sequenceFlow id="fb" sourceRef="Split" targetRef="Review" />
+    <bpmn:sequenceFlow id="fb2" sourceRef="Review" targetRef="EndB" />
+    <bpmn:sequenceFlow id="fa" sourceRef="Split" targetRef="Prepare" />
+    <bpmn:sequenceFlow id="fa1" sourceRef="Prepare" targetRef="Raise" />
+    <bpmn:sequenceFlow id="fa2" sourceRef="Raise" targetRef="EndA" />
+    <bpmn:sequenceFlow id="fh" sourceRef="CatchOnReview" targetRef="HandleError" />
+    <bpmn:sequenceFlow id="fh2" sourceRef="HandleError" targetRef="EndHandled" />
+  </bpmn:process>
+</bpmn:definitions>
+"""
+
+
+def test_bpmn_error_is_not_caught_by_a_boundary_on_a_parallel_sibling(
+    session: Session,
+) -> None:
+    """Only a boundary on the activity that raised (or on a sub-process hosting
+    it) may catch. Here the only E1 boundary is on a user task in the other
+    parallel branch, already waiting when the script raises; it must not catch."""
+    with pytest.raises(Exception, match="E1") as exc_info:
+        _start(session, _PARALLEL_SIBLING_BOUNDARY)
+    assert "BpmnError" in str(exc_info.value)
+
+
+_ERROR_EVENT_SUBPROCESS = f"""<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions {_NS} id="Defs" targetNamespace="urn:m8flow:m8f675">
+  <bpmn:error id="Err_1" errorCode="E1" />
+  <bpmn:process id="m8f675_esp" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing></bpmn:startEvent>
+    {_script('raise BpmnError("E1")')}
+    <bpmn:scriptTask id="NormalPath"><bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing><bpmn:script>normal_path = True</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:endEvent id="EndNormal"><bpmn:incoming>Flow_3</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Work" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Work" targetRef="NormalPath" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="NormalPath" targetRef="EndNormal" />
+    <bpmn:subProcess id="OnError" triggeredByEvent="true">
+      <bpmn:startEvent id="ErrorStart"><bpmn:outgoing>Flow_E1</bpmn:outgoing>
+        <bpmn:errorEventDefinition errorRef="Err_1" /></bpmn:startEvent>
+      <bpmn:scriptTask id="HandleError"><bpmn:incoming>Flow_E1</bpmn:incoming>
+        <bpmn:outgoing>Flow_E2</bpmn:outgoing>
+        <bpmn:script>error_caught = True</bpmn:script>
+      </bpmn:scriptTask>
+      <bpmn:endEvent id="ErrorEnd">
+        <bpmn:incoming>Flow_E2</bpmn:incoming></bpmn:endEvent>
+      <bpmn:sequenceFlow id="Flow_E1" sourceRef="ErrorStart" targetRef="HandleError" />
+      <bpmn:sequenceFlow id="Flow_E2" sourceRef="HandleError" targetRef="ErrorEnd" />
+    </bpmn:subProcess>
+  </bpmn:process>
+</bpmn:definitions>
+"""
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Error event subprocesses need M8F-665's routing (PR #52); once it "
+    "lands, code-raised errors go through _throw_to_nearest_catcher.",
+)
+def test_script_bpmn_error_starts_a_matching_error_event_subprocess(
+    session: Session,
+) -> None:
+    _assert_caught(_start(session, _ERROR_EVENT_SUBPROCESS))

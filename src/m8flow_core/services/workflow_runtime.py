@@ -16,6 +16,7 @@ from SpiffWorkflow.bpmn.specs.event_definitions.item_aware_event import (
     ErrorEventDefinition,
 )
 from SpiffWorkflow.bpmn.specs.event_definitions.timer import TimerEventDefinition
+from SpiffWorkflow.bpmn.specs.mixins.events.intermediate_event import BoundaryEvent
 from SpiffWorkflow.bpmn.util import BpmnEvent
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
 from SpiffWorkflow.util.task import TaskState
@@ -1074,6 +1075,11 @@ def _throw_bpmn_error_from_task_code(workflow: BpmnWorkflow, exc: Exception) -> 
         catcher, BpmnEvent(definition, payload={"code": code, "message": message})
     )
     catcher.task_spec._update(catcher)
+    # The error interrupts now: run the boundary so the activity is cancelled
+    # before any other ready task in it (another loop instance, a parallel
+    # path in a sub-process) gets to run.
+    if catcher.task_spec.cancel_activity and catcher.state == TaskState.READY:
+        catcher.run()
     return True
 
 
@@ -1091,23 +1097,33 @@ def _failed_task(workflow: BpmnWorkflow, exc: Exception) -> Any:
 
 
 def _nearest_error_catcher(failed: Any, code: str) -> Any:
-    """The waiting error catcher closest to ``failed``, scope by scope outward.
+    """The waiting error boundary closest to ``failed``.
 
-    Matches on the error code; a catcher with no code catches every error.
-    Error event subprocesses are not covered here.
+    Walks up from the failed task through its ancestors, and on through the
+    activity hosting each sub-process, so only a boundary attached to the
+    failing activity, or to an activity it runs inside (a sub-process or a
+    multi-instance activity), can catch. A boundary on a parallel sibling is
+    never on that path. Matches on the error code; a catcher with no code
+    catches every error. Error event subprocesses are not covered here.
     """
-    waiting = list(failed.workflow.top_workflow.event_manager.tasks.values())
-    scope = failed.workflow
-    while scope is not None:
-        for task in waiting:
-            definition = task.task_spec.event_definition
+    task = failed
+    while task is not None:
+        # Spiff puts an activity and its boundary events under one split task.
+        for sibling in task.parent.children if task.parent else ():
+            definition = getattr(sibling.task_spec, "event_definition", None)
             if (
-                task.workflow is scope
+                isinstance(sibling.task_spec, BoundaryEvent)
+                and sibling.state == TaskState.WAITING
                 and isinstance(definition, ErrorEventDefinition)
                 and definition.code in (None, code)
             ):
-                return task
-        scope = scope.parent_workflow
+                return sibling
+        if task.parent is None and task.workflow.parent_task_id is not None:
+            task = task.workflow.top_workflow.get_task_from_id(
+                task.workflow.parent_task_id
+            )
+        else:
+            task = task.parent
     return None
 
 
