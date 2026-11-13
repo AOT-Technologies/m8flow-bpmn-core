@@ -5,6 +5,10 @@ This package is intended to be imported directly, not exposed over HTTP.
 Stability: every name re-exported here is part of the public contract.
 See ``docs/reference/api.md`` for the full reference, including per-command input
 fields, return types, and the error classes each operation may raise.
+
+Import BPMN collaborations with ``ImportBpmnProcessDefinitionCommand``,
+select a participant when starting an instance, and poll modeled messages
+with ``run_due_scheduler_jobs``.
 """
 
 from __future__ import annotations

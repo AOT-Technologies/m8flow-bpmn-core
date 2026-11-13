@@ -7,7 +7,7 @@ Your application decides when to wake up and calls one function,
 
 The scheduler handles timer start events, recurring `timeCycle` timer starts,
 intermediate timer catch events, interrupting timer boundary events, and
-scheduled process retries. [About scheduling](../explanation/scheduling.md)
+scheduled process retries, and BPMN collaboration messages. [About scheduling](../explanation/scheduling.md)
 explains how each one is stored and run.
 
 ## Run an inline scheduler loop
@@ -46,6 +46,22 @@ without waiting for the real clock.
 
 Run one poller per database, or one per tenant. The scheduler doesn't yet
 coordinate several workers that claim the same rows.
+
+## Deliver collaboration messages
+
+Apply `alembic upgrade head` before starting the updated runtime and scheduler
+pollers. Use the same poll loop for modeled messages.
+
+The sender's transaction stores each message as a `collaboration_message`
+job. Delivery starts the modeled participant or resumes the unique waiting
+instance with the same tenant, deployment version, target event, and
+correlation key. A job with no match or multiple matches stays queued for
+another attempt after five seconds. Its `payload_json.delivery_status` is
+`waiting_for_recipient` or `ambiguous_recipient`.
+
+Receiver state and job removal share a transaction. If delivery fails, the
+attempt rolls back and the job remains retryable. Before downgrading, finish
+pending collaboration deliveries and stop pollers that can produce new jobs.
 
 ## Handle scheduler failures
 

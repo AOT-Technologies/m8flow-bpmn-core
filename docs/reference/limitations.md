@@ -110,19 +110,22 @@ Missing:
 
 ## Messaging and correlation
 
+The library supports direct modeled Message Flows between top-level Message
+Events in executable pools of the same collaboration version. Delivery uses
+the scheduler. Intermediate catches use a caller-supplied instance key.
+
 The library supports tenant-scoped BPMN signal publication. Hosts run one
 signal delivery loop per tenant; multi-worker signal delivery and external
 broker delivery are not supported. See [Publish signals](../how-to/publish-signals.md).
-BPMN message correlation remains unsupported.
 
 Missing:
 
-- **Message start events**, which start a process from an inbound message such
-  as `invoice.received` instead of an explicit start command.
-- **Intermediate message events**, such as sending `payment.requested` and
-  waiting for `payment.confirmed` before continuing.
-- **Message correlation keys and subscriptions**, which match an inbound payload such
-  as `order_id=123` to the instance waiting for it.
+- **Signal starts for collaboration participants**. Signal starts are supported
+  for single-process definitions.
+- **Model-defined correlation expressions and business payload mappings**,
+  such as extracting `order_id` from a message.
+- **Other executable endpoints**, such as send and receive tasks, message
+  boundary events, and message events inside subprocesses.
 - **Inbound message routing**, an entry point that turns a webhook or event-bus
   message into "resume this instance at this catch event".
 - **Outbound delivery** of thrown messages and signals to email, Kafka, or

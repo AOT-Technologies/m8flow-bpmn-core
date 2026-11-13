@@ -12,6 +12,9 @@ from SpiffWorkflow.bpmn.serializer.workflow import BpmnWorkflowSerializer
 from SpiffWorkflow.bpmn.workflow import BpmnWorkflow
 from SpiffWorkflow.dmn.specs.model import DecisionTable
 from SpiffWorkflow.spiff.serializer.config import SPIFF_CONFIG
+from SpiffWorkflow.spiff.serializer.event_definition import (
+    MessageEventDefinitionConverter,
+)
 
 from m8flow_core.errors import (
     CallActivityResolutionError,
@@ -23,6 +26,11 @@ from m8flow_core.services.call_activities import (
     CallActivityDefinition,
     CallActivityResolver,
 )
+from m8flow_core.services.collaboration_events import (
+    CollaborationCatchDefinition,
+    CollaborationThrowDefinition,
+)
+from m8flow_core.services.collaborations import collaboration_parser_source
 from m8flow_core.services.compensation_parser import (
     CompensationBpmnParser,
     CompensationEnd,
@@ -50,6 +58,8 @@ _WORKFLOW_SERIALIZER = BpmnWorkflowSerializer(
     registry=BpmnWorkflowSerializer.configure(
         {
             **SPIFF_CONFIG,
+            CollaborationCatchDefinition: MessageEventDefinitionConverter,
+            CollaborationThrowDefinition: MessageEventDefinitionConverter,
             CompensationThrow: CompensationEventConverter,
             CompensationEnd: CompensationEventConverter,
             TransactionCancelEnd: EventConverter,
@@ -179,13 +189,15 @@ def _build_workflow(
     service_task_context: ServiceTaskContext | None = None,
     call_activity_resolver: CallActivityResolver | None = None,
     call_activity_context: CallActivityContext | None = None,
+    collaboration: Mapping[str, Any] | None = None,
 ) -> BpmnWorkflow:
     parser = _RuntimeSpiffBpmnParser(
         validator=None,
         use_noop_dmn_engine=dmn_xml is None,
     )
+    source = _coerce_xml_bytes(bpmn_xml)
     parser.add_bpmn_str(
-        _coerce_xml_bytes(bpmn_xml),
+        collaboration_parser_source(source) if collaboration else source,
         filename="runtime-workflow.bpmn",
     )
     if bpmn_process_id is None:
@@ -212,6 +224,8 @@ def _build_workflow(
         )
     spec = parser.get_spec(selected_process_id)
     subprocess_specs = parser.get_subprocess_specs(selected_process_id)
+    if collaboration:
+        _bind_collaboration_events(spec, selected_process_id, collaboration)
     workflow = BpmnWorkflow(
         spec,
         subprocess_specs,
@@ -233,6 +247,31 @@ def _build_workflow(
                 },
             }
     return workflow
+
+
+def _bind_collaboration_events(
+    spec: Any, process_id: str, collaboration: Mapping[str, Any]
+) -> None:
+    for flow in collaboration["message_flows"]:
+        if flow["target_kind"] is None:
+            continue
+        if flow["source_process_id"] == process_id:
+            throw = spec.task_specs.get(flow["source_ref"])
+            if throw is not None:
+                event = throw.event_definition
+                throw.event_definition = CollaborationThrowDefinition(
+                    event.name,
+                    event.correlation_properties,
+                    event.expression,
+                    event.message_var,
+                    event.process_correlations,
+                )
+        if flow["target_process_id"] == process_id:
+            catch = spec.task_specs.get(flow["target_ref"])
+            if catch is not None:
+                catch.event_definition = CollaborationCatchDefinition(
+                    catch.event_definition.name
+                )
 
 
 def _load_called_process_definitions(

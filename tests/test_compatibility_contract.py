@@ -104,6 +104,7 @@ EXPECTED_COMMAND_FIELDS = {
         "started_at",
         "bpmn_process_id",
         "call_activity_resolver",
+        "collaboration_correlation_key",
     ],
     InitializeProcessInstanceWorkflowCommand: [
         "tenant_id",
@@ -164,6 +165,7 @@ def test_public_result_models_retain_response_attributes() -> None:
         "updated_at",
         "created_at",
         "workflow_engine_version",
+        "collaboration_correlation_key",
     }.issubset(ProcessInstanceModel.__mapper__.attrs.keys())
     assert {
         "id",

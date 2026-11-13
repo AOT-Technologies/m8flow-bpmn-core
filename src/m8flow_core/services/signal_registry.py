@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -152,6 +153,8 @@ def validate_signal_source(
     source: str,
     dmn_xml: str | None = None,
     process_id: str | None = None,
+    *,
+    collaboration: Mapping[str, Any] | None = None,
 ) -> Any:
     """Validate signal references and names before definition rows are written."""
     from defusedxml import ElementTree
@@ -170,9 +173,17 @@ def validate_signal_source(
             bpmn_xml=source,
             dmn_xml=dmn_xml,
             bpmn_process_id=process_id,
+            collaboration=collaboration,
         )
     except Exception as exc:
         raise ValidationError(f"Signal BPMN definition is invalid: {exc}") from exc
+    if collaboration and any(
+        isinstance(start.event_definition, RuntimeSignalDefinition)
+        for start in workflow.spec.bpmn_start_events
+    ):
+        raise ValidationError(
+            "Signal start events in collaboration participants are unsupported"
+        )
     for spec in [workflow.spec, *workflow.subprocess_specs.values()]:
         for task_spec in spec.task_specs.values():
             event = getattr(task_spec, "event_definition", None)
@@ -199,6 +210,9 @@ def sync_definition_signals(
             row.process_model_identifier == definition.process_model_identifier
         ):
             row.active = False
+    if definition.collaboration_metadata is not None:
+        session.flush()
+        return
     workflow = validate_signal_source(
         source,
         definition.source_dmn_xml,
@@ -591,6 +605,7 @@ def bind_signal_runtime(
                 bpmn_xml=source,
                 dmn_xml=definition.source_dmn_xml,
                 bpmn_process_id=workflow.spec.name,
+                collaboration=definition.collaboration_metadata,
             )
             definitions = {
                 task_spec.name: task_spec.event_definition

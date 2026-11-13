@@ -12,6 +12,7 @@ from m8flow_core.models.tenant_scoped import M8fTenantScopedMixin, TenantScoped
 SOURCE_BPMN_XML_PROPERTY_KEY = "__m8f_source_bpmn_xml"
 SOURCE_DMN_XML_PROPERTY_KEY = "__m8f_source_dmn_xml"
 PROCESS_MODEL_IDENTIFIER_PROPERTY_KEY = "__m8f_process_model_identifier"
+COLLABORATION_PROPERTY_KEY = "__m8f_collaboration"
 
 
 class BpmnProcessDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
@@ -70,6 +71,11 @@ class BpmnProcessDefinitionModel(M8fTenantScopedMixin, TenantScoped, Base):
         else:
             properties[SOURCE_BPMN_XML_PROPERTY_KEY] = value
         self.properties_json = properties
+
+    @property
+    def collaboration_metadata(self) -> dict[str, Any] | None:
+        value = (self.properties_json or {}).get(COLLABORATION_PROPERTY_KEY)
+        return value if isinstance(value, dict) else None
 
     @property
     def source_dmn_xml(self) -> str | None:

@@ -29,6 +29,7 @@ from m8flow_core.services.authorization import (
     PROCESS_SUSPEND_COMMAND,
     require_command_authorization,
 )
+from m8flow_core.services.collaborations import lock_collaboration_instance
 from m8flow_core.services.scheduler_jobs import (
     build_scheduler_job_key,
     delete_scheduler_job,
@@ -74,11 +75,7 @@ def create_process_instance(
         bpmn_process_id=bpmn_process_id,
         status=ProcessInstanceStatus.not_started.value,
         created_at=occurred_at,
-        updated_at=(
-            updated_at
-            if updated_at is not None
-            else occurred_at
-        ),
+        updated_at=(updated_at if updated_at is not None else occurred_at),
     )
     session.add(process_instance)
     session.flush()
@@ -149,9 +146,7 @@ def record_process_instance_event(
     *,
     tenant_id: str,
     process_instance_id: int,
-    event_type: (
-        ProcessLifecycleEventType | TaskEventType | str
-    ),
+    event_type: (ProcessLifecycleEventType | TaskEventType | str),
     occurred_at: datetime | None = None,
     task_guid: str | None = None,
     user_id: int | None = None,
@@ -228,11 +223,7 @@ def upsert_process_instance_metadata(
             key=key,
             value=value,
             updated_at=updated_at,
-            created_at=(
-                created_at
-                if created_at is not None
-                else updated_at
-            ),
+            created_at=(created_at if created_at is not None else updated_at),
         )
         session.add(metadata)
     else:
@@ -259,8 +250,10 @@ def suspend_process_instance(
         user_id=user_id,
     )
     process_instance = _load_process_instance(
-        session, tenant_id=tenant_id,
-        process_instance_id=process_instance_id, lock=True,
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance_id,
+        lock=True,
     )
     require_command_authorization(
         session,
@@ -305,19 +298,17 @@ def error_process_instance(
             user_id=user_id,
         )
     process_instance = _load_process_instance(
-        session, tenant_id=tenant_id,
-        process_instance_id=process_instance_id, lock=True,
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance_id,
+        lock=True,
     )
     if process_instance.status == ProcessInstanceStatus.error.value:
         return process_instance
     if process_instance.status == ProcessInstanceStatus.complete.value:
-        raise InvalidStateError(
-            "Cannot mark a completed process instance as errored"
-        )
+        raise InvalidStateError("Cannot mark a completed process instance as errored")
     if process_instance.status == ProcessInstanceStatus.terminated.value:
-        raise InvalidStateError(
-            "Cannot mark a terminated process instance as errored"
-        )
+        raise InvalidStateError("Cannot mark a terminated process instance as errored")
 
     occurred_at = _resolve_timestamp(errored_at)
     from m8flow_core.services.signal_registry import retire_instance_signals
@@ -359,8 +350,10 @@ def schedule_process_instance_retry(
         user_id=user_id,
     )
     process_instance = _load_process_instance(
-        session, tenant_id=tenant_id,
-        process_instance_id=process_instance_id, lock=True,
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance_id,
+        lock=True,
     )
     require_command_authorization(
         session,
@@ -490,7 +483,10 @@ def get_process_instance_metadata(
 
 
 def _load_process_instance(
-    session: Session, *, tenant_id: str, process_instance_id: int,
+    session: Session,
+    *,
+    tenant_id: str,
+    process_instance_id: int,
     lock: bool = False,
 ) -> ProcessInstanceModel:
     process_instance = session.scalar(
@@ -507,6 +503,7 @@ def _load_process_instance(
     if lock:
         from m8flow_core.services.signal_registry import lock_signal_instance
 
+        lock_collaboration_instance(session, process_instance)
         lock_signal_instance(session, process_instance)
     return process_instance
 

@@ -18,6 +18,7 @@ class SchedulerJobType(StrEnum):
     intermediate_timer = "intermediate_timer"
     process_retry = "process_retry"
     timer_start = "timer_start"
+    collaboration_message = "collaboration_message"
 
 
 class SchedulerJobModel(M8fTenantScopedMixin, TenantScoped, Base):

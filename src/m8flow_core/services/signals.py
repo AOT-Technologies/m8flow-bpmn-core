@@ -177,15 +177,18 @@ def _execute_delivery_group(
         first.attempts += 1
         first.delivered_at = timestamp
     else:
-        instance = session.scalar(
-            select(ProcessInstanceModel)
-            .where(
-                ProcessInstanceModel.m8f_tenant_id == tenant_id,
-                ProcessInstanceModel.id == first.process_instance_id,
-            )
-            .with_for_update()
-            .execution_options(populate_existing=True)
+        from m8flow_core.services.collaborations import lock_collaboration_instance
+
+        scope = select(ProcessInstanceModel).where(
+            ProcessInstanceModel.m8f_tenant_id == tenant_id,
+            ProcessInstanceModel.id == first.process_instance_id,
         )
+        instance = session.scalar(scope)
+        if instance is not None:
+            lock_collaboration_instance(session, instance)
+            instance = session.scalar(
+                scope.with_for_update().execution_options(populate_existing=True)
+            )
         if instance is None or instance.has_terminal_status():
             for delivery in group:
                 delivery.status = "skipped"

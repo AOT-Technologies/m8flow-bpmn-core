@@ -182,6 +182,7 @@ def execute_command(
                 process_version=command.process_version,
                 started_at=command.started_at,
                 call_activity_resolver=command.call_activity_resolver,
+                collaboration_correlation_key=command.collaboration_correlation_key,
                 bpmn_process_id=command.bpmn_process_id,
             )
         if isinstance(command, InitializeProcessInstanceWorkflowCommand):

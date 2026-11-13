@@ -13,11 +13,15 @@ the library doesn't guarantee them.
 
 A definition must meet the following rules:
 
-- A BPMN file must contain exactly one executable process, or you must pass
-  `bpmn_process_id` to choose one when you start an instance.
+- Import one executable process or one collaboration with two or more
+  distinct executable participants. Pass `bpmn_process_id` to start an
+  executable participant from a collaboration.
 - A definition can include one DMN file next to the BPMN, imported with
   `source_dmn_xml`.
 - Collaborations with one participant and its lane set are supported.
+- A collaboration with multiple pools and fewer than two executable
+  participant processes is rejected at import. Additional black-box pools are
+  allowed when two executable participants are present.
 
 ## Supported elements
 
@@ -27,10 +31,13 @@ The following elements are supported:
 |---|---|
 | Start event (none) | |
 | End event (none) | |
+| Message Start Event | Starts a participant through a direct, modeled cross-pool Message Flow. |
+| Intermediate Message Catch Event | Waits for a modeled message and an exact correlation-key match. |
+| Intermediate Message Throw Event and Message End Event | Queue a scheduler job for each modeled route to a supported event. |
 | Signal intermediate/end throw | Publishes successfully with zero or more listeners; local delivery is immediate |
 | Signal intermediate catch | Receives matching publications while waiting |
 | Signal boundary event | Interrupting and repeatable non-interrupting handlers |
-| Signal start event | Creates one instance per matching active start subscription and occurrence |
+| Signal start event | Creates one instance per matching active start subscription and occurrence in a single-process definition |
 | Signal event subprocess | Interrupting and repeatable non-interrupting starts, including nested scopes and human tasks |
 | Sequence flow with condition expression | Python expressions evaluated against task data |
 | User task | Becomes a human task that users claim and complete |
@@ -56,6 +63,13 @@ instance. See [Publish and deliver BPMN signals](../how-to/publish-signals.md).
 
 Timers need a scheduler loop. See
 [Run timers and scheduled retries](../how-to/run-timers-and-retries.md).
+
+Collaboration message delivery also uses the scheduler. Draw the flow directly
+between top-level Message Events in different executable pools. Give each
+event one inline `messageEventDefinition` with the same `messageRef`.
+A flow's optional `messageRef` must agree with
+the events. Other valid flow shapes, including flows attached to a pool
+boundary, are preserved as metadata.
 
 ## Task assignment
 
@@ -100,7 +114,8 @@ names that exist in the BPMN, and none of them may also be a key in
 
 The following elements and behaviors aren't covered:
 
-- Message events and message correlation
+- Message routing beyond the supported collaboration event pairs
+- Signal starts for collaboration participants
 - Event subprocesses, other than the documented timer and signal forms
 - Error and escalation boundary events
 - Non-interrupting boundary events other than signals

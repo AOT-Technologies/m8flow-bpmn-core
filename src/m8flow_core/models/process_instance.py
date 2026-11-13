@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, ForeignKeyConstraint, Index, String
 from sqlalchemy.orm import (
     Mapped,
     mapped_column,
@@ -51,7 +51,19 @@ _ACTIVE_STATUSES: tuple[str, ...] = (
 class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
     __tablename__ = "process_instance"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ("m8f_tenant_id", "bpmn_process_definition_id"),
+            ("bpmn_process_definition.m8f_tenant_id", "bpmn_process_definition.id"),
+            name="fk_process_instance_definition_tenant",
+        ),
         Index("m8f_process_instance_tenant_id_key", "m8f_tenant_id", "id", unique=True),
+        Index(
+            "ix_process_instance_collaboration_lookup",
+            "m8f_tenant_id",
+            "bpmn_process_definition_id",
+            "bpmn_version_id",
+            "collaboration_correlation_key",
+        ),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     process_model_identifier: Mapped[str] = mapped_column(
@@ -100,9 +112,14 @@ class ProcessInstanceModel(M8fTenantScopedMixin, TenantScoped, Base):
         ForeignKey("process_model_bpmn_version.id"),
         index=True,
     )
+    collaboration_correlation_key: Mapped[str | None] = mapped_column(String(255))
 
     process_initiator = relationship("UserModel")
-    bpmn_process_definition = relationship("BpmnProcessDefinitionModel")
+    # Keep the original ID-only synchronization; the composite FK validates
+    # the tenant already assigned to this instance.
+    bpmn_process_definition = relationship(
+        "BpmnProcessDefinitionModel", foreign_keys=[bpmn_process_definition_id]
+    )
     bpmn_process = relationship("BpmnProcessModel")
     tasks = relationship(
         "TaskModel", back_populates="process_instance", cascade="all, delete-orphan"

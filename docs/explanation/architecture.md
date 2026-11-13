@@ -85,7 +85,7 @@ tables:
 - `process_instance_metadata` rows for form values, so they're readable
   without restoring the workflow.
 - `process_instance_event` rows for the history of each instance.
-- `scheduler_job` rows for timers and retries, as described in
+- `scheduler_job` rows for timers, retries, and collaboration messages, as described in
   [About scheduling](scheduling.md).
 
 The next call restores the workflow from the stored state, so no workflow
