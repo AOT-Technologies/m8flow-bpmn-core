@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import os
@@ -61,9 +66,7 @@ EXTERNAL_SCHEDULER_MAX_WAIT_SECONDS = 180
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROCESS_GROUP_ID = "m8flow-core-examples"
 PROCESS_GROUP_DISPLAY_NAME = "m8flow-core Examples"
-PROCESS_GROUP_DESCRIPTION = (
-    "Process models published by the m8flow-core examples."
-)
+PROCESS_GROUP_DESCRIPTION = "Process models published by the m8flow-core examples."
 PROCESS_MODEL_ID = "scheduled-timer-poc"
 PROCESS_MODEL_IDENTIFIER = f"{PROCESS_GROUP_ID}/{PROCESS_MODEL_ID}"
 PROCESS_MODEL_DISPLAY_NAME = "Scheduled Timer Example"
@@ -345,10 +348,7 @@ def _provision_shared_db_keycloak_context(
             for user_spec in DEMO_USERS.values()
         ],
     )
-    print(
-        "Status: Keycloak shared realm issuer is "
-        f"{keycloak_context.service_issuer}."
-    )
+    print(f"Status: Keycloak shared realm issuer is {keycloak_context.service_issuer}.")
     print(
         "Status: demo users are "
         + ", ".join(sorted(keycloak_context.users_by_username))
@@ -406,13 +406,10 @@ def _run_timer_poc(
         "scheduler_job row for the future timer start."
     )
     print(SECTION_SEPARATOR)
-    _pause(
-        "Press Enter to stamp a fresh due time and execute the import command."
-    )
+    _pause("Press Enter to stamp a fresh due time and execute the import command.")
 
-    scheduled_due_at = (
-        datetime.now(UTC).replace(microsecond=0)
-        + timedelta(seconds=SCHEDULE_DELAY_SECONDS)
+    scheduled_due_at = datetime.now(UTC).replace(microsecond=0) + timedelta(
+        seconds=SCHEDULE_DELAY_SECONDS
     )
     bpmn_xml = _render_timer_start_bpmn_xml(scheduled_due_at)
     import_timestamp = datetime.now(UTC).replace(microsecond=0)
@@ -437,10 +434,7 @@ def _run_timer_poc(
     )
     print("Command:")
     print(pformat(import_command, sort_dicts=False, width=100))
-    print(
-        "Status: executing import with due time "
-        f"{scheduled_due_at.isoformat()}."
-    )
+    print(f"Status: executing import with due time {scheduled_due_at.isoformat()}.")
     with engine.begin() as connection:
         definition = api.execute_command(connection, import_command)
     print("Status: command complete and committed.")
@@ -498,10 +492,7 @@ def _run_timer_poc(
             session.close()
 
     if scheduler_execution_mode == INLINE_SCHEDULER_EXECUTION_MODE:
-        _pause(
-            "Press Enter to start the inline scheduler loop and wait for the "
-            "timer."
-        )
+        _pause("Press Enter to start the inline scheduler loop and wait for the timer.")
         _run_scheduler_until_due(
             engine,
             tenant_id=context.tenant_id,
@@ -630,9 +621,7 @@ def _run_timer_poc(
             completed_at=datetime.now(UTC).replace(microsecond=0),
             task_payload={
                 "acknowledged_by": context.operator_username,
-                "acknowledged_at": datetime.now(UTC).replace(
-                    microsecond=0
-                ).isoformat(),
+                "acknowledged_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
             },
         ),
     )
@@ -771,9 +760,7 @@ def _backend_process_group_payload() -> dict[str, Any]:
 
 def _backend_process_model_payload() -> dict[str, Any]:
     return {
-        "description": (
-            "Published by the m8flow-core scheduled timer example."
-        ),
+        "description": ("Published by the m8flow-core scheduled timer example."),
         "display_name": PROCESS_MODEL_DISPLAY_NAME,
         "exception_notification_addresses": [],
         "fault_or_suspend_on_exception": "fault",
@@ -800,8 +787,7 @@ def _load_timer_start_job(
     scheduler_job = session.scalar(
         select(SchedulerJobModel).where(
             SchedulerJobModel.m8f_tenant_id == tenant_id,
-            SchedulerJobModel.bpmn_process_definition_id
-            == bpmn_process_definition_id,
+            SchedulerJobModel.bpmn_process_definition_id == bpmn_process_definition_id,
         )
     )
     if scheduler_job is None:
@@ -1015,8 +1001,7 @@ def _current_timer_start_runtime_state(
             )
             if minimum_start_in_seconds is not None:
                 stmt = stmt.where(
-                    ProcessInstanceModel.started_at
-                    >= minimum_start_in_seconds
+                    ProcessInstanceModel.started_at >= minimum_start_in_seconds
                 )
             process_instances = list(session.scalars(stmt).all())
             current_job_exists = (

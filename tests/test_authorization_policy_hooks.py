@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -109,19 +114,14 @@ def test_public_default_policy_factory_overrides_process_start_authorization(
                 ),
             )
     finally:
-        api.set_default_authorization_policy_factory(
-            api.DatabaseAuthorizationPolicy
-        )
+        api.set_default_authorization_policy_factory(api.DatabaseAuthorizationPolicy)
 
     request = captured["request"]
     assert request.command_key == api.PROCESS_START_COMMAND
     assert request.resource_type == "process_model"
     assert request.resource_id == context.definition.process_model_identifier
     assert request.metadata is not None
-    assert (
-        request.metadata["bpmn_process_definition_id"]
-        == context.definition.id
-    )
+    assert request.metadata["bpmn_process_definition_id"] == context.definition.id
     assert (
         request.metadata["process_model_identifier"]
         == context.definition.process_model_identifier

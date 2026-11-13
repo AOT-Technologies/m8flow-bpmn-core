@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -48,9 +53,7 @@ class CompleteTaskCommand:
 class RecordProcessInstanceEventCommand:
     tenant_id: str
     process_instance_id: int
-    event_type: (
-        ProcessLifecycleEventType | TaskEventType | str
-    )
+    event_type: ProcessLifecycleEventType | TaskEventType | str
     task_guid: str | None = None
     user_id: int | None = None
     occurred_at: datetime | None = None

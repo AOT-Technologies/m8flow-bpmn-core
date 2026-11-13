@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # About the clean-room review
 
 The model, authorization, and task-assignment code in m8flow-core 0.x

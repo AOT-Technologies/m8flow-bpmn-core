@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -74,9 +79,7 @@ def test_postgres_supports_transaction_control_and_pending_tasks(
             expire_on_commit=False,
         )
         try:
-            tenant, user, process_instance, work_item = _seed_runtime_rows(
-                session
-            )
+            tenant, user, process_instance, work_item = _seed_runtime_rows(session)
 
             pending_tasks = execute_query(
                 connection,
@@ -393,9 +396,7 @@ def test_postgres_runs_conditional_approval_workflow_end_to_end(
                     process_instance_id=process_instance.id,
                 ),
             )
-            assert {
-                item.key: item.value for item in metadata_rows
-            } == {
+            assert {item.key: item.value for item in metadata_rows} == {
                 "amount": "1500",
                 "description": "Trip to LA",
                 "decision": "Approved",

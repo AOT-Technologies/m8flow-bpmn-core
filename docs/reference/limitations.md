@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Limitations
 
 m8flow-core is a workflow core, not a full m8flow or SpiffArena

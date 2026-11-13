@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -44,9 +49,7 @@ class PermissionTargetModel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     command: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
-    resource_type: Mapped[str] = mapped_column(
-        String(100), index=True, nullable=False
-    )
+    resource_type: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     resource_id: Mapped[str | None] = mapped_column(String(255), index=True)
 
     permission_assignments = relationship(

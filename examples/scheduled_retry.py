@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import os
@@ -58,9 +63,7 @@ RETRY_DELAY_SECONDS = 20
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROCESS_GROUP_ID = "m8flow-core-examples"
 PROCESS_GROUP_DISPLAY_NAME = "m8flow-core Examples"
-PROCESS_GROUP_DESCRIPTION = (
-    "Process models published by the m8flow-core examples."
-)
+PROCESS_GROUP_DESCRIPTION = "Process models published by the m8flow-core examples."
 PROCESS_MODEL_ID = "scheduled-retry-poc"
 PROCESS_MODEL_IDENTIFIER = f"{PROCESS_GROUP_ID}/{PROCESS_MODEL_ID}"
 PROCESS_MODEL_DISPLAY_NAME = "Scheduled Retry Example"
@@ -332,10 +335,7 @@ def _provision_shared_db_keycloak_context(
             for user_spec in DEMO_USERS.values()
         ],
     )
-    print(
-        "Status: Keycloak shared realm issuer is "
-        f"{keycloak_context.service_issuer}."
-    )
+    print(f"Status: Keycloak shared realm issuer is {keycloak_context.service_issuer}.")
     print(
         "Status: demo users are "
         + ", ".join(sorted(keycloak_context.users_by_username))
@@ -518,8 +518,7 @@ def _run_retry_poc(
     print("Command:")
     print(pformat(schedule_retry_command, sort_dicts=False, width=100))
     print(
-        "Status: executing retry scheduling with due time "
-        f"{retry_due_at.isoformat()}."
+        f"Status: executing retry scheduling with due time {retry_due_at.isoformat()}."
     )
     with engine.begin() as connection:
         scheduled_retry_job = api.execute_command(connection, schedule_retry_command)
@@ -555,9 +554,7 @@ def _run_retry_poc(
         finally:
             session.close()
 
-    _pause(
-        "Press Enter to start the inline scheduler loop and wait for the retry."
-    )
+    _pause("Press Enter to start the inline scheduler loop and wait for the retry.")
     _run_scheduler_until_retry_executes(
         engine,
         tenant_id=context.tenant_id,
@@ -679,9 +676,7 @@ def _run_retry_poc(
             task_payload={
                 "completed_after_retry": "true",
                 "completed_by": context.operator_username,
-                "completed_at": datetime.now(UTC).replace(
-                    microsecond=0
-                ).isoformat(),
+                "completed_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
             },
         ),
     )
@@ -700,9 +695,7 @@ def _run_retry_poc(
         ),
     )
     if completed_process_instance is None:
-        raise RuntimeError(
-            "Completed process query did not return a process instance"
-        )
+        raise RuntimeError("Completed process query did not return a process instance")
 
     pending_tasks_after_completion = _run_command_step(
         engine,
@@ -853,9 +846,7 @@ def _backend_process_group_payload() -> dict[str, Any]:
 
 def _backend_process_model_payload() -> dict[str, Any]:
     return {
-        "description": (
-            "Published by the m8flow-core scheduled retry example."
-        ),
+        "description": ("Published by the m8flow-core scheduled retry example."),
         "display_name": PROCESS_MODEL_DISPLAY_NAME,
         "exception_notification_addresses": [],
         "fault_or_suspend_on_exception": "fault",

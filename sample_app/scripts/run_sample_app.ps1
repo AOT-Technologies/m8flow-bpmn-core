@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 param(
     [switch]$UseActiveEnvironment,
     [string]$BindHost = "127.0.0.1",

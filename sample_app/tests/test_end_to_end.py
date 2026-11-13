@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import json
@@ -55,9 +60,7 @@ def app_client(
         **_kwargs: object,
     ) -> api.ServiceTaskRegistry:
         return api.ServiceTaskRegistry(
-            connectors=(
-                _FakeSmtpConnector(captured_requests=captured_smtp_requests),
-            )
+            connectors=(_FakeSmtpConnector(captured_requests=captured_smtp_requests),)
         )
 
     monkeypatch.setattr(
@@ -195,8 +198,7 @@ def test_high_value_request_routes_through_finance_and_sends_email(
         assert metadata_map["expense_description"] == "Conference hotel and travel"
         assert metadata_map["finance_recommendation"] == "approved"
         assert (
-            metadata_map["finance_comment"]
-            == "Budget is available for reimbursement."
+            metadata_map["finance_comment"] == "Budget is available for reimbursement."
         )
         assert metadata_map["review_outcome"] == "approved"
         assert metadata_map["review_comment"] == "Approved after policy review."
@@ -239,11 +241,13 @@ def test_high_value_request_routes_through_finance_and_sends_email(
     assert smtp_request.parameters["smtp_password"] == "sample-app-test-smtp-password"
     assert smtp_request.parameters["smtp_starttls"] is True
     assert (
-        smtp_request.parameters["email_from"]
-        == "sample-app-reimbursements@example.com"
+        smtp_request.parameters["email_from"] == "sample-app-reimbursements@example.com"
     )
     assert "approved" in str(smtp_request.parameters["email_subject"]).lower()
-    assert smtp_request.parameters["email_body"] == smtp_request.parameters["email_body_html"]
+    assert (
+        smtp_request.parameters["email_body"]
+        == smtp_request.parameters["email_body_html"]
+    )
 
 
 def test_high_value_request_rejected_by_finance_skips_review_and_sends_email(
@@ -358,7 +362,10 @@ def test_high_value_request_rejected_by_finance_skips_review_and_sends_email(
     assert "Manager pre-approval is missing." in str(
         smtp_request.parameters["email_body_html"]
     )
-    assert smtp_request.parameters["email_body"] == smtp_request.parameters["email_body_html"]
+    assert (
+        smtp_request.parameters["email_body"]
+        == smtp_request.parameters["email_body_html"]
+    )
 
 
 def test_low_value_request_skips_finance_review(
@@ -844,7 +851,9 @@ def _import_definition_version(
     bpmn_name: str,
     version_marker: str,
 ) -> None:
-    bpmn_path = Path(__file__).resolve().parents[1] / "fixtures" / "sample_app_demo.bpmn"
+    bpmn_path = (
+        Path(__file__).resolve().parents[1] / "fixtures" / "sample_app_demo.bpmn"
+    )
     dmn_path = Path(__file__).resolve().parents[1] / "fixtures" / "sample_app_demo.dmn"
     source_bpmn_xml = bpmn_path.read_text(encoding="utf-8").replace(
         "</bpmn:definitions>",

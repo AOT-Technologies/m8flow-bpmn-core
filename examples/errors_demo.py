@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Demonstrate every public error class raised by m8flow_core.
 
 Run with:
@@ -205,8 +210,7 @@ def _section(
         )
     except Exception as exc:  # pragma: no cover - the demo would be broken
         raise RuntimeError(
-            f"Expected {expected_domain.__name__}, "
-            f"got {type(exc).__name__}: {exc}"
+            f"Expected {expected_domain.__name__}, got {type(exc).__name__}: {exc}"
         ) from exc
     else:
         raise RuntimeError(

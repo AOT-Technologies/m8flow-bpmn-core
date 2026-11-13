@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Process termination that also cancels pending compensation in the runtime."""
 
 from __future__ import annotations

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Quick start: run your first workflow
 
 In this tutorial, you build a Python script that runs a one-step expense
@@ -98,8 +104,12 @@ def seed(session: Session) -> tuple[UserModel, UserModel]:
     )
     session.add_all([admin, approver])
     session.flush()
-    ensure_v1_role(session, tenant_id=TENANT_ID, role_name=ROLE_ADMIN, user_ids=[admin.id])
-    ensure_v1_role(session, tenant_id=TENANT_ID, role_name=ROLE_USER, user_ids=[approver.id])
+    ensure_v1_role(
+        session, tenant_id=TENANT_ID, role_name=ROLE_ADMIN, user_ids=[admin.id]
+    )
+    ensure_v1_role(
+        session, tenant_id=TENANT_ID, role_name=ROLE_USER, user_ids=[approver.id]
+    )
     return admin, approver
 ```
 

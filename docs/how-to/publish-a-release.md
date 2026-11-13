@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Publish a release
 
 This guide is for maintainers. It shows how to publish m8flow-core to PyPI
@@ -86,6 +92,73 @@ GitHub Release doesn't exist, the release tag points at a different commit
 than the one you chose in **Use workflow from**, a test fails, or a dependency
 has a known vulnerability. Fix the cause and run the workflow again.
 
+## Withdraw or replace a release
+
+A published version can't be changed. PyPI never accepts a file name or a
+version number a second time, even after the file is deleted, and m8flow
+pins core by its release tag. A broken release therefore isn't rolled back in
+place. You yank it, so new installs skip it, and publish a patch release
+that fixes it.
+
+### Yank the broken version
+
+Yanking hides a version from `pip install m8flow-core` and from version
+ranges, but `pip install m8flow-core==1.0.1` still installs it, so pinned
+installs keep working. To yank a version, follow these steps:
+
+1. Sign in to [pypi.org](https://pypi.org) as an owner or maintainer of
+   `m8flow-core`.
+2. Go to **Your projects** > **m8flow-core** > **Manage** > **Releases**.
+3. Next to the version, click **Options** > **Yank**.
+4. Enter a reason, such as `Corrupts process metadata on retry; use 1.0.2`,
+   and confirm. pip shows the reason to anyone who installs the version by
+   pin.
+
+Yank rather than delete. Deleting breaks every pinned install and lockfile,
+and the version number stays used anyway. Delete only a release that must
+not be downloaded at all, such as one that contains a secret, and rotate
+the secret first.
+
+A yank can be undone from the same **Options** menu.
+
+### Mark the release on GitHub and in the changelog
+
+Leave the tag where it is. m8flow and lockfiles refer to it, and the
+**Create release tag** workflow won't move an existing tag. Instead, follow
+these steps:
+
+1. On the repository's **Releases** page, edit the release. Add a note at the
+   top of the notes that says the version is yanked, why, and which version
+   replaces it.
+2. In `CHANGELOG.md`, add ` [YANKED]` to the version's heading, as
+   [Keep a Changelog](https://keepachangelog.com/en/1.1.0/#yanked) describes:
+
+   ```text
+   ## [1.0.1] - 2026-11-03 [YANKED]
+   ```
+
+   Make this edit in the same pull request as the fix, described next.
+
+### Publish the fix as a patch release
+
+To replace the yanked version, follow these steps:
+
+1. Fix the problem on `main` and add a changelog entry under **Fixed** or
+   **Security**.
+2. Publish the next patch version, such as `1.0.2`, by following
+   [Publish a release](#publish-a-release).
+3. In m8flow, move the core reference to the new tag and release m8flow if
+   its users need the fix.
+
+The release workflows always tag the tip of `main`, so the patch release
+contains everything merged since the broken one. If `main` holds changes that
+aren't backward-compatible fixes, revert them first or release a minor version
+instead. See the [versioning policy](../reference/versioning.md).
+
+If the broken release added an Alembic migration, don't edit or delete that
+revision: hosts may have already applied it. Add a new revision on top that
+corrects the schema.
+
 ## Set up PyPI publishing
 
 The workflow uses [trusted publishing](https://docs.pypi.org/trusted-publishers/),
@@ -107,6 +180,33 @@ follow these steps:
 
 The first successful run creates the project on PyPI. After that, the
 publisher appears under the project's **Publishing** settings.
+
+## Signing and provenance
+
+Release artifacts are signed with [Sigstore](https://www.sigstore.dev/)
+through the workflow's GitHub identity, so no signing key is stored. Each
+release carries the following:
+
+| What | How it's produced | How to check it |
+|---|---|---|
+| PyPI attestations for the wheel and sdist | `pypa/gh-action-pypi-publish` with `attestations: true` | The **Provenance** section of the file on pypi.org, or `pypi-attestations verify pypi` |
+| GitHub build provenance for the wheel and sdist | `actions/attest-build-provenance` in the **Test and build** job | `gh attestation verify` |
+| SHA-256 checksums | The **Record checksums** step, uploaded as a workflow artifact | `sha256sum --check` |
+
+Release tags are annotated but not GPG-signed. Only the **Create release
+tag** workflow creates them, and the attestations above tie each artifact to
+the workflow run and commit it was built from.
+
+To verify a downloaded wheel, run the following commands, replacing the
+version as needed:
+
+```bash
+gh attestation verify m8flow_core-1.0.0-py3-none-any.whl \
+    --repo AOT-Technologies/m8flow-core
+uvx pypi-attestations verify pypi \
+    --repository https://github.com/AOT-Technologies/m8flow-core \
+    pypi:m8flow_core-1.0.0-py3-none-any.whl
+```
 
 ## Related pages
 

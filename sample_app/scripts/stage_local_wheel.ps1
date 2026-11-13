@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 param(
     [string]$DistDirectory = (Join-Path $PSScriptRoot "..\..\dist"),
     [string]$VendorDirectory = (Join-Path $PSScriptRoot "..\vendor"),

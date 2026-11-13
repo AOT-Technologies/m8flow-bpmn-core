@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -25,9 +30,7 @@ def _restore_utc_on_loaded_datetimes(target: Any, context: Any) -> None:
 
 
 @event.listens_for(Base, "refresh", propagate=True)
-def _restore_utc_on_refreshed_datetimes(
-    target: Any, context: Any, attrs: Any
-) -> None:
+def _restore_utc_on_refreshed_datetimes(target: Any, context: Any, attrs: Any) -> None:
     _restore_utc_values(target)
 
 

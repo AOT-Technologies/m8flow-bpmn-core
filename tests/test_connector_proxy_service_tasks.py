@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import json
@@ -243,6 +248,20 @@ def test_connector_proxy_connector_rejects_reserved_request_keys() -> None:
                     parameters={"spiff__task_data": "bad"},
                 )
             )
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "file:///etc/passwd",
+        "ftp://proxy.example.com",
+        "proxy.example.com:7004",
+        "http://",
+    ],
+)
+def test_connector_proxy_rejects_non_http_base_urls(base_url: str) -> None:
+    with pytest.raises(api.ValidationError, match="http or https"):
+        api.build_connector_proxy_service_task_registry(base_url)
 
 
 def _read_json_request_body(handler: BaseHTTPRequestHandler) -> object | None:

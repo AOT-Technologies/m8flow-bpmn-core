@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import hashlib
@@ -67,9 +72,7 @@ SCENARIOS = [
 
 
 def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
-    tenant, user, process_instance, task, human_task = _seed_example_workflow(
-        session
-    )
+    tenant, user, process_instance, task, human_task = _seed_example_workflow(session)
 
     running_instances = api.execute_query(
         session,
@@ -198,13 +201,16 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
             api.ListErrorProcessInstancesQuery(tenant_id=tenant.id),
         )
     ] == [process_instance.id]
-    assert api.execute_query(
-        session,
-        api.GetPendingTasksQuery(
-            tenant_id=tenant.id,
-            user_id=user.id,
-        ),
-    ) == []
+    assert (
+        api.execute_query(
+            session,
+            api.GetPendingTasksQuery(
+                tenant_id=tenant.id,
+                user_id=user.id,
+            ),
+        )
+        == []
+    )
 
     api.execute_command(
         session,
@@ -235,8 +241,9 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
     assert retried_process_instance.tasks[0].future_task is not None
     assert retried_process_instance.tasks[0].future_task.completed is False
     assert (
-        retried_process_instance.tasks[0]
-        .future_task.archived_for_process_instance_status
+        retried_process_instance.tasks[
+            0
+        ].future_task.archived_for_process_instance_status
         is False
     )
     assert retried_process_instance.work_items[0].completed is False
@@ -253,10 +260,13 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
             ),
         )
     ] == [human_task.id]
-    assert api.execute_query(
-        session,
-        api.ListErrorProcessInstancesQuery(tenant_id=tenant.id),
-    ) == []
+    assert (
+        api.execute_query(
+            session,
+            api.ListErrorProcessInstancesQuery(tenant_id=tenant.id),
+        )
+        == []
+    )
 
     reclaimed_task = api.execute_command(
         session,
@@ -326,8 +336,9 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
     assert terminated_process_instance.tasks[0].future_task is not None
     assert terminated_process_instance.tasks[0].future_task.completed is True
     assert (
-        terminated_process_instance.tasks[0]
-        .future_task.archived_for_process_instance_status
+        terminated_process_instance.tasks[
+            0
+        ].future_task.archived_for_process_instance_status
         is True
     )
     assert terminated_process_instance.work_items[0].completed is True
@@ -352,17 +363,23 @@ def test_invoice_approval_workflow_poc_end_to_end(session: Session) -> None:
             ),
         )
     ] == [process_instance.id]
-    assert api.execute_query(
-        session,
-        api.GetPendingTasksQuery(
-            tenant_id=tenant.id,
-            user_id=user.id,
-        ),
-    ) == []
-    assert api.execute_query(
-        session,
-        api.ListErrorProcessInstancesQuery(tenant_id=tenant.id),
-    ) == []
+    assert (
+        api.execute_query(
+            session,
+            api.GetPendingTasksQuery(
+                tenant_id=tenant.id,
+                user_id=user.id,
+            ),
+        )
+        == []
+    )
+    assert (
+        api.execute_query(
+            session,
+            api.ListErrorProcessInstancesQuery(tenant_id=tenant.id),
+        )
+        == []
+    )
 
     metadata_rows = api.execute_query(
         session,

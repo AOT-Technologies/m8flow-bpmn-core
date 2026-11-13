@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -265,11 +270,11 @@ class ServiceTaskRegistry:
 
 
 _DEFAULT_SERVICE_TASK_REGISTRY_FACTORY: ServiceTaskRegistryFactory
-_ACTIVE_SERVICE_TASK_REGISTRY_FACTORY: ContextVar[
-    ServiceTaskRegistryFactory | None
-] = ContextVar(
-    "m8flow_core_service_task_registry_factory",
-    default=None,
+_ACTIVE_SERVICE_TASK_REGISTRY_FACTORY: ContextVar[ServiceTaskRegistryFactory | None] = (
+    ContextVar(
+        "m8flow_core_service_task_registry_factory",
+        default=None,
+    )
 )
 
 _DEFAULT_SERVICE_TASK_REGISTRY_FACTORY = ServiceTaskRegistry

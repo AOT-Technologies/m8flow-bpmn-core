@@ -1,8 +1,15 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Public API reference
 
 This page is the contract for the public surface of m8flow-core. Every name on
 it is exported from `m8flow_core.api`. Anything not on this page is internal
-and can change in any release. To use the API, import the module:
+and can change in any release. Changes to this contract follow the
+[versioning policy](versioning.md). To use the API, import the module:
 
 ```python
 from m8flow_core import api
@@ -232,6 +239,7 @@ def resolve_child(context: api.CallActivityContext):
         bpmn_xml=row.bpmn_xml,
         dmn_xml=row.dmn_xml,
     )
+
 
 command = api.InitializeProcessInstanceFromDefinitionCommand(
     tenant_id=tenant_id,
@@ -574,7 +582,7 @@ The following names make up the service task extension point:
 | `split_service_task_operation_id(operation_id)` | Function | Validates an operation ID and returns `(connector_key, command_name)` |
 | `fetch_connector_proxy_command_definitions(...)` | Function | Reads the proxy's `/v1/commands` catalog as command definitions |
 | `build_connector_proxy_service_task_connectors(...)` | Function | Groups the proxy catalog into one connector per connector key |
-| `build_connector_proxy_service_task_registry(base_url, *, timeout_seconds=...)` | Function | Builds a registry from a proxy base URL |
+| `build_connector_proxy_service_task_registry(base_url, *, timeout_seconds=...)` | Function | Builds a registry from a proxy base URL. Raises `ValidationError` unless `base_url` is an absolute `http` or `https` URL |
 | `service_task_registry_scope(registry_or_factory)` | Context manager | Installs a registry for a block of calls |
 | `set_default_service_task_registry_factory(factory)` | Function | Installs a registry factory for the whole process |
 

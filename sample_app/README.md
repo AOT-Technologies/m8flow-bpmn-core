@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # m8flow-core sample app
 
 A small Flask web application that uses m8flow-core as a wheel

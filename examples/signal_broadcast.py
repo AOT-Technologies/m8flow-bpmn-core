@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Broadcast one BPMN signal to three waiting instances and a Signal Start.
 
 Run: uv run python examples/signal_broadcast.py
@@ -119,9 +124,7 @@ def main(*, interactive: bool = True) -> None:
         assert all(instance.status == "complete" for instance in instances)
         assert api.run_signal_deliveries(session, tenant_id=tenant_id) == []
         print("Delivered once to three waiting instances and one Signal Start.")
-        print(
-            "All five instances are complete; repeating the runner does nothing."
-        )
+        print("All five instances are complete; repeating the runner does nothing.")
     engine.dispose()
 
 

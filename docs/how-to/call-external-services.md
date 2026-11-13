@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Call external services from service tasks
 
 This guide shows how to run BPMN service tasks: how to name the operation in
@@ -44,12 +50,12 @@ workflow calls:
 ```python
 from m8flow_core import api
 
-registry = api.build_connector_proxy_service_task_registry(
-    "http://localhost:6844"
-)
+registry = api.build_connector_proxy_service_task_registry("http://localhost:6844")
 
 with api.service_task_registry_scope(registry):
-    api.execute_command(connection, api.InitializeProcessInstanceFromDefinitionCommand(...))
+    api.execute_command(
+        connection, api.InitializeProcessInstanceFromDefinitionCommand(...)
+    )
 ```
 
 The helper reads `GET /v1/commands` from the proxy and creates one connector

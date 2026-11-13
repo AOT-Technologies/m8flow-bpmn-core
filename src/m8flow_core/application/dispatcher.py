@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -104,14 +109,20 @@ def execute_command(
     with _session_scope(session_or_connection) as session:
         if isinstance(command, PublishSignalCommand):
             return publish_signal(
-                session, tenant_id=command.tenant_id, signal_name=command.signal_name,
-                user_id=command.user_id, occurrence_id=command.occurrence_id,
-                payload=command.payload, published_at=command.published_at,
+                session,
+                tenant_id=command.tenant_id,
+                signal_name=command.signal_name,
+                user_id=command.user_id,
+                occurrence_id=command.occurrence_id,
+                payload=command.payload,
+                published_at=command.published_at,
             )
         if isinstance(command, RunSignalDeliveriesCommand):
             return run_signal_deliveries(
-                session, tenant_id=command.tenant_id,
-                limit=command.limit, now=command.now,
+                session,
+                tenant_id=command.tenant_id,
+                limit=command.limit,
+                now=command.now,
             )
         if isinstance(command, ClaimTaskCommand):
             return claim_task(
@@ -270,11 +281,15 @@ def execute_query(
             )
         if isinstance(query, GetSignalPublicationQuery):
             return get_signal_publication(
-                session, tenant_id=query.tenant_id, occurrence_id=query.occurrence_id,
+                session,
+                tenant_id=query.tenant_id,
+                occurrence_id=query.occurrence_id,
             )
         if isinstance(query, ListSignalDeliveriesQuery):
             return list_signal_deliveries(
-                session, tenant_id=query.tenant_id, occurrence_id=query.occurrence_id,
+                session,
+                tenant_id=query.tenant_id,
+                occurrence_id=query.occurrence_id,
             )
         if isinstance(query, GetPendingTasksQuery):
             return get_pending_tasks(

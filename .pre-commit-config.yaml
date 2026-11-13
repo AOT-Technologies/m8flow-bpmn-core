@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 repos:
   - repo: local
     hooks:
@@ -7,6 +12,13 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/|tests/|alembic/versions/|sample_app/src/|sample_app/tests/)
+
+      - id: ruff-format
+        name: Ruff format
+        entry: uv run --locked ruff format --check .
+        language: system
+        pass_filenames: false
+        types_or: [python, markdown]
 
       - id: mypy
         name: mypy
@@ -21,6 +33,13 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/|sample_app/src/)
+
+      - id: reuse
+        name: REUSE
+        entry: uv run --locked reuse lint
+        language: system
+        pass_filenames: false
+        always_run: true
 
       - id: dco-signoff
         name: DCO signoff

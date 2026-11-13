@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Run timers and scheduled retries
 
 This guide shows how to run a scheduler loop that fires BPMN timers and

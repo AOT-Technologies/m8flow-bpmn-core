@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Add the signal registry to the sample app migration chain.
 
 DDL mirrors core revision l3m4n5o6p7q8 without depending on repository-only
@@ -38,7 +43,9 @@ def _create_table(name: str, *elements: sa.schema.SchemaItem) -> None:
     if inspector.get_pk_constraint(name)["constrained_columns"] != list(
         expected.primary_key.columns.keys()
     ):
-        raise RuntimeError(f"Incompatible signal schema for {name}: invalid primary key")
+        raise RuntimeError(
+            f"Incompatible signal schema for {name}: invalid primary key"
+        )
 
     unique_keys = {
         tuple(key["column_names"]) for key in inspector.get_unique_constraints(name)
@@ -84,8 +91,7 @@ def _create_index(
 ) -> None:
     bind = op.get_bind()
     indexes = {
-        index["name"]: index
-        for index in sa.inspect(bind).get_indexes(table_name)
+        index["name"]: index for index in sa.inspect(bind).get_indexes(table_name)
     }
     existing = indexes.get(name)
     if existing is None:

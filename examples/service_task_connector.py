@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import json
@@ -60,25 +65,19 @@ SECTION_SEPARATOR = "=" * 88
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROCESS_GROUP_ID = "m8flow-core-examples"
 PROCESS_GROUP_DISPLAY_NAME = "m8flow-core Examples"
-PROCESS_GROUP_DESCRIPTION = (
-    "Process models published by the m8flow-core examples."
-)
+PROCESS_GROUP_DESCRIPTION = "Process models published by the m8flow-core examples."
 PROCESS_MODEL_ID = "service-task-connector-poc"
 PROCESS_MODEL_IDENTIFIER = f"{PROCESS_GROUP_ID}/{PROCESS_MODEL_ID}"
 PROCESS_MODEL_DISPLAY_NAME = "Service Task Connector Example"
 PRIMARY_PROCESS_ID = "Process_service_task_connector_poc"
 PRIMARY_FILE_NAME = "service_task_connector_poc.bpmn"
-SERVICE_TASK_CONNECTOR_BPMN_PATH = (
-    REPO_ROOT / "tests" / "fixtures" / PRIMARY_FILE_NAME
-)
+SERVICE_TASK_CONNECTOR_BPMN_PATH = REPO_ROOT / "tests" / "fixtures" / PRIMARY_FILE_NAME
 
 CONNECTOR_PROXY_BASE_URL = (
-    os.getenv("M8FLOW_CONNECTOR_PROXY_BASE_URL", "").strip()
-    or "http://localhost:6844"
+    os.getenv("M8FLOW_CONNECTOR_PROXY_BASE_URL", "").strip() or "http://localhost:6844"
 )
 CONNECTOR_POC_HOST_ALIAS = (
-    os.getenv("M8FLOW_CONNECTOR_POC_HOST_ALIAS", "").strip()
-    or "host.docker.internal"
+    os.getenv("M8FLOW_CONNECTOR_POC_HOST_ALIAS", "").strip() or "host.docker.internal"
 )
 REQUIRED_HTTP_OPERATION_ID = "http/GetRequestV2"
 
@@ -162,9 +161,7 @@ class _DemoConnectorRequestHandler(BaseHTTPRequestHandler):
                 method="GET",
                 path=parsed_url.path,
                 query=query,
-                headers={
-                    key: value for key, value in self.headers.items()
-                },
+                headers={key: value for key, value in self.headers.items()},
                 occurred_at=datetime.now(UTC).replace(microsecond=0).isoformat(),
             )
         )
@@ -490,10 +487,7 @@ def _provision_shared_db_keycloak_context(
             for user_spec in DEMO_USERS.values()
         ],
     )
-    print(
-        "Status: Keycloak shared realm issuer is "
-        f"{keycloak_context.service_issuer}."
-    )
+    print(f"Status: Keycloak shared realm issuer is {keycloak_context.service_issuer}.")
     print(
         "Status: demo users are "
         + ", ".join(sorted(keycloak_context.users_by_username))
@@ -519,9 +513,7 @@ def _run_service_task_connector_poc(
     )
     _pause("Press Enter to continue to the connector setup.")
 
-    with DemoConnectorServer(
-        proxy_host_alias=CONNECTOR_POC_HOST_ALIAS
-    ) as demo_server:
+    with DemoConnectorServer(proxy_host_alias=CONNECTOR_POC_HOST_ALIAS) as demo_server:
         registry = _prepare_connector_proxy_registry(demo_server=demo_server)
         bpmn_xml = _render_service_task_connector_bpmn_xml(
             prepare_url=demo_server.prepare_url_for_proxy,
@@ -660,9 +652,9 @@ def _run_service_task_connector_poc(
                 task_payload={
                     "decision": TASK_COMPLETION_DECISION,
                     "completed_by": context.operator_username,
-                    "completed_at": datetime.now(UTC).replace(
-                        microsecond=0
-                    ).isoformat(),
+                    "completed_at": datetime.now(UTC)
+                    .replace(microsecond=0)
+                    .isoformat(),
                 },
             ),
             registry=registry,
@@ -733,18 +725,9 @@ def _prepare_connector_proxy_registry(
         "It builds the registry from the live `/v1/commands` catalog and "
         "points the BPMN service tasks at a host-side demo HTTP server."
     )
-    print(
-        "Connector-proxy base URL: "
-        f"{CONNECTOR_PROXY_BASE_URL}"
-    )
-    print(
-        "Demo server local base URL: "
-        f"{demo_server.local_base_url}"
-    )
-    print(
-        "Demo server proxy-visible base URL: "
-        f"{demo_server.proxy_base_url}"
-    )
+    print(f"Connector-proxy base URL: {CONNECTOR_PROXY_BASE_URL}")
+    print(f"Demo server local base URL: {demo_server.local_base_url}")
+    print(f"Demo server proxy-visible base URL: {demo_server.proxy_base_url}")
     _pause("Press Enter to query the connector-proxy catalog.")
 
     try:
@@ -892,8 +875,7 @@ def _assert_demo_connector_requests(
     actual_paths = tuple(request.path for request in requests)
     if actual_paths != expected_paths:
         raise RuntimeError(
-            "Expected demo connector requests "
-            f"{expected_paths}, got {actual_paths}."
+            f"Expected demo connector requests {expected_paths}, got {actual_paths}."
         )
 
 
@@ -941,10 +923,7 @@ def _load_process_instance_workflow_state_json(
                 ProcessInstanceModel,
                 process_instance_id,
             )
-            if (
-                process_instance is None
-                or process_instance.m8f_tenant_id != tenant_id
-            ):
+            if process_instance is None or process_instance.m8f_tenant_id != tenant_id:
                 raise RuntimeError(
                     "Expected process instance "
                     f"{process_instance_id} for tenant {tenant_id}, but it "
@@ -1057,9 +1036,7 @@ def _backend_process_group_payload() -> dict[str, Any]:
 
 def _backend_process_model_payload() -> dict[str, Any]:
     return {
-        "description": (
-            "Published by the m8flow-core service-task connector example."
-        ),
+        "description": ("Published by the m8flow-core service-task connector example."),
         "display_name": PROCESS_MODEL_DISPLAY_NAME,
         "exception_notification_addresses": [],
         "fault_or_suspend_on_exception": "fault",

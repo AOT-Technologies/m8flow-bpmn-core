@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -73,6 +78,7 @@ ROLE_MANAGER = "manager"
 ROLE_ADMIN = "admin"
 BASIC_ROLE_NAMES = frozenset({ROLE_USER, ROLE_MANAGER, ROLE_ADMIN})
 
+
 @dataclass(frozen=True, slots=True)
 class CommandAuthorizationSpec:
     command_key: str
@@ -120,8 +126,10 @@ AuthorizationPolicyFactory = Callable[[], AuthorizationPolicy]
 
 COMMAND_AUTHORIZATION_SPECS: dict[type[object], CommandAuthorizationSpec] = {
     PublishSignalCommand: CommandAuthorizationSpec(
-        command_key=SIGNAL_PUBLISH_COMMAND, permission=PermissionAction.execute.value,
-        resource_type=RESOURCE_TENANT, actor_field_name="user_id",
+        command_key=SIGNAL_PUBLISH_COMMAND,
+        permission=PermissionAction.execute.value,
+        resource_type=RESOURCE_TENANT,
+        actor_field_name="user_id",
     ),
     ClaimTaskCommand: CommandAuthorizationSpec(
         command_key=TASK_CLAIM_COMMAND,
@@ -371,6 +379,7 @@ def authorization_policy_scope(
     policy_or_factory: AuthorizationPolicy | AuthorizationPolicyFactory,
 ) -> Iterator[None]:
     if isinstance(policy_or_factory, AuthorizationPolicy):
+
         def factory() -> AuthorizationPolicy:
             return policy_or_factory
     else:
@@ -442,9 +451,7 @@ def permission_assignments_for_user(
         principal_filters.append(PrincipalModel.id.in_(group_principal_ids))
 
     principal_ids = list(
-        session.scalars(
-            select(PrincipalModel.id).where(or_(*principal_filters))
-        ).all()
+        session.scalars(select(PrincipalModel.id).where(or_(*principal_filters))).all()
     )
     if not principal_ids:
         return []
@@ -557,9 +564,7 @@ def _get_or_create[ModelT](
 
     if dialect_name in {"postgresql", "sqlite"}:
         conflict_kwargs = (
-            {"index_elements": list(conflict_columns)}
-            if conflict_columns
-            else {}
+            {"index_elements": list(conflict_columns)} if conflict_columns else {}
         )
         session.execute(statement.on_conflict_do_nothing(**conflict_kwargs))
     elif dialect_name in {"mysql", "mariadb"}:

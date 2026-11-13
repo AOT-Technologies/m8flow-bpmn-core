@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import time
@@ -25,10 +30,7 @@ def list_secrets(session: Session, *, tenant_id: str) -> list[SecretListItem]:
         .where(SecretModel.m8f_tenant_id == tenant_id)
         .order_by(SecretModel.key.asc(), SecretModel.id.asc())
     )
-    return [
-        SecretListItem(secret=secret, user=user)
-        for secret, user in rows
-    ]
+    return [SecretListItem(secret=secret, user=user) for secret, user in rows]
 
 
 def get_secret(session: Session, *, tenant_id: str, secret_id: int) -> SecretModel:
@@ -39,9 +41,7 @@ def get_secret(session: Session, *, tenant_id: str, secret_id: int) -> SecretMod
         )
     )
     if secret is None:
-        raise NotFoundError(
-            f"Secret {secret_id} was not found for tenant {tenant_id}."
-        )
+        raise NotFoundError(f"Secret {secret_id} was not found for tenant {tenant_id}.")
     return secret
 
 

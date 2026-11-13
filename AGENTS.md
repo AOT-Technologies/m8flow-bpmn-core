@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # AGENT.md
 
 ## Purpose
@@ -123,7 +129,7 @@ See `docs/reference/limitations.md` before assuming a capability exists.
 - Python version: 3.12
 - Package layout: `src/`
 - Tooling: `uv`, `pytest`, `ruff`, `mypy`, `bandit`, `pre-commit`, `alembic`,
-  `hatchling`
+  `hatchling`, `reuse`
 - Keep changes small and aligned with the existing package boundaries.
 - Prefer updating or adding tests with behavior changes.
 - Prefer examples when validating end-to-end workflow behavior.
@@ -135,6 +141,8 @@ Common commands:
 - `make lint`
 - `make typecheck`
 - `make security`
+- `make license-headers`
+- `make license-headers-fix`
 - `make test`
 - `make test-integration`
 - `make package`

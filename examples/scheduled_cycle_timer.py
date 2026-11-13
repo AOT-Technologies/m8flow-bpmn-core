@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import os
@@ -60,9 +65,7 @@ CYCLE_INTERVAL_SECONDS = 20
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROCESS_GROUP_ID = "m8flow-core-examples"
 PROCESS_GROUP_DISPLAY_NAME = "m8flow-core Examples"
-PROCESS_GROUP_DESCRIPTION = (
-    "Process models published by the m8flow-core examples."
-)
+PROCESS_GROUP_DESCRIPTION = "Process models published by the m8flow-core examples."
 PROCESS_MODEL_ID = "scheduled-cycle-timer-poc"
 PROCESS_MODEL_IDENTIFIER = f"{PROCESS_GROUP_ID}/{PROCESS_MODEL_ID}"
 PROCESS_MODEL_DISPLAY_NAME = "Scheduled Cycle Timer Example"
@@ -346,10 +349,7 @@ def _provision_shared_db_keycloak_context(
             for user_spec in DEMO_USERS.values()
         ],
     )
-    print(
-        "Status: Keycloak shared realm issuer is "
-        f"{keycloak_context.service_issuer}."
-    )
+    print(f"Status: Keycloak shared realm issuer is {keycloak_context.service_issuer}.")
     print(
         "Status: demo users are "
         + ", ".join(sorted(keycloak_context.users_by_username))
@@ -425,10 +425,7 @@ def _run_cycle_timer_poc(
     )
     print("Command:")
     print(pformat(import_command, sort_dicts=False, width=100))
-    print(
-        "Status: executing import with cycle expression "
-        f"{cycle_expression!r}."
-    )
+    print(f"Status: executing import with cycle expression {cycle_expression!r}.")
     with engine.begin() as connection:
         definition = api.execute_command(connection, import_command)
     print("Status: command complete and committed.")
@@ -815,9 +812,7 @@ def _backend_process_group_payload() -> dict[str, Any]:
 
 def _backend_process_model_payload() -> dict[str, Any]:
     return {
-        "description": (
-            "Published by the m8flow-core scheduled cycle timer example."
-        ),
+        "description": ("Published by the m8flow-core scheduled cycle timer example."),
         "display_name": PROCESS_MODEL_DISPLAY_NAME,
         "exception_notification_addresses": [],
         "fault_or_suspend_on_exception": "fault",
@@ -857,8 +852,7 @@ def _find_timer_start_job_for_definition(
     return session.scalar(
         select(SchedulerJobModel).where(
             SchedulerJobModel.m8f_tenant_id == tenant_id,
-            SchedulerJobModel.bpmn_process_definition_id
-            == bpmn_process_definition_id,
+            SchedulerJobModel.bpmn_process_definition_id == bpmn_process_definition_id,
         )
     )
 
@@ -1068,8 +1062,7 @@ def _current_timer_start_runtime_state(
             )
             if minimum_start_in_seconds is not None:
                 stmt = stmt.where(
-                    ProcessInstanceModel.started_at
-                    >= minimum_start_in_seconds
+                    ProcessInstanceModel.started_at >= minimum_start_in_seconds
                 )
             stmt = stmt.order_by(
                 ProcessInstanceModel.started_at,

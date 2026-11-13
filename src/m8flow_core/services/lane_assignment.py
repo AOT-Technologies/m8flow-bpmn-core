@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Potential owners of human tasks, derived from BPMN lanes.
 
 A work item's potential owners come from three sources, each recorded with

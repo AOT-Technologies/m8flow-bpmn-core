@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Signal persistence and subscriptions without orchestration dependencies.
 
 The caller owns the transaction. Run one delivery loop per tenant.

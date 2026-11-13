@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 <p align="center">
   <img src="docs/images/m8flow-logo.png" alt="m8flow" width="280">
 </p>
@@ -10,8 +16,9 @@
 
 <p align="center">
   <a href="https://github.com/AOT-Technologies/m8flow-core/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/AOT-Technologies/m8flow-core/ci.yml?branch=main&label=CI" alt="CI status"></a>
-  <a href="https://pypi.org/project/m8flow-core/1.0.0/"><img src="https://img.shields.io/badge/PyPI%20release-1.0.0-blue" alt="m8flow-core 1.0.0 on PyPI"></a>
-  <img src="https://img.shields.io/badge/python-3.12-blue" alt="Python 3.12">
+  <a href="https://codecov.io/gh/AOT-Technologies/m8flow-core"><img src="https://img.shields.io/codecov/c/github/AOT-Technologies/m8flow-core/main?label=coverage" alt="Test coverage on main"></a>
+  <a href="https://pypi.org/project/m8flow-core/"><img src="https://img.shields.io/pypi/v/m8flow-core?label=PyPI" alt="Latest m8flow-core release on PyPI"></a>
+  <img src="https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue" alt="Python 3.12, 3.13, and 3.14">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache 2.0 license"></a>
 </p>
 
@@ -52,6 +59,12 @@ The library covers the following:
   that your application polls.
 - **Service tasks.** Run BPMN service tasks through pluggable connectors,
   including an adapter for the m8flow connector proxy.
+- **Signals.** Publish BPMN signals that reach waiting catch events, boundary
+  events, event subprocesses, and signal start events in the same tenant,
+  with durable, idempotent delivery.
+- **Compensation.** Undo completed work in reverse order through BPMN
+  compensation handlers, with a journal that survives restarts and failed
+  handlers you can retry.
 - **Multi-tenancy and authorization.** Every call is scoped to a tenant, and
   stored data, down to workflow payloads, belongs to one tenant. User actions
   are checked against tenant membership and command grants on exact
@@ -59,9 +72,23 @@ The library covers the following:
 - **Caller-owned transactions.** Pass a SQLAlchemy `Connection` and the
   library never commits or rolls back for you.
 
+## Install
+
+m8flow-core needs Python 3.12 or later. To add it to your application,
+install it from PyPI:
+
+```bash
+pip install m8flow-core
+```
+
+With uv, run `uv add m8flow-core` instead. SQLite works out of the box. For
+another database, install its extra, such as `m8flow-core[postgresql]` or
+`m8flow-core[mysql]`. The `celery` extra adds what the Celery scheduler
+example needs.
+
 ## Quick start
 
-You need Python 3.12 and [uv](https://docs.astral.sh/uv/). To install the
+You need Python 3.12 and [uv](https://docs.astral.sh/uv/). To clone the
 project and run a complete purchase-order workflow on an in-memory SQLite
 database, run the following commands:
 
@@ -127,7 +154,10 @@ table:
 | Add the library to my application | [Embed the library in your application](docs/how-to/embed-in-your-application.md) · [Build and install the package](docs/how-to/build-and-install-the-package.md) |
 | Run timers and scheduled retries | [Run timers and scheduled retries](docs/how-to/run-timers-and-retries.md) |
 | Call an external system from a process | [Call external services from service tasks](docs/how-to/call-external-services.md) |
+| Send signals between processes | [Publish and deliver BPMN signals](docs/how-to/publish-signals.md) |
+| Undo completed work | [Run compensation handlers](docs/how-to/run-compensation.md) |
 | Add my own authorization rules | [Customize authorization](docs/how-to/customize-authorization.md) |
+| Fix an error or a stuck process | [Troubleshoot common problems](docs/how-to/troubleshoot.md) |
 | Upgrade from `m8flow-bpmn-core` 0.x | [Upgrade to 1.0](docs/how-to/upgrade-to-1.0.md) |
 | Look up a command, query, or error | [Public API reference](docs/reference/api.md) · [Database schema](docs/reference/database-schema.md) |
 | Check which BPMN elements work | [BPMN support](docs/reference/bpmn-support.md) · [Limitations](docs/reference/limitations.md) |
@@ -141,7 +171,9 @@ m8flow-core 1.0 is the first stable release. The public surface is the
 `m8flow_core.api` module, documented in the
 [API reference](docs/reference/api.md), together with the
 [database schema](docs/reference/database-schema.md). The
-[changelog](CHANGELOG.md) records every change to either. Coming from
+[changelog](CHANGELOG.md) records every change to either. Releases follow
+[Semantic Versioning](docs/reference/versioning.md): a breaking change to
+the public contract ships only in a new major version. Coming from
 `m8flow-bpmn-core` 0.x? Follow [Upgrade to 1.0](docs/how-to/upgrade-to-1.0.md). Messaging and correlation, and
 tenant and user management aren't covered yet. [Limitations](docs/reference/limitations.md) lists every known
 gap.
@@ -157,6 +189,9 @@ Use the following resources:
   [SECURITY.md](SECURITY.md). Don't open a public issue.
 - Before you open a pull request, read the [contributing guide](CONTRIBUTING.md).
 - Everyone who takes part follows the [code of conduct](CODE_OF_CONDUCT.md).
+- See the [roadmap](ROADMAP.md) for planned work, [GOVERNANCE.md](GOVERNANCE.md)
+  for how decisions are made, and [MAINTAINERS.md](MAINTAINERS.md) for who
+  maintains the project.
 - Release notes are in the [changelog](CHANGELOG.md).
 
 ## License

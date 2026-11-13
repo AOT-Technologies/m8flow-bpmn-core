@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Staged library wheel
 
 This folder holds the locally built `m8flow-core` wheel that the sample

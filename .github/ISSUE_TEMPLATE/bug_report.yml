@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 name: Bug report
 description: Report a problem so it can be fixed
 title: "[Bug] "

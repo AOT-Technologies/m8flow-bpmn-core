@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from m8flow_core.utils.keycloak.service import (
@@ -21,4 +26,3 @@ __all__ = [
     "ensure_shared_realm_organizations_and_users",
     "shared_realm_service_issuer",
 ]
-

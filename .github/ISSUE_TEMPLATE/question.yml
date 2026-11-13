@@ -1,0 +1,34 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
+name: Question
+description: Ask how to use m8flow-core
+title: "[Question] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [documentation](https://github.com/AOT-Technologies/m8flow-core/blob/main/docs/README.md)
+        and [limitations](https://github.com/AOT-Technologies/m8flow-core/blob/main/docs/reference/limitations.md)
+        first. Questions about the m8flow platform as a whole belong in the
+        [m8flow repository](https://github.com/AOT-Technologies/m8flow/issues).
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to do, and what's unclear?
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you've tried
+      description: Code, BPMN snippets, or docs pages you've already looked at.
+  - type: input
+    id: version
+    attributes:
+      label: m8flow-core version
+      placeholder: "1.0.0"

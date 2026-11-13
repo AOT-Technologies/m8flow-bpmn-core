@@ -1,4 +1,11 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
+
+import pytest
 
 from m8flow_core.utils.keycloak import service as keycloak_service
 
@@ -120,18 +127,16 @@ def test_ensure_shared_realm_organizations_and_users_reuses_existing_rows(
         "create_user_in_realm",
         fake_create_user_in_realm,
     )
+
+    def fake_reconcile_realm_user_credentials(
+        realm, user_id, *, password, email=None, display_name=None, admin_token
+    ):
+        reconciled_users.append((user_id, password, email, display_name))
+
     monkeypatch.setattr(
         keycloak_service,
         "reconcile_realm_user_credentials",
-        lambda realm,
-        user_id,
-        *,
-        password,
-        email=None,
-        display_name=None,
-        admin_token: reconciled_users.append(
-            (user_id, password, email, display_name)
-        ),
+        fake_reconcile_realm_user_credentials,
     )
     monkeypatch.setattr(
         keycloak_service,
@@ -152,9 +157,7 @@ def test_ensure_shared_realm_organizations_and_users_reuses_existing_rows(
         keycloak_service,
         "add_organization_group_member",
         lambda organization_id, group_name, member_id, *, admin_token: (
-            added_group_memberships.append(
-                (organization_id, group_name, member_id)
-            )
+            added_group_memberships.append((organization_id, group_name, member_id))
         ),
     )
 
@@ -211,6 +214,21 @@ def test_ensure_shared_realm_organizations_and_users_reuses_existing_rows(
     assert result.users_by_username["bob"].created is True
     assert any("tenant-a" in warning for warning in result.warnings)
     assert any(
-        "alice" in warning and "reconciled" in warning
-        for warning in result.warnings
+        "alice" in warning and "reconciled" in warning for warning in result.warnings
     )
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["file:///etc/passwd", "ftp://keycloak.example.com/realms", "localhost:6842"],
+)
+def test_keycloak_request_rejects_non_http_urls(url: str, monkeypatch) -> None:
+    def fail_open(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the URL must not be opened for a rejected URL")
+
+    monkeypatch.setattr(keycloak_service, "open_http_url", fail_open)
+
+    with pytest.raises(
+        keycloak_service.KeycloakProvisioningError, match="http or https"
+    ):
+        keycloak_service._request("GET", url)

@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from html import escape
@@ -32,7 +37,7 @@ def register_secret_routes(app: Flask) -> None:
   <td>{item.secret.id}</td>
   <td>{escape(item.secret.key)}</td>
   <td>(stored)</td>
-  <td>{escape((item.user.display_name or item.user.username) if item.user else '')}</td>
+  <td>{escape((item.user.display_name or item.user.username) if item.user else "")}</td>
   <td>{format_timestamp(item.secret.updated_at_in_seconds)}</td>
   <td class="actions">
     <a href="{escape(url_for("edit_secret_page", secret_id=item.secret.id))}">Edit</a>

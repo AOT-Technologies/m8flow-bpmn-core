@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from m8flow_core.models.task_definition import TaskDefinitionModel
@@ -20,4 +25,4 @@ def test_task_definition_uses_central_user_task_vocabulary() -> None:
     assert not TaskDefinitionModel(
         typename="ScriptTask",
         properties_json={},
-        ).is_user_task()
+    ).is_user_task()

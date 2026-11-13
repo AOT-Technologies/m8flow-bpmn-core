@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -145,7 +150,7 @@ def post_button(
         )
     return (
         f'<form method="post" action="{escape(action)}">'
-        f"{hidden_inputs}<button type=\"submit\">{escape(label)}</button></form>"
+        f'{hidden_inputs}<button type="submit">{escape(label)}</button></form>'
     )
 
 
@@ -167,7 +172,7 @@ def _navigation(identity: ActiveIdentity | None) -> str:
         ]
     )
     identity_summary = (
-        f"<div class=\"identity\"><strong>Tenant:</strong> "
+        f'<div class="identity"><strong>Tenant:</strong> '
         f"{escape(identity.tenant.name)} ({escape(identity.tenant.id)})"
         f" | <strong>User:</strong> "
         f"{escape(identity.user.display_name or identity.user.username)} "
@@ -226,8 +231,7 @@ def _audit_mode_banner(identity: ActiveIdentity | None) -> str:
             )
         if audit_context.backend_container_name:
             details.append(
-                "Catalog discovery source: "
-                f"{audit_context.backend_container_name}"
+                f"Catalog discovery source: {audit_context.backend_container_name}"
             )
     else:
         banner_class = "audit-banner audit-standalone"

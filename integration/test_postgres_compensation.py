@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -93,9 +98,10 @@ def test_postgres_compensation_survives_restart_and_connection_dispatch(
             events = api.execute_query(
                 session, api.GetProcessInstanceEventsQuery(tenant_id, instance_id)
             )
-            assert sum(
-                event.event_type == "compensation_completed" for event in events
-            ) == 3
+            assert (
+                sum(event.event_type == "compensation_completed" for event in events)
+                == 3
+            )
             instance = api.execute_query(
                 session, api.GetProcessInstanceQuery(tenant_id, instance_id)
             )

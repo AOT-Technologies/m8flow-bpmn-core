@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Inventory/payment/shipment compensation, with a durable restart.
 
 Run with ``uv run python examples/compensation.py``. Add ``--non-interactive``

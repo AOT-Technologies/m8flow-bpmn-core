@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -32,9 +37,9 @@ def test_active_orm_has_no_legacy_epoch_columns() -> None:
         "timestamp",
     }
     for mapper in Base.registry.mappers:
-        assert legacy_names.isdisjoint(
-            column.name for column in mapper.columns
-        ), mapper.class_.__name__
+        assert legacy_names.isdisjoint(column.name for column in mapper.columns), (
+            mapper.class_.__name__
+        )
 
 
 def test_native_datetime_is_canonical(

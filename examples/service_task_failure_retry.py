@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 # ruff: noqa: E402
@@ -70,9 +75,7 @@ from m8flow_core.utils.keycloak import (
 SECTION_SEPARATOR = "=" * 88
 PROCESS_GROUP_ID = "m8flow-core-examples"
 PROCESS_GROUP_DISPLAY_NAME = "m8flow-core Examples"
-PROCESS_GROUP_DESCRIPTION = (
-    "Process models published by the m8flow-core examples."
-)
+PROCESS_GROUP_DESCRIPTION = "Process models published by the m8flow-core examples."
 PROCESS_MODEL_ID = "service-task-failure-retry-poc"
 PROCESS_MODEL_IDENTIFIER = f"{PROCESS_GROUP_ID}/{PROCESS_MODEL_ID}"
 PROCESS_MODEL_DISPLAY_NAME = "Service Task Failure Retry Example"
@@ -420,10 +423,7 @@ def _provision_shared_db_keycloak_context(
             for user_spec in DEMO_USERS.values()
         ],
     )
-    print(
-        "Status: Keycloak shared realm issuer is "
-        f"{keycloak_context.service_issuer}."
-    )
+    print(f"Status: Keycloak shared realm issuer is {keycloak_context.service_issuer}.")
     print(
         "Status: demo users are "
         + ", ".join(sorted(keycloak_context.users_by_username))
@@ -576,8 +576,7 @@ def _run_failure_retry_poc(
         engine,
         step_number=4,
         title=(
-            "Read back the process instance after rollback-on-exception "
-            "initialization"
+            "Read back the process instance after rollback-on-exception initialization"
         ),
         context_text=(
             "Even though the outer session_scope rolled back, the current "
@@ -712,9 +711,7 @@ def _run_failure_retry_poc(
             task_payload={
                 "decision": "approved",
                 "completed_by": context.operator_username,
-                "completed_at": datetime.now(UTC).replace(
-                    microsecond=0
-                ).isoformat(),
+                "completed_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
             },
         ),
         registry=working_registry,
@@ -898,8 +895,7 @@ def _print_failed_workflow_snapshot(
 
     workflow = _restore_workflow(workflow_state_json)
     errored_tasks = [
-        task.task_spec.name
-        for task in workflow.get_tasks(state=TaskState.ERROR)
+        task.task_spec.name for task in workflow.get_tasks(state=TaskState.ERROR)
     ]
     print()
     print(SECTION_SEPARATOR)
@@ -960,10 +956,7 @@ def _load_process_instance_workflow_state_json(
                 ProcessInstanceModel,
                 process_instance_id,
             )
-            if (
-                process_instance is None
-                or process_instance.m8f_tenant_id != tenant_id
-            ):
+            if process_instance is None or process_instance.m8f_tenant_id != tenant_id:
                 raise RuntimeError(
                     "Expected process instance "
                     f"{process_instance_id} for tenant {tenant_id}, but it "
@@ -1124,8 +1117,7 @@ def _backend_process_group_payload() -> dict[str, Any]:
 def _backend_process_model_payload() -> dict[str, Any]:
     return {
         "description": (
-            "Published by the m8flow-core service-task failure retry "
-            "example."
+            "Published by the m8flow-core service-task failure retry example."
         ),
         "display_name": PROCESS_MODEL_DISPLAY_NAME,
         "exception_notification_addresses": [],

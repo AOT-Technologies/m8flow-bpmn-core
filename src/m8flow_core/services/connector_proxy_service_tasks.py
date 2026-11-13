@@ -1,10 +1,15 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from m8flow_core.errors import (
     NotFoundError,
@@ -24,6 +29,7 @@ from m8flow_core.services.service_tasks import (
     build_connector_proxy_execute_path,
     split_service_task_operation_id,
 )
+from m8flow_core.utils.http_client import is_http_url, open_http_url
 
 DEFAULT_CONNECTOR_PROXY_TIMEOUT_SECONDS = 10.0
 
@@ -246,7 +252,7 @@ def _connector_proxy_json_request(
 ) -> tuple[object | None, int]:
     normalized_base_url = _normalize_base_url(base_url)
     normalized_timeout_seconds = _normalize_timeout_seconds(timeout_seconds)
-    url = urljoin(f"{normalized_base_url}/", path.lstrip("/"))
+    url = _require_http_url(urljoin(f"{normalized_base_url}/", path.lstrip("/")))
     request_body = None
     headers = {"Accept": "application/json"}
     if payload is not None:
@@ -260,10 +266,7 @@ def _connector_proxy_json_request(
     )
 
     try:
-        with urlopen(  # nosec B310
-            request,
-            timeout=normalized_timeout_seconds,
-        ) as response:
+        with open_http_url(request, timeout=normalized_timeout_seconds) as response:
             raw_body = response.read()
             parsed_body = _parse_connector_proxy_response_body(raw_body)
             _raise_for_connector_proxy_error_payload(
@@ -356,7 +359,15 @@ def _normalize_base_url(base_url: str) -> str:
     normalized_base_url = base_url.strip().rstrip("/")
     if not normalized_base_url:
         raise ValidationError("base_url must not be blank")
-    return normalized_base_url
+    return _require_http_url(normalized_base_url)
+
+
+def _require_http_url(url: str) -> str:
+    if not is_http_url(url):
+        raise ValidationError(
+            f"Connector proxy URL must be an absolute http or https URL: {url!r}"
+        )
+    return url
 
 
 def _normalize_connector_key(connector_key: str) -> str:

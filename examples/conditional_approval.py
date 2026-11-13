@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import json
@@ -432,10 +437,7 @@ def _start_temporary_postgres_container() -> tuple[str, str, str]:
         or FALLBACK_POSTGRES_IMAGE
     )
     container_name = f"m8flow-core-example-{uuid4().hex[:8]}"
-    print(
-        "Status: starting temporary Docker Postgres container "
-        f"{container_name}..."
-    )
+    print(f"Status: starting temporary Docker Postgres container {container_name}...")
     result = subprocess.run(
         [
             "docker",
@@ -569,8 +571,9 @@ def _maybe_deploy_process_model_to_m8flow_backend(
     )
 
 
-def _resolve_m8flow_backend_process_models_root(
-) -> tuple[Path | None, str | None, list[str]]:
+def _resolve_m8flow_backend_process_models_root() -> tuple[
+    Path | None, str | None, list[str]
+]:
     override = os.getenv("M8FLOW_EXAMPLE_PROCESS_MODELS_DIR", "").strip()
     if override:
         return Path(override).expanduser(), None, []
@@ -794,9 +797,7 @@ def _backend_process_group_payload() -> dict[str, Any]:
 
 def _backend_process_model_payload() -> dict[str, Any]:
     return {
-        "description": (
-            "Published by the m8flow-core conditional-approval example."
-        ),
+        "description": ("Published by the m8flow-core conditional-approval example."),
         "display_name": M8FLOW_BACKEND_PROCESS_MODEL_DISPLAY_NAME,
         "exception_notification_addresses": [],
         "fault_or_suspend_on_exception": "fault",
@@ -845,10 +846,7 @@ def _print_backend_deployment_summary(
             "Status: resolved the backend process-model catalog from Docker "
             f"container {deployment.container_name}."
         )
-    print(
-        "Status: backend process-model catalog is "
-        f"{deployment.process_models_root}."
-    )
+    print(f"Status: backend process-model catalog is {deployment.process_models_root}.")
     if deployment.deployed:
         print(
             "Status: deployed process model "
@@ -944,10 +942,7 @@ def _shared_db_keycloak_password() -> str:
 def _print_keycloak_provisioning_summary(
     keycloak_context: ProvisionedKeycloakSharedRealmContext,
 ) -> None:
-    print(
-        "Status: Keycloak shared realm issuer is "
-        f"{keycloak_context.service_issuer}."
-    )
+    print(f"Status: Keycloak shared realm issuer is {keycloak_context.service_issuer}.")
     print(
         "Status: demo Keycloak organizations are "
         + ", ".join(sorted(keycloak_context.organizations_by_alias))
@@ -1181,17 +1176,13 @@ def _seed_demo_context(
         for tenant_spec in OTHER_DEMO_TENANTS
     ]
     foreign_noise_tenant = other_tenants[0]
-    shared_realm_keycloak_context: ProvisionedKeycloakSharedRealmContext | None = (
-        None
-    )
+    shared_realm_keycloak_context: ProvisionedKeycloakSharedRealmContext | None = None
     reuse_users_by_username = False
     if _is_shared_database_url(database_url):
         try:
-            shared_realm_keycloak_context = (
-                _provision_shared_db_keycloak_context(
-                    tenant=tenant,
-                    other_tenants=other_tenants,
-                )
+            shared_realm_keycloak_context = _provision_shared_db_keycloak_context(
+                tenant=tenant,
+                other_tenants=other_tenants,
             )
         except KeycloakProvisioningError as exc:
             raise SystemExit(
@@ -1446,8 +1437,7 @@ def _realign_existing_example_process_model_identifiers(
     for snapshot in session.scalars(
         select(ProcessModelBpmnVersionModel).where(
             ProcessModelBpmnVersionModel.m8f_tenant_id == tenant_id,
-            ProcessModelBpmnVersionModel.process_model_identifier
-            == legacy_identifier,
+            ProcessModelBpmnVersionModel.process_model_identifier == legacy_identifier,
         )
     ).all():
         duplicate_snapshot = session.scalar(
@@ -1586,8 +1576,8 @@ def _get_or_create_user(
             user = sorted(
                 matching_users,
                 key=lambda candidate: (
-            candidate.updated_at.timestamp() if candidate.updated_at else 0,
-            candidate.created_at.timestamp() if candidate.created_at else 0,
+                    candidate.updated_at.timestamp() if candidate.updated_at else 0,
+                    candidate.created_at.timestamp() if candidate.created_at else 0,
                     int(candidate.id or 0),
                 ),
                 reverse=True,

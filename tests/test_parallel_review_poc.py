@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """End-to-end test for the parallel-review POC.
 
 Exercises BPMN shapes that the conditional-approval POC does not cover:
@@ -43,9 +48,7 @@ from m8flow_core.services.authorization import (
     ensure_v1_role,
 )
 
-EXAMPLE_BPMN_PATH = (
-    Path(__file__).with_name("fixtures") / "parallel_review_poc.bpmn"
-)
+EXAMPLE_BPMN_PATH = Path(__file__).with_name("fixtures") / "parallel_review_poc.bpmn"
 PROCESS_ID = "Process_parallel_review_poc"
 LANE_OWNERS = {
     "Finance": ["finance_user"],

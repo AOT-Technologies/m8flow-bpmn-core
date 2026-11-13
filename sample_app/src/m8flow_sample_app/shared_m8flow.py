@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import json
@@ -78,8 +83,8 @@ def discover_shared_m8flow_audit_context(
         uses_shared_m8flow = True
     elif requested_mode == "auto":
         uses_shared_m8flow = (
-            (database_name or "").strip() == settings.m8flow_shared_database_name
-        )
+            database_name or ""
+        ).strip() == settings.m8flow_shared_database_name
 
     warnings: list[str] = []
     process_models_root: Path | None = None
@@ -166,8 +171,7 @@ def resolve_m8flow_backend_process_models_root(
 def backend_container_names(*, settings: Settings | None = None) -> list[str]:
     settings = settings or get_settings()
     candidates = [
-        item.strip()
-        for item in settings.m8flow_backend_container_names.split(",")
+        item.strip() for item in settings.m8flow_backend_container_names.split(",")
     ]
 
     ordered_candidates: list[str] = []
@@ -410,7 +414,10 @@ def load_process_model_from_m8flow_backend(
         )
     normalized_primary_file_name = primary_file_name.strip()
     primary_file_path = Path(normalized_primary_file_name)
-    if primary_file_path.is_absolute() or primary_file_path.name != normalized_primary_file_name:
+    if (
+        primary_file_path.is_absolute()
+        or primary_file_path.name != normalized_primary_file_name
+    ):
         raise ValidationError(
             "The local m8flow catalog metadata for "
             f"'{process_model_identifier}' contains an unsafe primary BPMN file name."
@@ -582,9 +589,7 @@ def _backend_process_group_payload(process_group_id: str) -> dict[str, Any]:
         "correlation_keys": None,
         "correlation_properties": None,
         "data_store_specifications": {},
-        "description": (
-            "Process models published by the m8flow-core sample app."
-        ),
+        "description": ("Process models published by the m8flow-core sample app."),
         "display_name": _humanize_identifier(process_group_id),
         "messages": None,
     }
@@ -599,8 +604,7 @@ def _backend_process_model_payload(
 ) -> dict[str, Any]:
     return {
         "description": (
-            model_description
-            or "Published by the m8flow-core sample app."
+            model_description or "Published by the m8flow-core sample app."
         ),
         "display_name": bpmn_name,
         "exception_notification_addresses": [],

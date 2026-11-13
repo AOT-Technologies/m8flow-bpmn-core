@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import hashlib
@@ -51,9 +56,7 @@ class JsonDataModel(Base):
             sort_keys=True,
             separators=(",", ":"),
         )
-        payload_hash = hashlib.sha256(
-            normalized_json.encode("utf-8")
-        ).hexdigest()
+        payload_hash = hashlib.sha256(normalized_json.encode("utf-8")).hexdigest()
         return payload_hash, normalized_payload
 
     @classmethod

@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -14,9 +19,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = (
-        "postgresql+psycopg://postgres:postgres@localhost:6843/postgres"
-    )
+    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:6843/postgres"
     database_echo: bool = False
     secret_key: str = "sample-app-dev-secret"
     host: str = "127.0.0.1"

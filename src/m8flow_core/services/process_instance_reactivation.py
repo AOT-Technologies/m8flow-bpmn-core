@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Resume and retry transitions that re-enter the workflow runtime.
 
 These live apart from ``process_instances`` because they call back into
@@ -49,8 +54,10 @@ def resume_process_instance(
         user_id=user_id,
     )
     process_instance = _load_process_instance(
-        session, tenant_id=tenant_id,
-        process_instance_id=process_instance_id, lock=True,
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance_id,
+        lock=True,
     )
     require_command_authorization(
         session,
@@ -106,8 +113,10 @@ def retry_process_instance(
         user_id=user_id,
     )
     process_instance = _load_process_instance(
-        session, tenant_id=tenant_id,
-        process_instance_id=process_instance_id, lock=True,
+        session,
+        tenant_id=tenant_id,
+        process_instance_id=process_instance_id,
+        lock=True,
     )
     require_command_authorization(
         session,

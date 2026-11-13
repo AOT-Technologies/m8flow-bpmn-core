@@ -1,9 +1,18 @@
+<!--
+SPDX-FileCopyrightText: 2026 AOT Technologies
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Upgrade to 1.0
 
 This guide moves an application from `m8flow-bpmn-core` 0.x to m8flow-core
 1.0. The release renames the package and finishes a breaking schema and API
 redesign, so the upgrade changes your code, your dependencies, and your
 database. Plan it as one coordinated deployment.
+
+If you already run a 1.0.0 beta (`1.0.0b1` to `1.0.0b3`), skip to
+[Upgrade from a 1.0.0 beta](#upgrade-from-a-100-beta).
 
 ## Before you begin
 
@@ -199,6 +208,30 @@ versions of m8flow and the library. When the host owns the schema migrations,
 ensure its database includes the compensation journal tables before enabling
 compensation. The library's version row must reflect the migrations that have
 actually been applied.
+
+## Upgrade from a 1.0.0 beta
+
+The betas already use the m8flow-core names, the 1.0 API, and the baseline
+revision `k2l3m4n5o6p7`. 1.0.0 adds BPMN signals and compensation, with one
+additive migration for each. To upgrade, follow these steps:
+
+1. Change your dependency to `m8flow-core>=1.0,<2.0`. A version pin such as
+   `==1.0.0b3` doesn't pick up the final release on its own.
+2. Back up the database, then run `uv run alembic upgrade head`. It applies
+   `l3m4n5o6p7q8`, which adds the signal registry tables, and
+   `m8f_671_compensation`, which adds the compensation journal tables. No
+   stamp is needed.
+3. Run `uv run alembic current` and check that it reports
+   `m8f_671_compensation`.
+4. Re-run `ensure_v1_role` for each tenant's existing `manager` and `admin`
+   roles, so they get the new `signal.publish` grant. See
+   [Customize authorization](customize-authorization.md).
+5. If your application calls a connector from a compensation handler, use the
+   `compensation.idempotency_key` in `ServiceTaskContext.metadata` to avoid
+   repeating an external operation on retry. See
+   [Run compensation handlers](run-compensation.md).
+
+The [changelog](../../CHANGELOG.md) lists everything in 1.0.0.
 
 ## If the upgrade fails
 

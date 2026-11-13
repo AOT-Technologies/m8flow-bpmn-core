@@ -1,3 +1,8 @@
+#
+# SPDX-FileCopyrightText: 2026 AOT Technologies
+# SPDX-License-Identifier: Apache-2.0
+#
+
 from __future__ import annotations
 
 import json
@@ -5,8 +10,9 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
+from m8flow_core.utils.http_client import is_http_url, open_http_url
 from m8flow_core.utils.keycloak.config import (
     keycloak_admin_password,
     keycloak_admin_user,
@@ -127,13 +133,10 @@ def ensure_shared_realm_organizations_and_users(
             organization,
             "id",
             message=(
-                f"Keycloak organization '{normalized_alias}' does not expose "
-                "an id."
+                f"Keycloak organization '{normalized_alias}' does not expose an id."
             ),
         )
-        organization_name = (
-            str(organization.get("name", "")).strip() or normalized_name
-        )
+        organization_name = str(organization.get("name", "")).strip() or normalized_name
         organizations_by_alias[normalized_alias] = ProvisionedKeycloakOrganization(
             alias=normalized_alias,
             name=organization_name,
@@ -369,8 +372,7 @@ def create_organization(
             organization,
             "id",
             message=(
-                f"Keycloak organization '{normalized_alias}' does not expose "
-                "an id."
+                f"Keycloak organization '{normalized_alias}' does not expose an id."
             ),
         ),
         admin_token=admin_token,
@@ -743,13 +745,15 @@ def _request(
         request_headers.setdefault("Content-Type", "application/json")
     elif form_body is not None:
         payload = urlencode(form_body).encode("utf-8")
-        request_headers.setdefault(
-            "Content-Type", "application/x-www-form-urlencoded"
-        )
+        request_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
 
+    if not is_http_url(url):
+        raise KeycloakProvisioningError(
+            f"Keycloak URL must be an absolute http or https URL: {url!r}"
+        )
     request = Request(url, data=payload, headers=request_headers, method=method)
     try:
-        with urlopen(request, timeout=timeout) as response:  # nosec B310
+        with open_http_url(request, timeout=timeout) as response:
             body = response.read().decode("utf-8", errors="replace")
             return _HttpResponse(
                 status_code=response.status,
@@ -782,8 +786,7 @@ def _json_body(response: _HttpResponse) -> Any | None:
         return json.loads(normalized_body)
     except json.JSONDecodeError as exc:
         raise KeycloakProvisioningError(
-            "Keycloak returned invalid JSON: "
-            f"{normalized_body[:500]}"
+            f"Keycloak returned invalid JSON: {normalized_body[:500]}"
         ) from exc
 
 
@@ -804,9 +807,7 @@ def _realm_users_url(
     *,
     query_params: dict[str, str] | None = None,
 ) -> str:
-    base_url = (
-        f"{keycloak_url()}/admin/realms/{quote(realm.strip(), safe='')}/users"
-    )
+    base_url = f"{keycloak_url()}/admin/realms/{quote(realm.strip(), safe='')}/users"
     return _url_with_query(base_url, query_params)
 
 
