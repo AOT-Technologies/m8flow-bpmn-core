@@ -137,8 +137,9 @@ Sequential and parallel multi-instance script tasks are covered too; see
 The following BPMN features aren't tested in the library:
 
 - **Event subprocesses**, triggered by events inside a running parent process,
-  often for cancellation or exception handling. Non-interrupting timer and
-  interrupting/non-interrupting signal event subprocesses are covered.
+  often for cancellation or exception handling. Non-interrupting timer,
+  interrupting/non-interrupting signal, and error and escalation event
+  subprocesses are covered; message and conditional ones aren't.
 - **Advanced compensation combinations.** Boundary handlers and scoped
   throws and end events are supported, as is Transaction cancellation.
   Compensation models that require event subprocesses, loops, multi-instance
@@ -148,6 +149,12 @@ The following BPMN features aren't tested in the library:
 - **Error and escalation boundary events**, for typed business errors such as
   a service task raising `INSUFFICIENT_FUNDS`. Timer boundary events are
   covered; these aren't.
+- **BPMN errors raised from code**, for typed business errors such as a
+  service task raising `INSUFFICIENT_FUNDS`. Error and escalation events
+  thrown by the model are covered, but a script or connector exception is a
+  runtime failure that no error catcher handles.
+- **Multi-instance activities**, which run a task once per item in a
+  collection, in sequence or in parallel.
 - **Other non-interrupting events**, beyond the tested timer and signal forms.
 
 ## Operations and observability

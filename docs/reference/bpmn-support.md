@@ -50,6 +50,7 @@ The following elements are supported:
 | Call activity | Resolves `calledElement` through the host-supplied tenant-aware resolver. The child runs in the parent snapshot and parent execution resumes on child completion. See the [resolver contract](api.md#initializeprocessinstancefromdefinitioncommand). |
 | Multi-instance activity | Sequential or parallel, once per item of the collection in `loopDataInputRef` (bound to `inputDataItem`) or `loopCardinality` times. Map results with `loopDataOutputRef` and `outputDataItem`; parallel results aren't ordered. Tested with script tasks; multi-instance user tasks aren't tested yet. |
 | Non-interrupting timer event subprocess | A `subProcess` with `triggeredByEvent="true"` and a timer start event with `isInterrupting="false"`. The scheduler fires it inside the running instance, and the main path keeps going. Needs SpiffWorkflow 3.2.0 or later. Human tasks inside it don't become work items yet. |
+| Error and escalation events | Error end events and escalation throw and end events, caught by boundary events or by event subprocesses with an error or escalation start event. The nearest matching catcher in the enclosing scopes handles the event; a catcher with no code catches any event of its type. An interrupting event subprocess cancels the rest of its scope; one with `isInterrupting="false"` runs beside the main path. An uncaught escalation is ignored, and an uncaught error end event ends its path. Script and connector exceptions are runtime failures, not BPMN errors. |
 
 Signals need a host-run delivery loop for recipients outside the throwing
 instance. See [Publish and deliver BPMN signals](../how-to/publish-signals.md).
@@ -101,8 +102,9 @@ names that exist in the BPMN, and none of them may also be a key in
 The following elements and behaviors aren't covered:
 
 - Message events and message correlation
-- Event subprocesses, other than the documented timer and signal forms
-- Error and escalation boundary events
+- Event subprocesses, other than the documented timer, signal, error and
+  escalation forms
+- Raising a BPMN error from a script or connector
 - Non-interrupting boundary events other than signals
 - Compound Multiple/Parallel Multiple events and event-based gateways
 - Asynchronous service tasks that complete through a callback
